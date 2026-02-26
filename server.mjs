@@ -17,7 +17,7 @@ const server = http.createServer((req, res) => {
   let filePath = req.url.split('?')[0];
 
   if (filePath === '/') filePath = '/www/index.html';
-  else if (filePath === '/pkg/' || filePath === '/pkg') filePath = '/pkg/jolt_wasm_sha2_prover.js';
+  else if (filePath === '/pkg/' || filePath === '/pkg') filePath = '/pkg/jolt_wasm_prover.js';
   else if (!filePath.startsWith('/pkg')) filePath = '/www' + filePath;
 
   filePath = '.' + filePath;
