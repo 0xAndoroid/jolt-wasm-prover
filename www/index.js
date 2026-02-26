@@ -1,4 +1,5 @@
 const PROGRAMS = ['sha2', 'keccak'];
+const CACHE_BUST = 'v=2';
 const PROGRAM_FILES = {
     sha2:   { prover: 'sha2_prover.bin',   verifier: 'sha2_verifier.bin',   elf: 'sha2.elf'   },
     ecdsa:  { prover: 'ecdsa_prover.bin',  verifier: 'ecdsa_verifier.bin',  elf: 'ecdsa.elf'  },
@@ -86,15 +87,15 @@ async function loadProgram(name) {
 
     const files = PROGRAM_FILES[name];
     const [prover, verifier, elf] = await Promise.all([
-        fetch(`./${files.prover}`).then(r => {
+        fetch(`./${files.prover}?${CACHE_BUST}`).then(r => {
             if (!r.ok) throw new Error(`Failed to load ${files.prover}`);
             return r.arrayBuffer();
         }),
-        fetch(`./${files.verifier}`).then(r => {
+        fetch(`./${files.verifier}?${CACHE_BUST}`).then(r => {
             if (!r.ok) throw new Error(`Failed to load ${files.verifier}`);
             return r.arrayBuffer();
         }),
-        fetch(`./${files.elf}`).then(r => {
+        fetch(`./${files.elf}?${CACHE_BUST}`).then(r => {
             if (!r.ok) throw new Error(`Failed to load ${files.elf}`);
             return r.arrayBuffer();
         }),
