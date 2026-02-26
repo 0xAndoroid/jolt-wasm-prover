@@ -16,8 +16,17 @@ const mimeTypes = {
 const server = http.createServer((req, res) => {
   let filePath = req.url.split('?')[0];
 
+  // wasm-bindgen-rayon's workerHelpers.js does `import('../../..')` which resolves
+  // to /pkg/ — redirect to the actual JS module so import.meta.url is correct
+  if (filePath === '/pkg/' || filePath === '/pkg') {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    res.writeHead(302, { 'Location': '/pkg/jolt_wasm_prover.js' });
+    res.end();
+    return;
+  }
+
   if (filePath === '/') filePath = '/www/index.html';
-  else if (filePath === '/pkg/' || filePath === '/pkg') filePath = '/pkg/jolt_wasm_prover.js';
   else if (!filePath.startsWith('/pkg')) filePath = '/www' + filePath;
 
   filePath = '.' + filePath;
