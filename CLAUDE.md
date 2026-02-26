@@ -8,7 +8,7 @@ WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compile
 
 ```bash
 # Build WASM package (outputs to pkg/)
-wasm-pack build --release --target web
+CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
 
 # Build native preprocessing generator
 cargo build --release --features native

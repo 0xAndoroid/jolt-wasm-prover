@@ -4,7 +4,6 @@ use jolt_core::poly::commitment::dory::{
 };
 use jolt_core::zkvm::prover::JoltProverPreprocessing;
 use jolt_core::zkvm::verifier::{JoltSharedPreprocessing, JoltVerifierPreprocessing};
-use jolt_core::zkvm::Serializable;
 use std::io::Cursor;
 use std::path::Path;
 
@@ -50,8 +49,8 @@ fn test_prover_roundtrip(bytes: &[u8]) -> Result<(), String> {
         ));
     }
 
-    println!("Testing full ProverPreprocessing::deserialize_from_bytes_uncompressed...");
-    let _full = ProverPrep::deserialize_from_bytes_uncompressed(bytes)
+    println!("Testing full ProverPreprocessing::deserialize_uncompressed...");
+    let _full = ProverPrep::deserialize_uncompressed(Cursor::new(bytes))
         .map_err(|e| format!("Full deserialize failed: {e}"))?;
     println!("  OK");
 
@@ -122,8 +121,8 @@ fn test_verifier_roundtrip(bytes: &[u8]) -> Result<(), String> {
         ));
     }
 
-    println!("Testing full VerifierPreprocessing::deserialize_from_bytes_uncompressed...");
-    let _full = VerifierPrep::deserialize_from_bytes_uncompressed(bytes)
+    println!("Testing full VerifierPreprocessing::deserialize_uncompressed...");
+    let _full = VerifierPrep::deserialize_uncompressed(Cursor::new(bytes))
         .map_err(|e| format!("Full deserialize failed: {e}"))?;
     println!("  OK");
 

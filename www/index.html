@@ -150,7 +150,7 @@
             color: #8b949e;
             font-size: 0.85rem;
         }
-        input[type="text"], input[type="number"] {
+        input[type="text"], input[type="number"], textarea {
             width: 100%;
             padding: 0.5rem 0.75rem;
             border: 1px solid #30363d;
@@ -160,10 +160,22 @@
             background: #0d1117;
             color: #c9d1d9;
         }
-        input:focus {
+        textarea {
+            resize: vertical;
+            min-height: 4rem;
+        }
+        input:focus, textarea:focus {
             outline: none;
             border-color: #58a6ff;
             box-shadow: 0 0 0 3px rgba(88,166,255,0.15);
+        }
+        .byte-counter {
+            font-size: 0.8rem;
+            color: #8b949e;
+            margin-top: 0.25rem;
+        }
+        .byte-counter.over-limit {
+            color: #f85149;
         }
         .hidden { display: none; }
         .btn-row {
@@ -213,8 +225,9 @@
     <div id="page-sha2" class="tab-page card">
         <h3>SHA-256</h3>
         <div class="input-group">
-            <label>Message:</label>
-            <input type="text" id="sha2-message" value="hello world">
+            <label>Message (max 2048 bytes):</label>
+            <textarea id="sha2-message" rows="3">hello world</textarea>
+            <div class="byte-counter" id="sha2-byte-counter">11 / 2048 bytes</div>
         </div>
         <div class="btn-row">
             <button class="prove-btn" disabled>Generate Proof</button>

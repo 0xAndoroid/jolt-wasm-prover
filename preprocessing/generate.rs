@@ -1,7 +1,7 @@
+use ark_serialize::CanonicalSerialize;
 use jolt_core::poly::commitment::dory::{ArkworksVerifierSetup, DoryCommitmentScheme};
 use jolt_core::zkvm::prover::JoltProverPreprocessing;
 use jolt_core::zkvm::verifier::{JoltSharedPreprocessing, JoltVerifierPreprocessing};
-use jolt_core::zkvm::Serializable;
 use std::path::{Path, PathBuf};
 
 type ProverPrep = JoltProverPreprocessing<ark_bn254::Fr, DoryCommitmentScheme>;
@@ -43,9 +43,7 @@ fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
         spec.prover_file,
         name,
         "Prover",
-        &prover_preprocessing
-            .serialize_to_bytes_uncompressed()
-            .expect("Failed to serialize prover preprocessing"),
+        &serialize_uncompressed(&prover_preprocessing),
     );
 
     write_file(
@@ -53,14 +51,18 @@ fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
         spec.verifier_file,
         name,
         "Verifier",
-        &verifier_preprocessing
-            .serialize_to_bytes_uncompressed()
-            .expect("Failed to serialize verifier preprocessing"),
+        &serialize_uncompressed(&verifier_preprocessing),
     );
 
     let elf_path = www_dir.join(spec.elf_file);
     std::fs::write(&elf_path, &elf_contents).expect("Failed to write ELF");
     println!("[{name}] ELF: {} bytes -> {elf_path:?}", elf_contents.len());
+}
+
+fn serialize_uncompressed<T: CanonicalSerialize>(value: &T) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(value.serialized_size(ark_serialize::Compress::No));
+    value.serialize_uncompressed(&mut buf).expect("Failed to serialize");
+    buf
 }
 
 fn write_file(www_dir: &Path, filename: &str, program: &str, kind: &str, bytes: &[u8]) {

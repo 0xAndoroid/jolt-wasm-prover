@@ -11,6 +11,3 @@ rustflags = [
   "-C", "lto=fat",
   "-C", "opt-level=3"
 ]
-
-[unstable]
-build-std = ["panic_abort", "std"]

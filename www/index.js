@@ -240,14 +240,30 @@ async function main() {
     }
 }
 
+const SHA2_MAX_BYTES = 2048;
+
+function updateSha2ByteCounter() {
+    const textarea = document.getElementById('sha2-message');
+    const counter = document.getElementById('sha2-byte-counter');
+    const byteLen = new TextEncoder().encode(textarea.value).length;
+    counter.textContent = `${byteLen} / ${SHA2_MAX_BYTES} bytes`;
+    counter.classList.toggle('over-limit', byteLen > SHA2_MAX_BYTES);
+}
+
+document.getElementById('sha2-message').addEventListener('input', updateSha2ByteCounter);
+
 function setupProveHandlers() {
     document.querySelector('#page-sha2 .prove-btn').addEventListener('click', async () => {
         const message = document.getElementById('sha2-message').value;
         const input = new TextEncoder().encode(message);
+        if (input.length > SHA2_MAX_BYTES) {
+            log('sha2', `Message too large: ${input.length} bytes (max ${SHA2_MAX_BYTES})`);
+            return;
+        }
         setButtonsEnabled('sha2', false, false);
         if (!await ensureProgramLoaded('sha2')) { updateTabButtons('sha2'); return; }
         setStatus('Proving...', 'proving');
-        log('sha2', `\nProving SHA-256("${message}") [${input.length} bytes]`);
+        log('sha2', `\nProving SHA-256 [${input.length} bytes]`);
         worker.postMessage({
             type: 'prove',
             data: { program: 'sha2', input: Array.from(input) },
