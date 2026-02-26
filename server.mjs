@@ -42,6 +42,8 @@ const server = http.createServer((req, res) => {
       res.writeHead(404);
       res.end('Not found: ' + filePath);
     } else {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('CDN-Cache-Control', 'public, max-age=86400');
       res.writeHead(200, { 'Content-Type': contentType });
       res.end(content);
     }
