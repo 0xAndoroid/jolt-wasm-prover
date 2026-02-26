@@ -1,6 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import zlib from 'zlib';
 
 const mimeTypes = {
   '.html': 'text/html',
@@ -41,13 +42,26 @@ const server = http.createServer((req, res) => {
     if (err) {
       res.writeHead(404);
       res.end('Not found: ' + filePath);
+      return;
+    }
+
+    if (ext === '.wasm') {
+      res.setHeader('Cache-Control', 'no-cache');
     } else {
-      if (ext === '.wasm') {
-        res.setHeader('Cache-Control', 'no-cache');
-      } else {
-        res.setHeader('Cache-Control', 'no-store');
-      }
-      res.setHeader('CDN-Cache-Control', 'public, max-age=86400');
+      res.setHeader('Cache-Control', 'no-store');
+    }
+    res.setHeader('CDN-Cache-Control', 'public, max-age=86400');
+
+    const acceptEncoding = req.headers['accept-encoding'] || '';
+    if (acceptEncoding.includes('br')) {
+      res.setHeader('Content-Encoding', 'br');
+      res.writeHead(200, { 'Content-Type': contentType });
+      zlib.brotliCompress(content, (_, compressed) => res.end(compressed));
+    } else if (acceptEncoding.includes('gzip')) {
+      res.setHeader('Content-Encoding', 'gzip');
+      res.writeHead(200, { 'Content-Type': contentType });
+      zlib.gzip(content, (_, compressed) => res.end(compressed));
+    } else {
       res.writeHead(200, { 'Content-Type': contentType });
       res.end(content);
     }
