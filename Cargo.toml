@@ -42,18 +42,18 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 postcard = { version = "1.1", features = ["use-std"] }
 
-jolt-core = { git = "https://github.com/a16z/jolt", features = ["prover"] }
-tracer = { git = "https://github.com/a16z/jolt" }
-common = { git = "https://github.com/a16z/jolt", features = ["std"] }
+jolt-core = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["prover"] }
+tracer = { git = "https://github.com/a16z/jolt", branch = "wasm-clean" }
+common = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["std"] }
 ark-bn254 = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
 ark-serialize = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
 
-jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", features = ["host"] }
-jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", features = ["host"] }
-jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", features = ["host"] }
+jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["host"] }
+jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["host"] }
+jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["host"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-jolt-sdk = { git = "https://github.com/a16z/jolt", features = ["host"] }
+jolt-sdk = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["host"] }
 sha2-guest = { path = "guests/sha2" }
 secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
 sha3-chain-guest = { path = "guests/sha3-chain" }
