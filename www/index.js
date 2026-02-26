@@ -1,4 +1,4 @@
-const PROGRAMS = ['sha2', 'ecdsa', 'keccak'];
+const PROGRAMS = ['sha2', 'keccak'];
 const PROGRAM_FILES = {
     sha2:   { prover: 'sha2_prover.bin',   verifier: 'sha2_verifier.bin',   elf: 'sha2.elf'   },
     ecdsa:  { prover: 'ecdsa_prover.bin',  verifier: 'ecdsa_verifier.bin',  elf: 'ecdsa.elf'  },
@@ -267,23 +267,6 @@ function setupProveHandlers() {
         worker.postMessage({
             type: 'prove',
             data: { program: 'sha2', input: Array.from(input) },
-        });
-    });
-
-    document.querySelector('#page-ecdsa .prove-btn').addEventListener('click', async () => {
-        setButtonsEnabled('ecdsa', false, false);
-        if (!await ensureProgramLoaded('ecdsa')) { updateTabButtons('ecdsa'); return; }
-        setStatus('Proving...', 'proving');
-        log('ecdsa', '\nProving ECDSA signature verification ("hello world")');
-        worker.postMessage({
-            type: 'prove',
-            data: {
-                program: 'ecdsa',
-                z: ECDSA_TEST_VECTOR.z,
-                r: ECDSA_TEST_VECTOR.r,
-                s: ECDSA_TEST_VECTOR.s,
-                q: ECDSA_TEST_VECTOR.q,
-            },
         });
     });
 

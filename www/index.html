@@ -218,7 +218,6 @@
 
     <div class="tabs">
         <button class="tab-btn active" data-program="sha2">SHA-2</button>
-        <button class="tab-btn" data-program="ecdsa">ECDSA</button>
         <button class="tab-btn" data-program="keccak">Keccak Chain</button>
     </div>
 
@@ -228,34 +227,6 @@
             <label>Message (max 2048 bytes):</label>
             <textarea id="sha2-message" rows="3">hello world</textarea>
             <div class="byte-counter" id="sha2-byte-counter">11 / 2048 bytes</div>
-        </div>
-        <div class="btn-row">
-            <button class="prove-btn" disabled>Generate Proof</button>
-            <button class="verify-btn" disabled>Verify Proof</button>
-            <button class="trace-btn" disabled>Download Trace</button>
-        </div>
-        <h4>Output</h4>
-        <pre class="output">Click "Generate Proof" to start...</pre>
-    </div>
-
-    <div id="page-ecdsa" class="tab-page card hidden">
-        <h3>Secp256k1 ECDSA Verify</h3>
-        <p style="margin-top: 0;">Verifies an ECDSA signature over the message "hello world" (hardcoded test vector).</p>
-        <div class="input-group">
-            <span class="test-vector-label">Message hash (z):</span>
-            <div class="test-vector">b94d27b9934d3e08 a52e52d7da7dabfa c484efe37a5380ee 9088f7ace2efcde9</div>
-        </div>
-        <div class="input-group">
-            <span class="test-vector-label">Signature r:</span>
-            <div class="test-vector">3a5d6a386e6cf7c0 587f69296af3cd88 248d4b0b2829ab00 b8fc413b4b967ed8</div>
-        </div>
-        <div class="input-group">
-            <span class="test-vector-label">Signature s:</span>
-            <div class="test-vector">9d452f63cf91018d 6212d714118f617e 299a02486be40321 66a82f274e3dcafc</div>
-        </div>
-        <div class="input-group">
-            <span class="test-vector-label">Public key Q:</span>
-            <div class="test-vector">eeb6be8b9e68868b 91fc70e34e00e6c8 ee00716af6a73670 0012563f32ed0216<br>dc7b004d3bb2800d dc7f31262e4ba2b7 cb1b42d72491e47f 4780de3d5fda972d</div>
         </div>
         <div class="btn-row">
             <button class="prove-btn" disabled>Generate Proof</button>
