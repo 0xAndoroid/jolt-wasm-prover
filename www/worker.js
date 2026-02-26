@@ -21,6 +21,7 @@ self.onmessage = async (e) => {
                 wasmExports = await init();
                 await initThreadPool(data.numThreads);
                 init_inlines();
+                init_tracing();
                 self.postMessage({ type: 'init-done' });
                 break;
             }
