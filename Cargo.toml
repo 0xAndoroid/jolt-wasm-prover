@@ -42,7 +42,7 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 postcard = { version = "1.1", features = ["use-std"] }
 
-jolt-core = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["prover"] }
+jolt-core = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", default-features = false, features = ["prover"] }
 tracer = { git = "https://github.com/a16z/jolt", branch = "wasm-clean" }
 common = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["std"] }
 ark-bn254 = { path = "../arkworks-algebra/curves/bn254" }
@@ -79,3 +79,5 @@ jolt-optimizations = { path = "../arkworks-algebra/jolt-optimizations" }
 [profile.release]
 opt-level = 3
 lto = true
+codegen-units = 1
+panic = "abort"
