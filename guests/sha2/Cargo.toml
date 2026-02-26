@@ -1,0 +1,11 @@
+[package]
+name = "sha2-guest"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+guest = []
+
+[dependencies]
+jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt" }
+jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt" }

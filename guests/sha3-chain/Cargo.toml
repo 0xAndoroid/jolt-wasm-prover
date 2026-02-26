@@ -1,0 +1,11 @@
+[package]
+name = "sha3-chain-guest"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+guest = []
+
+[dependencies]
+jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt" }
+jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt" }

@@ -1,0 +1,71 @@
+[package]
+name = "jolt-wasm-prover"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = ["guests/sha2", "guests/secp256k1", "guests/sha3-chain"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "generate-preprocessing"
+path = "preprocessing/generate.rs"
+required-features = ["native"]
+
+[[bin]]
+name = "test-roundtrip"
+path = "preprocessing/test_roundtrip.rs"
+required-features = ["native"]
+
+[features]
+default = []
+native = [
+    "jolt-core/host",
+    "jolt-inlines-sha2/host",
+    "jolt-inlines-secp256k1/host",
+    "jolt-inlines-keccak256/host",
+]
+
+[dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+wasm-bindgen-rayon = "1.3"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console", "Window", "Performance"] }
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.2.16", features = ["js"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["std"] }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+postcard = { version = "1.1", features = ["use-std"] }
+
+jolt-core = { git = "https://github.com/a16z/jolt", features = ["prover"] }
+tracer = { git = "https://github.com/a16z/jolt" }
+common = { git = "https://github.com/a16z/jolt", features = ["std"] }
+ark-bn254 = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+ark-serialize = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+
+jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", features = ["host"] }
+jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", features = ["host"] }
+jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", features = ["host"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+jolt-sdk = { git = "https://github.com/a16z/jolt", features = ["host"] }
+sha2-guest = { path = "guests/sha2" }
+secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
+sha3-chain-guest = { path = "guests/sha3-chain" }
+
+[patch.crates-io]
+ark-bn254 = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+ark-ff = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+ark-ec = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+ark-serialize = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+dory-pcs = { git = "https://github.com/a16z/dory" }
+allocative = { git = "https://github.com/facebookexperimental/allocative", rev = "85b773d85d526d068ce94724ff7a7b81203fc95e" }
+
+[profile.release]
+opt-level = 3
+lto = true
