@@ -1,3 +1,6 @@
+[unstable]
+build-std = ["std", "panic_abort"]
+
 [target.wasm32-unknown-unknown]
 rustflags = [
   "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals",
@@ -9,5 +12,6 @@ rustflags = [
   "-C", "link-arg=--export=__tls_align",
   "-C", "link-arg=--export=__tls_base",
   "-C", "lto=fat",
-  "-C", "opt-level=3"
+  "-C", "opt-level=3",
+  "-A", "long_running_const_eval",
 ]

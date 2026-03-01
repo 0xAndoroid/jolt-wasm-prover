@@ -6,7 +6,7 @@ import init, {
     clear_trace,
     WasmProver,
     WasmVerifier,
-} from '../pkg/jolt_wasm_prover.js';
+} from '/pkg/jolt_wasm_prover.js';
 
 let wasmExports = null;
 const provers = {};
@@ -18,7 +18,7 @@ self.onmessage = async (e) => {
     try {
         switch (type) {
             case 'init': {
-                wasmExports = await init();
+                wasmExports = await init('/pkg/jolt_wasm_prover_bg.wasm');
                 await initThreadPool(data.numThreads);
                 init_inlines();
                 init_tracing();
