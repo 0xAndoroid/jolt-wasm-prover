@@ -13,7 +13,7 @@ CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target we
 # Build native preprocessing generator
 cargo build --release --features native
 
-# Generate preprocessing artifacts into www/
+# Generate preprocessing artifacts into frontend/public/
 cargo run --release --features native --bin generate-preprocessing
 
 # Roundtrip test for serialization
@@ -52,11 +52,12 @@ Per-run timings printed to stderr. Runs headless Chromium (12 threads max) again
 
 - `src/lib.rs` — `#[wasm_bindgen]` exports: `WasmProver`, `WasmVerifier`, `init_inlines`, tracing
 - `src/wasm_tracing.rs` — Chrome Trace Format layer for `tracing`, outputs Perfetto-compatible JSON
-- `preprocessing/generate.rs` — native binary: compiles guests, generates Dory SRS, serializes prover/verifier preprocessing to `www/`
+- `preprocessing/generate.rs` — native binary: compiles guests, generates Dory SRS, serializes prover/verifier preprocessing to `frontend/public/`
 - `preprocessing/test_roundtrip.rs` — native binary: validates serialize/deserialize roundtrip
 - `guests/{sha2,secp256k1,sha3-chain}/` — RISC-V guest programs using `jolt-sdk`
-- `www/` — static frontend, preprocessing `.bin` files, guest `.elf` files
-- `server.mjs` — Node.js dev server with COOP/COEP headers for SharedArrayBuffer
+- `frontend/` — Vite + React + TypeScript + Tailwind + shadcn frontend
+- `frontend/public/` — preprocessing `.bin` files, guest `.elf` files, `worker.js`
+- `server.mjs` — Node.js production server serving `frontend/dist/` with COOP/COEP headers
 
 ## Feature Flags
 
@@ -222,6 +223,6 @@ Remaining modifiable self-time: ~260ms total:
 - `wasm-opt = false` in `[package.metadata.wasm-pack.profile.release]` — wasm-opt pass was neutral/harmful
 
 #### Thread Configuration
-- `www/worker.js` caps threads: `Math.min(navigator.hardwareConcurrency || 4, 12)`
+- `frontend/public/worker.js` caps threads: `Math.min(navigator.hardwareConcurrency || 4, 12)`
 - Brave browser may report lower `hardwareConcurrency` due to fingerprinting protection → fewer threads → slower proving
 - Playwright headless Chromium reports true core count, capped at 12

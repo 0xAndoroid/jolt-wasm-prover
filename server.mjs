@@ -12,6 +12,7 @@ const mimeTypes = {
   '.css': 'text/css',
   '.bin': 'application/octet-stream',
   '.elf': 'application/octet-stream',
+  '.png': 'image/png',
 };
 
 const server = http.createServer((req, res) => {
@@ -27,8 +28,8 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (filePath === '/') filePath = '/www/index.html';
-  else if (!filePath.startsWith('/pkg')) filePath = '/www' + filePath;
+  if (filePath === '/') filePath = '/frontend/dist/index.html';
+  else if (!filePath.startsWith('/pkg')) filePath = '/frontend/dist' + filePath;
 
   filePath = '.' + filePath;
 

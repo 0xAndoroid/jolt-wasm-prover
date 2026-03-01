@@ -159,7 +159,7 @@ fn main() {
     let _ = jolt_inlines_secp256k1::init_inlines();
     let _ = jolt_inlines_keccak256::init_inlines();
 
-    let www_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("www");
+    let public_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
 
     let programs = [
         ("sha2", "sha2_prover.bin", "sha2_verifier.bin"),
@@ -168,7 +168,7 @@ fn main() {
     ];
 
     for (name, prover_file, verifier_file) in &programs {
-        let prover_path = www_dir.join(prover_file);
+        let prover_path = public_dir.join(prover_file);
         println!("\n[{name}] Reading prover preprocessing from {prover_path:?}");
         let prover_bytes = std::fs::read(&prover_path).expect("Failed to read prover file");
 
@@ -180,7 +180,7 @@ fn main() {
             }
         }
 
-        let verifier_path = www_dir.join(verifier_file);
+        let verifier_path = public_dir.join(verifier_file);
         println!("[{name}] Reading verifier preprocessing from {verifier_path:?}");
         let verifier_bytes = std::fs::read(&verifier_path).expect("Failed to read verifier file");
 

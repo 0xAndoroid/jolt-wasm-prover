@@ -22,13 +22,13 @@ Three guest programs are included:
 
 ### 1. Generate preprocessing data
 
-Preprocessing generates the Dory SRS, compiles guest ELFs, and serializes prover/verifier preprocessing into `www/`.
+Preprocessing generates the Dory SRS, compiles guest ELFs, and serializes prover/verifier preprocessing into `frontend/public/`.
 
 ```bash
 cargo run --release --features native --bin generate-preprocessing
 ```
 
-This produces per-program files in `www/`:
+This produces per-program files in `frontend/public/`:
 - `{name}_prover.bin` — prover preprocessing (Dory SRS + shared preprocessing)
 - `{name}_verifier.bin` — verifier preprocessing (Dory verifier setup + shared preprocessing)
 - `{name}.elf` — compiled guest RISC-V ELF
@@ -41,14 +41,22 @@ wasm-pack build --release --target web
 
 Outputs the WASM package to `pkg/`.
 
-### 3. Run
+### 3. Run (dev)
 
 ```bash
+cd frontend && npm install && npm run dev
+# Open http://localhost:8080
+```
+
+Or build and serve with the production server:
+
+```bash
+cd frontend && npm run build
 node server.mjs
 # Open http://localhost:8080
 ```
 
-The server sets `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers required for `SharedArrayBuffer`.
+Both set `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers required for `SharedArrayBuffer`.
 
 ## Architecture
 
@@ -57,8 +65,9 @@ src/lib.rs          WASM entry point — WasmProver, WasmVerifier, init_inlines
 src/wasm_tracing.rs Chrome Trace Format profiling (Perfetto-compatible)
 preprocessing/      Native binaries for generating preprocessing data
 guests/             RISC-V guest programs (compiled to ELF by jolt-sdk)
-www/                Static frontend + preprocessing artifacts
-server.mjs          Dev server with COOP/COEP headers
+frontend/           Vite + React + TypeScript + Tailwind frontend
+frontend/public/    Preprocessing artifacts + worker.js
+server.mjs          Production server with COOP/COEP headers
 ```
 
 ### WASM API

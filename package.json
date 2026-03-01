@@ -1,4 +1,10 @@
 {
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "serve": "node server.mjs",
+    "bench": "node bench.mjs"
+  },
   "dependencies": {
     "playwright": "^1.58.2"
   }

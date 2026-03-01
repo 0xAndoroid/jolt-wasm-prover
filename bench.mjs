@@ -16,7 +16,7 @@ async function run() {
     await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     await page.waitForFunction(
-        () => document.getElementById('status')?.className === 'ready',
+        () => document.getElementById('status')?.classList.contains('ready'),
         { timeout: TIMEOUT },
     );
 

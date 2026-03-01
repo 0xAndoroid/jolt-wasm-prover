@@ -6,7 +6,7 @@ import init, {
     clear_trace,
     WasmProver,
     WasmVerifier,
-} from '../pkg/jolt_wasm_prover.js';
+} from '/pkg/jolt_wasm_prover.js';
 
 let wasmExports = null;
 const provers = {};

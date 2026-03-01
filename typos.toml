@@ -1,2 +1,2 @@
 [files]
-extend-exclude = ["www/"]
+extend-exclude = ["frontend/public/"]

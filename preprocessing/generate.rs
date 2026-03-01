@@ -76,8 +76,8 @@ fn main() {
     let _ = jolt_inlines_secp256k1::init_inlines();
     let _ = jolt_inlines_keccak256::init_inlines();
 
-    let www_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("www");
-    std::fs::create_dir_all(&www_dir).expect("Failed to create www dir");
+    let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
+    std::fs::create_dir_all(&public_dir).expect("Failed to create frontend/public dir");
 
     let specs = [
         ProgramSpec {
@@ -116,7 +116,7 @@ fn main() {
     ];
 
     for spec in &specs {
-        generate_program(&www_dir, spec);
+        generate_program(&public_dir, spec);
     }
 
     println!("Done!");
