@@ -18,7 +18,7 @@ self.onmessage = async (e) => {
     try {
         switch (type) {
             case 'init': {
-                wasmExports = await init();
+                wasmExports = await init('/pkg/jolt_wasm_prover_bg.wasm');
                 await initThreadPool(data.numThreads);
                 init_inlines();
                 init_tracing();
