@@ -8,6 +8,7 @@ export interface ProgramState {
   loadState: LoadState
   proofBytes: Uint8Array | null
   programIoBytes: Uint8Array | null
+  verifyResult: { valid: boolean; elapsed: number } | null
 }
 
 export interface ProgramFiles {

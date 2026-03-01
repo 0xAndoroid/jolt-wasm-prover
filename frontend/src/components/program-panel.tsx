@@ -59,7 +59,7 @@ export function ProgramPanel({
       </div>
 
       {hasProof && (
-        <div className="border-t border-border px-5 py-3 animate-in fade-in duration-300">
+        <div className="flex items-center border-t border-border px-5 py-3 animate-in fade-in duration-300">
           <Button
             size="sm"
             variant="outline"
@@ -69,6 +69,17 @@ export function ProgramPanel({
           >
             Verify Proof
           </Button>
+          <div className="flex-1" />
+          {programState.verifyResult && (
+            <span className="flex items-center gap-2">
+              <span className={`text-sm font-medium ${programState.verifyResult.valid ? 'text-emerald-600' : 'text-destructive'}`}>
+                {programState.verifyResult.valid ? 'Valid' : 'Invalid'}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {(programState.verifyResult.elapsed / 1000).toFixed(2)}s
+              </span>
+            </span>
+          )}
         </div>
       )}
     </div>

@@ -19,7 +19,7 @@ interface ProverState {
 function initialProgramStates(): Record<ProgramName, ProgramState> {
   const states = {} as Record<ProgramName, ProgramState>
   for (const p of PROGRAMS) {
-    states[p] = { loadState: 'idle', proofBytes: null, programIoBytes: null }
+    states[p] = { loadState: 'idle', proofBytes: null, programIoBytes: null, verifyResult: null }
   }
   return states
 }
@@ -40,6 +40,8 @@ export function useProver() {
 
   const clientRef = useRef<WorkerClient | null>(null)
   const programLoadResolvers = useRef<Record<string, () => void>>({})
+  const programStatesRef = useRef(state.programStates)
+  programStatesRef.current = state.programStates
 
   const log = useCallback((program: ProgramName, msg: string) => {
     setState((prev) => ({
@@ -78,8 +80,6 @@ export function useProver() {
         const p = msg.program
         setState((prev) => ({
           ...prev,
-          status: 'ready',
-          statusText: 'Ready',
           programStates: {
             ...prev.programStates,
             [p]: { ...prev.programStates[p], loadState: 'ready' },
@@ -114,6 +114,7 @@ export function useProver() {
               ...prev.programStates[p],
               proofBytes: msg.proof,
               programIoBytes: msg.programIo,
+              verifyResult: null,
             },
           },
         }))
@@ -135,12 +136,20 @@ export function useProver() {
 
       if (msg.type === 'verify-done') {
         const p = msg.program
+        setState((prev) => ({
+          ...prev,
+          status: msg.valid ? 'ready' : 'error',
+          statusText: msg.valid ? 'Verification passed!' : 'Verification failed!',
+          programStates: {
+            ...prev.programStates,
+            [p]: {
+              ...prev.programStates[p],
+              verifyResult: { valid: msg.valid, elapsed: msg.elapsed },
+            },
+          },
+        }))
         log(p, `Verification completed in ${(msg.elapsed / 1000).toFixed(2)}s`)
         log(p, `Result: ${msg.valid ? 'VALID' : 'INVALID'}`)
-        setStatus(
-          msg.valid ? 'Verification passed!' : 'Verification failed!',
-          msg.valid ? 'ready' : 'error',
-        )
         return
       }
     },
@@ -231,31 +240,26 @@ export function useProver() {
 
   const ensureProgramLoaded = useCallback(
     async (name: ProgramName): Promise<boolean> => {
-      // Need to read current state outside of setState
-      let currentState: ProgramState | undefined
-      setState((prev) => {
-        currentState = prev.programStates[name]
-        return prev
-      })
+      const currentState = programStatesRef.current[name]
       if (!currentState) return false
 
       if (currentState.loadState === 'ready') return true
-      if (currentState.loadState === 'idle') {
-        try {
-          await loadProgram(name)
-        } catch (e) {
-          setState((prev) => ({
-            ...prev,
-            programStates: {
-              ...prev.programStates,
-              [name]: { ...prev.programStates[name], loadState: 'idle' },
-            },
-          }))
-          const msg = e instanceof Error ? e.message : String(e)
-          setStatus(`Error: ${msg}`, 'error')
-          log(name, `Error: ${msg}`)
-          return false
-        }
+      // Treat 'loading' same as 'idle' — loadState can be stale after HMR/StrictMode
+      // re-mount where the worker was recreated but state was preserved.
+      try {
+        await loadProgram(name)
+      } catch (e) {
+        setState((prev) => ({
+          ...prev,
+          programStates: {
+            ...prev.programStates,
+            [name]: { ...prev.programStates[name], loadState: 'idle' },
+          },
+        }))
+        const msg = e instanceof Error ? e.message : String(e)
+        setStatus(`Error: ${msg}`, 'error')
+        log(name, `Error: ${msg}`)
+        return false
       }
 
       return new Promise<boolean>((resolve) => {
@@ -272,6 +276,7 @@ export function useProver() {
         log('sha2', `Message too large: ${input.length} bytes (max ${SHA2_MAX_BYTES})`)
         return
       }
+      setStatus('Loading...', 'loading')
       if (!(await ensureProgramLoaded('sha2'))) return
       setStatus('Proving...', 'proving')
       log('sha2', `\nProving SHA-256 [${input.length} bytes]`)
@@ -289,6 +294,7 @@ export function useProver() {
         log('keccak', 'Iterations must be between 1 and 100')
         return
       }
+      setStatus('Loading...', 'loading')
       const messageBytes = new TextEncoder().encode(message)
       const input = await sha256Digest(messageBytes)
       if (!(await ensureProgramLoaded('keccak'))) return
