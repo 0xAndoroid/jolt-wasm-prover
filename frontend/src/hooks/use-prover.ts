@@ -25,7 +25,7 @@ function initialProgramStates(): Record<ProgramName, ProgramState> {
 }
 
 async function sha256Digest(bytes: Uint8Array): Promise<Uint8Array> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', bytes)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', bytes.buffer as ArrayBuffer)
   return new Uint8Array(hashBuffer)
 }
 

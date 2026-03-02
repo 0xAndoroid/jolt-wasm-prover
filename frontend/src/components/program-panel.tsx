@@ -1,9 +1,8 @@
 import { Button } from '@/components/ui/button'
 import { OutputLog } from './output-log'
-import type { ProgramName, ProgramState, AppStatus } from '@/lib/types'
+import type { ProgramState, AppStatus } from '@/lib/types'
 
 export function ProgramPanel({
-  program,
   programState,
   appStatus,
   wasmReady,
@@ -13,7 +12,6 @@ export function ProgramPanel({
   onTrace,
   children,
 }: {
-  program: ProgramName
   programState: ProgramState
   appStatus: AppStatus
   wasmReady: boolean

@@ -60,7 +60,6 @@ export function App() {
 
           <TabsContent value="sha2" id="page-sha2">
             <ProgramPanel
-              program="sha2"
               programState={programStates.sha2}
               appStatus={status}
               wasmReady={wasmReady}
@@ -79,7 +78,6 @@ export function App() {
 
           <TabsContent value="keccak" id="page-keccak">
             <ProgramPanel
-              program="keccak"
               programState={programStates.keccak}
               appStatus={status}
               wasmReady={wasmReady}
