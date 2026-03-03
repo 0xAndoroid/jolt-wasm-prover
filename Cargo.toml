@@ -42,18 +42,18 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 postcard = { version = "1.1", features = ["use-std"] }
 
-jolt-core = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", default-features = false, features = ["prover"] }
-tracer = { git = "https://github.com/a16z/jolt", branch = "wasm-clean" }
-common = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["std"] }
+jolt-core = { git = "https://github.com/a16z/jolt", default-features = false, features = ["prover", "zk"] }
+tracer = { git = "https://github.com/a16z/jolt" }
+common = { git = "https://github.com/a16z/jolt", features = ["std"] }
 ark-bn254 = { path = "../arkworks-algebra/curves/bn254" }
 ark-serialize = { path = "../arkworks-algebra/serialize" }
 
-jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["host"] }
-jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["host"] }
-jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["host"] }
+jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", features = ["host"] }
+jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", features = ["host"] }
+jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", features = ["host"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-jolt-sdk = { git = "https://github.com/a16z/jolt", branch = "wasm-clean", features = ["host"] }
+jolt-sdk = { git = "https://github.com/a16z/jolt", features = ["host", "zk"] }
 sha2-guest = { path = "guests/sha2" }
 secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
 sha3-chain-guest = { path = "guests/sha3-chain" }
@@ -63,6 +63,7 @@ ark-bn254 = { path = "../arkworks-algebra/curves/bn254" }
 ark-ff = { path = "../arkworks-algebra/ff" }
 ark-ec = { path = "../arkworks-algebra/ec" }
 ark-serialize = { path = "../arkworks-algebra/serialize" }
+dory-pcs = { path = "../dory" }
 allocative = { git = "https://github.com/facebookexperimental/allocative", rev = "85b773d85d526d068ce94724ff7a7b81203fc95e" }
 
 [patch.'https://github.com/a16z/dory']

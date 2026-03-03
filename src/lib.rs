@@ -2,7 +2,9 @@ use ark_bn254::Fr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use common::jolt_device::{JoltDevice, MemoryConfig};
 use jolt_core::{
+    curve::Bn254Curve,
     poly::commitment::dory::DoryCommitmentScheme,
+    transcripts::Blake2bTranscript,
     zkvm::{prover::JoltProverPreprocessing, verifier::JoltVerifierPreprocessing, Serializable},
 };
 use wasm_bindgen::prelude::*;
@@ -111,15 +113,16 @@ impl WasmProver {
 
         let num_cycles = trace.len();
 
-        let prover: JoltCpuProver<'_, Fr, DoryCommitmentScheme, _> = JoltCpuProver::gen_from_trace(
-            &self.preprocessing,
-            lazy_trace,
-            trace,
-            program_io.clone(),
-            None,
-            None,
-            final_memory,
-        );
+        let prover: JoltCpuProver<'_, Fr, Bn254Curve, DoryCommitmentScheme, Blake2bTranscript> =
+            JoltCpuProver::gen_from_trace(
+                &self.preprocessing,
+                lazy_trace,
+                trace,
+                program_io.clone(),
+                None,
+                None,
+                final_memory,
+            );
 
         let (proof, _) = prover.prove();
 
@@ -284,7 +287,7 @@ impl WasmVerifier {
     pub fn verify(&self, proof_bytes: &[u8], program_io_bytes: &[u8]) -> Result<bool, JsValue> {
         use jolt_core::zkvm::{proof_serialization::JoltProof, RV64IMACVerifier};
 
-        let proof: JoltProof<Fr, DoryCommitmentScheme, _> =
+        let proof: JoltProof<Fr, Bn254Curve, DoryCommitmentScheme, Blake2bTranscript> =
             JoltProof::deserialize_from_bytes(proof_bytes)
                 .map_err(|e| JsValue::from_str(&format!("Proof deserialize error: {e}")))?;
 

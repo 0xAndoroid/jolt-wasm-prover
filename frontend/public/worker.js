@@ -112,6 +112,8 @@ self.onmessage = async (e) => {
             }
         }
     } catch (err) {
-        self.postMessage({ type: 'error', error: err.message || String(err) });
+        const msg = err.message || String(err);
+        console.error('[worker error]', msg);
+        self.postMessage({ type: 'error', error: msg });
     }
 };
