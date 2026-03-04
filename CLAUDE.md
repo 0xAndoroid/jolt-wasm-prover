@@ -78,6 +78,28 @@ All Jolt crates pulled from `https://github.com/a16z/jolt` (default branch). Ark
 
 Preprocessing uses **uncompressed** arkworks serialization (`Compress::No`) for fast deserialization in WASM. Proofs use **compressed** serialization (`Serializable::serialize_to_bytes`) for smaller transfer size.
 
+## Deployment
+
+### Cloudflare Pages
+
+Output directory: `frontend/dist/` (with `pkg/` copied in).
+
+```bash
+# Full build + deploy
+CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
+cd frontend && npm run build && cd ..
+cp -r pkg/ frontend/dist/pkg/
+npx wrangler pages deploy frontend/dist/ --project-name <project-name>
+```
+
+Required files in `frontend/public/` (copied to `dist/` by Vite):
+- `_headers` — COOP/COEP, CSP, security headers (includes `cloudflareinsights.com` for CF analytics beacon)
+- `_redirects` — `/pkg/` → `/pkg/jolt_wasm_prover.js` redirect (needed by `wasm-bindgen-rayon`'s `workerHelpers.js` which does `import('../../..')`)
+
+### Local (`server.mjs`)
+
+`server.mjs` serves `frontend/dist/` and `pkg/` with security headers, path traversal protection, and compression. Binds to `127.0.0.1:8080`. For external access, use Cloudflare Tunnel — never expose directly.
+
 ## Comment Policy
 
 - No comments restating what code does

@@ -47,10 +47,10 @@ const securityHeaders = {
   'X-Frame-Options': 'DENY',
   'Content-Security-Policy': [
     "default-src 'self'",
-    "script-src 'self' 'wasm-unsafe-eval'",
+    "script-src 'self' 'wasm-unsafe-eval' https://static.cloudflareinsights.com",
     "style-src 'self' https://fonts.googleapis.com",
     "font-src https://fonts.gstatic.com",
-    "connect-src 'self'",
+    "connect-src 'self' https://cloudflareinsights.com",
     "worker-src 'self' blob:",
     "img-src 'self' data:",
   ].join('; '),
