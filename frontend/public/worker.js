@@ -8,6 +8,66 @@ import init, {
     WasmVerifier,
 } from '/pkg/jolt_wasm_prover.js';
 
+const WASM_URL = '/pkg/jolt_wasm_prover_bg.wasm';
+const CACHE_DB = 'jolt-wasm-cache';
+const CACHE_STORE = 'modules';
+
+async function openCacheDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open(CACHE_DB, 1);
+        req.onupgradeneeded = () => req.result.createObjectStore(CACHE_STORE);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+    });
+}
+
+async function getCachedModule(db, key) {
+    return new Promise((resolve) => {
+        const tx = db.transaction(CACHE_STORE, 'readonly');
+        const req = tx.objectStore(CACHE_STORE).get(key);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => resolve(null);
+    });
+}
+
+async function putCachedModule(db, key, module) {
+    return new Promise((resolve) => {
+        const tx = db.transaction(CACHE_STORE, 'readwrite');
+        tx.objectStore(CACHE_STORE).put(module, key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => resolve();
+    });
+}
+
+async function loadWasmModule() {
+    const resp = await fetch(WASM_URL);
+    const etag = resp.headers.get('etag') || resp.headers.get('last-modified') || '';
+    const cacheKey = WASM_URL + '|' + etag;
+
+    let db;
+    try { db = await openCacheDB(); } catch { /* indexedDB unavailable */ }
+
+    if (db) {
+        const cached = await getCachedModule(db, cacheKey);
+        if (cached instanceof WebAssembly.Module) {
+            return cached;
+        }
+    }
+
+    const module = await WebAssembly.compileStreaming(resp);
+
+    if (db) {
+        // Clear old entries then store new one
+        try {
+            const tx = db.transaction(CACHE_STORE, 'readwrite');
+            tx.objectStore(CACHE_STORE).clear();
+            tx.oncomplete = () => putCachedModule(db, cacheKey, module);
+        } catch { /* best-effort */ }
+    }
+
+    return module;
+}
+
 let wasmExports = null;
 const provers = {};
 const verifiers = {};
@@ -18,7 +78,8 @@ self.onmessage = async (e) => {
     try {
         switch (type) {
             case 'init': {
-                wasmExports = await init('/pkg/jolt_wasm_prover_bg.wasm');
+                const module = await loadWasmModule();
+                wasmExports = await init({ module });
                 await initThreadPool(data.numThreads);
                 init_inlines();
                 init_tracing();
