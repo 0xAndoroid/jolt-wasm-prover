@@ -259,27 +259,11 @@ pub struct WasmVerifier {
 impl WasmVerifier {
     #[wasm_bindgen(constructor)]
     pub fn new(preprocessing_bytes: &[u8]) -> Result<WasmVerifier, JsValue> {
-        use jolt_core::poly::commitment::dory::ArkworksVerifierSetup;
-        use jolt_core::zkvm::verifier::JoltSharedPreprocessing;
-        use std::io::Cursor;
-
-        let mut cursor = Cursor::new(preprocessing_bytes);
-
-        let generators = ArkworksVerifierSetup::deserialize_with_mode(
-            &mut cursor,
-            ark_serialize::Compress::No,
-            ark_serialize::Validate::No,
-        )
-        .map_err(|e| JsValue::from_str(&format!("VerifierSetup deserialize error: {e}")))?;
-
-        let shared = JoltSharedPreprocessing::deserialize_with_mode(
-            &mut cursor,
-            ark_serialize::Compress::No,
-            ark_serialize::Validate::No,
-        )
-        .map_err(|e| JsValue::from_str(&format!("SharedPreprocessing deserialize error: {e}")))?;
-
-        let preprocessing = VerifierPreprocessing { generators, shared };
+        let preprocessing =
+            VerifierPreprocessing::deserialize_uncompressed_unchecked(preprocessing_bytes)
+                .map_err(|e| {
+                    JsValue::from_str(&format!("VerifierPreprocessing deserialize error: {e}"))
+                })?;
 
         Ok(Self { preprocessing })
     }
