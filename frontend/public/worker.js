@@ -21,7 +21,7 @@ async function openCacheDB() {
     });
 }
 
-async function getCachedModule(db, key) {
+async function getCached(db, key) {
     return new Promise((resolve) => {
         const tx = db.transaction(CACHE_STORE, 'readonly');
         const req = tx.objectStore(CACHE_STORE).get(key);
@@ -30,10 +30,10 @@ async function getCachedModule(db, key) {
     });
 }
 
-async function putCachedModule(db, key, module) {
+async function putCached(db, key, value) {
     return new Promise((resolve) => {
         const tx = db.transaction(CACHE_STORE, 'readwrite');
-        tx.objectStore(CACHE_STORE).put(module, key);
+        tx.objectStore(CACHE_STORE).put(value, key);
         tx.oncomplete = () => resolve();
         tx.onerror = () => resolve();
     });
@@ -48,20 +48,20 @@ async function loadWasmModule() {
     try { db = await openCacheDB(); } catch { /* indexedDB unavailable */ }
 
     if (db) {
-        const cached = await getCachedModule(db, cacheKey);
-        if (cached instanceof WebAssembly.Module) {
-            return cached;
+        const cached = await getCached(db, cacheKey);
+        if (cached instanceof ArrayBuffer) {
+            return WebAssembly.compile(cached);
         }
     }
 
-    const module = await WebAssembly.compileStreaming(resp);
+    const bytes = await resp.arrayBuffer();
+    const module = await WebAssembly.compile(bytes);
 
     if (db) {
-        // Clear old entries then store new one
         try {
             const tx = db.transaction(CACHE_STORE, 'readwrite');
             tx.objectStore(CACHE_STORE).clear();
-            tx.oncomplete = () => putCachedModule(db, cacheKey, module);
+            tx.oncomplete = () => putCached(db, cacheKey, bytes);
         } catch { /* best-effort */ }
     }
 
