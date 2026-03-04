@@ -37,8 +37,6 @@ const server = http.createServer((req, res) => {
   const contentType = mimeTypes[ext] || 'application/octet-stream';
 
   fs.readFile(filePath, (err, content) => {
-    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
 
     if (err) {
       res.writeHead(404);
