@@ -36,7 +36,7 @@ This produces per-program files in `frontend/public/`:
 ### 2. Build WASM
 
 ```bash
-wasm-pack build --release --target web
+CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
 ```
 
 Outputs the WASM package to `pkg/`.

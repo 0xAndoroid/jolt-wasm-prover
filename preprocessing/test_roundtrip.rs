@@ -1,4 +1,5 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use jolt_core::curve::Bn254G1;
 use jolt_core::poly::commitment::dory::{
     ArkworksProverSetup, ArkworksVerifierSetup, DoryCommitmentScheme,
 };
@@ -113,11 +114,42 @@ fn test_verifier_roundtrip(bytes: &[u8]) -> Result<(), String> {
     let shared_bytes = pos_after_shared - pos_after_generators;
     println!("  OK - consumed {shared_bytes} bytes (total: {pos_after_shared})");
 
-    if pos_after_shared != bytes.len() {
+    println!("Deserializing zk_generator_g1s with Compress::No...");
+    let zk_generator_g1s = Vec::<Bn254G1>::deserialize_with_mode(
+        &mut cursor,
+        ark_serialize::Compress::No,
+        ark_serialize::Validate::No,
+    )
+    .map_err(|e| {
+        let pos = cursor.position();
+        format!("zk_generator_g1s failed at pos {pos}: {e}")
+    })?;
+    let pos_after_g1s = cursor.position() as usize;
+    let g1s_bytes = pos_after_g1s - pos_after_shared;
+    println!(
+        "  OK - {} generators, consumed {g1s_bytes} bytes (total: {pos_after_g1s})",
+        zk_generator_g1s.len()
+    );
+
+    println!("Deserializing zk_generator_h1 with Compress::No...");
+    let zk_generator_h1 = Bn254G1::deserialize_with_mode(
+        &mut cursor,
+        ark_serialize::Compress::No,
+        ark_serialize::Validate::No,
+    )
+    .map_err(|e| {
+        let pos = cursor.position();
+        format!("zk_generator_h1 failed at pos {pos}: {e}")
+    })?;
+    let pos_after_h1 = cursor.position() as usize;
+    let h1_bytes = pos_after_h1 - pos_after_g1s;
+    println!("  OK - consumed {h1_bytes} bytes (total: {pos_after_h1})");
+
+    if pos_after_h1 != bytes.len() {
         let total = bytes.len();
-        let extra = total - pos_after_shared;
+        let extra = total - pos_after_h1;
         return Err(format!(
-            "Verifier: consumed {pos_after_shared} bytes but file has {total} bytes ({extra} extra)"
+            "Verifier: consumed {pos_after_h1} bytes but file has {total} bytes ({extra} extra)"
         ));
     }
 
@@ -127,7 +159,12 @@ fn test_verifier_roundtrip(bytes: &[u8]) -> Result<(), String> {
     println!("  OK");
 
     println!("Testing serialize -> deserialize roundtrip...");
-    let prep = VerifierPrep { generators, shared };
+    let prep = VerifierPrep {
+        generators,
+        shared,
+        zk_generator_g1s,
+        zk_generator_h1,
+    };
     let mut reserialized = Vec::new();
     prep.serialize_uncompressed(&mut reserialized)
         .map_err(|e| format!("Reserialize failed: {e}"))?;

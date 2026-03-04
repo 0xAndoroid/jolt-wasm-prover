@@ -42,11 +42,9 @@ node bench.mjs
 node bench.mjs 5
 ```
 
-Outputs JSON to stdout: `{"runs":[1.66,1.54,1.53],"avg":1.577,"min":1.53,"max":1.66}`
+Outputs JSON to stdout: `{"runs":[2.51,2.39,2.48],"avg":2.46,"min":2.39,"max":2.51}`
 
 Per-run timings printed to stderr. Runs headless Chromium (12 threads max) against `http://localhost:8080`.
-
-**Browser performance varies**: Safari ~1.63s, Chromium/Playwright ~1.55s, Brave ~2.12s (shields/fingerprinting protection throttles `hardwareConcurrency` and adds overhead).
 
 ## Architecture
 
@@ -70,9 +68,11 @@ All Jolt crates pulled from `https://github.com/a16z/jolt` (default branch). Ark
 
 ## WASM Build Requirements
 
-- Nightly Rust (for `build-std` with atomics)
+- Nightly Rust (for `build-std` with atomics); `rust-toolchain.toml` tracks rolling `nightly`
+- `CARGO_UNSTABLE_BUILD_STD="panic_abort,std"` env var required for `wasm-pack` builds
 - `.cargo/config.toml` sets `+atomics,+bulk-memory,+mutable-globals` and 4 GB max memory
 - `wasm-pack` for building the WASM package
+- After switching nightly versions, run `cargo clean --target wasm32-unknown-unknown` to avoid stale `std` artifacts (can cause `condvar wait not supported` panics)
 
 ## Serialization
 
