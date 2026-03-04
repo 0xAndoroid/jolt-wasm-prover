@@ -1,0 +1,2 @@
+name = "jolt-wasm-prover"
+pages_build_output_dir = "frontend/dist"
