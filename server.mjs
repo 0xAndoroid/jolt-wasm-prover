@@ -15,14 +15,30 @@ const mimeTypes = {
   '.png': 'image/png',
 };
 
+// Pre-compressed file cache: filePath -> { br: Buffer, gzip: Buffer }
+const compressCache = new Map();
+
+function getCompressed(filePath, content) {
+  if (compressCache.has(filePath)) return compressCache.get(filePath);
+
+  const entry = {
+    br: zlib.brotliCompressSync(content, {
+      params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 6 },
+    }),
+    gzip: zlib.gzipSync(content),
+    raw: content,
+  };
+  compressCache.set(filePath, entry);
+  return entry;
+}
+
 const server = http.createServer((req, res) => {
   let filePath = req.url.split('?')[0];
 
   // wasm-bindgen-rayon's workerHelpers.js does `import('../../..')` which resolves
   // to /pkg/ — redirect to the actual JS module so import.meta.url is correct
   if (filePath === '/pkg/' || filePath === '/pkg') {
-    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+
     res.writeHead(302, { 'Location': '/pkg/jolt_wasm_prover.js' });
     res.end();
     return;
@@ -44,25 +60,21 @@ const server = http.createServer((req, res) => {
       return;
     }
 
-    if (ext === '.wasm') {
-      res.setHeader('Cache-Control', 'no-cache');
-    } else {
-      res.setHeader('Cache-Control', 'no-store');
-    }
-    res.setHeader('CDN-Cache-Control', 'public, max-age=86400');
 
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+
+    const compressed = getCompressed(filePath, content);
     const acceptEncoding = req.headers['accept-encoding'] || '';
+
     if (acceptEncoding.includes('br')) {
-      res.setHeader('Content-Encoding', 'br');
-      res.writeHead(200, { 'Content-Type': contentType });
-      zlib.brotliCompress(content, (_, compressed) => res.end(compressed));
+      res.writeHead(200, { 'Content-Type': contentType, 'Content-Encoding': 'br' });
+      res.end(compressed.br);
     } else if (acceptEncoding.includes('gzip')) {
-      res.setHeader('Content-Encoding', 'gzip');
-      res.writeHead(200, { 'Content-Type': contentType });
-      zlib.gzip(content, (_, compressed) => res.end(compressed));
+      res.writeHead(200, { 'Content-Type': contentType, 'Content-Encoding': 'gzip' });
+      res.end(compressed.gzip);
     } else {
       res.writeHead(200, { 'Content-Type': contentType });
-      res.end(content);
+      res.end(compressed.raw);
     }
   });
 });
