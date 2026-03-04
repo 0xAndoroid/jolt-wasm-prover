@@ -1,5 +1,5 @@
 use ark_serialize::CanonicalSerialize;
-use jolt_core::poly::commitment::dory::{ArkworksVerifierSetup, DoryCommitmentScheme};
+use jolt_core::poly::commitment::dory::DoryCommitmentScheme;
 use jolt_core::zkvm::prover::JoltProverPreprocessing;
 use jolt_core::zkvm::verifier::{JoltSharedPreprocessing, JoltVerifierPreprocessing};
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ struct ProgramSpec {
     compile: fn(&str) -> jolt_core::host::Program,
     preprocess_shared: fn(&mut jolt_core::host::Program) -> JoltSharedPreprocessing,
     preprocess_prover: fn(JoltSharedPreprocessing) -> ProverPrep,
-    preprocess_verifier: fn(JoltSharedPreprocessing, ArkworksVerifierSetup) -> VerifierPrep,
+    verifier_from_prover: fn(&ProverPrep) -> VerifierPrep,
 }
 
 fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
@@ -32,11 +32,10 @@ fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
     let elf_contents = program.get_elf_contents().expect("Failed to get ELF contents");
 
     println!("[{name}] Generating prover preprocessing...");
-    let prover_preprocessing = (spec.preprocess_prover)(shared.clone());
+    let prover_preprocessing = (spec.preprocess_prover)(shared);
 
     println!("[{name}] Generating verifier preprocessing...");
-    let verifier_setup = prover_preprocessing.generators.to_verifier_setup();
-    let verifier_preprocessing = (spec.preprocess_verifier)(shared, verifier_setup);
+    let verifier_preprocessing = (spec.verifier_from_prover)(&prover_preprocessing);
 
     write_file(
         www_dir,
@@ -88,7 +87,7 @@ fn main() {
             compile: sha2_guest::compile_sha2,
             preprocess_shared: sha2_guest::preprocess_shared_sha2,
             preprocess_prover: sha2_guest::preprocess_prover_sha2,
-            preprocess_verifier: sha2_guest::preprocess_verifier_sha2,
+            verifier_from_prover: sha2_guest::verifier_preprocessing_from_prover_sha2,
         },
         ProgramSpec {
             name: "ecdsa",
@@ -100,8 +99,8 @@ fn main() {
                 secp256k1_ecdsa_verify_guest::preprocess_shared_secp256k1_ecdsa_verify,
             preprocess_prover:
                 secp256k1_ecdsa_verify_guest::preprocess_prover_secp256k1_ecdsa_verify,
-            preprocess_verifier:
-                secp256k1_ecdsa_verify_guest::preprocess_verifier_secp256k1_ecdsa_verify,
+            verifier_from_prover:
+                secp256k1_ecdsa_verify_guest::verifier_preprocessing_from_prover_secp256k1_ecdsa_verify,
         },
         ProgramSpec {
             name: "keccak",
@@ -111,7 +110,8 @@ fn main() {
             compile: sha3_chain_guest::compile_sha3_chain,
             preprocess_shared: sha3_chain_guest::preprocess_shared_sha3_chain,
             preprocess_prover: sha3_chain_guest::preprocess_prover_sha3_chain,
-            preprocess_verifier: sha3_chain_guest::preprocess_verifier_sha3_chain,
+            verifier_from_prover:
+                sha3_chain_guest::verifier_preprocessing_from_prover_sha3_chain,
         },
     ];
 
