@@ -18,6 +18,9 @@ self.onmessage = async (e) => {
     try {
         switch (type) {
             case 'init': {
+                if (typeof SharedArrayBuffer === 'undefined') {
+                    throw new Error('Your browser does not support SharedArrayBuffer (requires iOS 15.2+, Chrome 91+, Firefox 79+, Safari 15.2+).');
+                }
                 wasmExports = await init('/pkg/jolt_wasm_prover_bg.wasm');
                 await initThreadPool(data.numThreads);
                 init_inlines();
