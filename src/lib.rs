@@ -259,11 +259,12 @@ pub struct WasmVerifier {
 impl WasmVerifier {
     #[wasm_bindgen(constructor)]
     pub fn new(preprocessing_bytes: &[u8]) -> Result<WasmVerifier, JsValue> {
-        let preprocessing =
-            VerifierPreprocessing::deserialize_uncompressed_unchecked(preprocessing_bytes)
-                .map_err(|e| {
-                    JsValue::from_str(&format!("VerifierPreprocessing deserialize error: {e}"))
-                })?;
+        let preprocessing = VerifierPreprocessing::deserialize_with_mode(
+            &mut std::io::Cursor::new(preprocessing_bytes),
+            ark_serialize::Compress::No,
+            ark_serialize::Validate::Yes,
+        )
+        .map_err(|e| JsValue::from_str(&format!("VerifierPreprocessing deserialize error: {e}")))?;
 
         Ok(Self { preprocessing })
     }

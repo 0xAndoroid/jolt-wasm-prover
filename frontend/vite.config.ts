@@ -21,7 +21,12 @@ function servePkg(): Plugin {
         }
         if (url?.startsWith('/pkg/')) {
           const fileName = url.slice('/pkg/'.length)
-          const filePath = path.join(pkgDir, fileName)
+          const filePath = path.resolve(pkgDir, fileName)
+          if (!filePath.startsWith(pkgDir + path.sep) && filePath !== pkgDir) {
+            res.writeHead(403, { 'Content-Type': 'text/plain' })
+            res.end('Forbidden')
+            return
+          }
           if (fs.existsSync(filePath)) {
             const ext = path.extname(filePath)
             const mimeTypes: Record<string, string> = {
@@ -38,9 +43,8 @@ function servePkg(): Plugin {
             fs.createReadStream(filePath).pipe(res)
             return
           }
-          // Don't fall through to SPA — return 404 for missing pkg files
           res.writeHead(404, { 'Content-Type': 'text/plain' })
-          res.end(`Not found: ${filePath}\nRun: wasm-pack build --release --target web`)
+          res.end('Not found. Run: wasm-pack build --release --target web')
           return
         }
         next()
