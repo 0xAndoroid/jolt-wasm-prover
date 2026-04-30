@@ -1,3 +1,8 @@
+// Force-link inline crates so inventory registrations survive WASM dead-code elimination
+extern crate jolt_inlines_keccak256;
+extern crate jolt_inlines_secp256k1;
+extern crate jolt_inlines_sha2;
+
 use ark_bn254::Fr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use common::jolt_device::{JoltDevice, MemoryConfig};
@@ -17,8 +22,8 @@ mod wasm_tracing;
 #[cfg(not(target_arch = "wasm32"))]
 pub static mut _HEAP_PTR: u8 = 0;
 
-type ProverPreprocessing = JoltProverPreprocessing<Fr, DoryCommitmentScheme>;
-type VerifierPreprocessing = JoltVerifierPreprocessing<Fr, DoryCommitmentScheme>;
+type ProverPreprocessing = JoltProverPreprocessing<Fr, Bn254Curve, DoryCommitmentScheme>;
+type VerifierPreprocessing = JoltVerifierPreprocessing<Fr, Bn254Curve, DoryCommitmentScheme>;
 
 #[wasm_bindgen(start)]
 pub fn wasm_main() {
@@ -41,14 +46,6 @@ pub fn clear_trace() {
 }
 
 #[wasm_bindgen]
-pub fn init_inlines() -> Result<(), JsValue> {
-    jolt_inlines_sha2::init_inlines().map_err(|e| JsValue::from_str(&e))?;
-    jolt_inlines_secp256k1::init_inlines().map_err(|e| JsValue::from_str(&e))?;
-    jolt_inlines_keccak256::init_inlines().map_err(|e| JsValue::from_str(&e))?;
-    Ok(())
-}
-
-#[wasm_bindgen]
 pub struct WasmProver {
     preprocessing: ProverPreprocessing,
     elf_bytes: Vec<u8>,
@@ -58,27 +55,12 @@ pub struct WasmProver {
 impl WasmProver {
     #[wasm_bindgen(constructor)]
     pub fn new(preprocessing_bytes: &[u8], elf_bytes: &[u8]) -> Result<WasmProver, JsValue> {
-        use jolt_core::poly::commitment::dory::ArkworksProverSetup;
-        use jolt_core::zkvm::verifier::JoltSharedPreprocessing;
-        use std::io::Cursor;
-
-        let mut cursor = Cursor::new(preprocessing_bytes);
-
-        let generators = ArkworksProverSetup::deserialize_with_mode(
-            &mut cursor,
+        let preprocessing = ProverPreprocessing::deserialize_with_mode(
+            &mut std::io::Cursor::new(preprocessing_bytes),
             ark_serialize::Compress::No,
             ark_serialize::Validate::No,
         )
-        .map_err(|e| JsValue::from_str(&format!("ProverSetup deserialize error: {e}")))?;
-
-        let shared = JoltSharedPreprocessing::deserialize_with_mode(
-            &mut cursor,
-            ark_serialize::Compress::No,
-            ark_serialize::Validate::No,
-        )
-        .map_err(|e| JsValue::from_str(&format!("SharedPreprocessing deserialize error: {e}")))?;
-
-        let preprocessing = ProverPreprocessing { generators, shared };
+        .map_err(|e| JsValue::from_str(&format!("ProverPreprocessing deserialize error: {e}")))?;
 
         Ok(Self {
             preprocessing,
@@ -128,14 +110,18 @@ impl WasmProver {
 
         let proof_size = proof.serialized_size(ark_serialize::Compress::Yes);
 
-        let stage8_compressed =
-            proof.joint_opening_proof.serialized_size(ark_serialize::Compress::Yes);
-        let stage8_uncompressed =
-            proof.joint_opening_proof.serialized_size(ark_serialize::Compress::No);
-        let commitments_compressed =
-            proof.commitments.serialized_size(ark_serialize::Compress::Yes);
-        let commitments_uncompressed =
-            proof.commitments.serialized_size(ark_serialize::Compress::No);
+        let stage8_compressed = proof
+            .joint_opening_proof
+            .serialized_size(ark_serialize::Compress::Yes);
+        let stage8_uncompressed = proof
+            .joint_opening_proof
+            .serialized_size(ark_serialize::Compress::No);
+        let commitments_compressed = proof
+            .commitments
+            .serialized_size(ark_serialize::Compress::Yes);
+        let commitments_uncompressed = proof
+            .commitments
+            .serialized_size(ark_serialize::Compress::No);
 
         let compressed_proof_size = proof_size - stage8_compressed + (stage8_uncompressed / 3)
             - commitments_compressed
@@ -171,10 +157,18 @@ impl WasmProver {
         s: &[u64],
         q: &[u64],
     ) -> Result<ProveResult, JsValue> {
-        let z: [u64; 4] = z.try_into().map_err(|_| JsValue::from_str("z must be 4 u64s"))?;
-        let r: [u64; 4] = r.try_into().map_err(|_| JsValue::from_str("r must be 4 u64s"))?;
-        let s: [u64; 4] = s.try_into().map_err(|_| JsValue::from_str("s must be 4 u64s"))?;
-        let q: [u64; 8] = q.try_into().map_err(|_| JsValue::from_str("q must be 8 u64s"))?;
+        let z: [u64; 4] = z
+            .try_into()
+            .map_err(|_| JsValue::from_str("z must be 4 u64s"))?;
+        let r: [u64; 4] = r
+            .try_into()
+            .map_err(|_| JsValue::from_str("r must be 4 u64s"))?;
+        let s: [u64; 4] = s
+            .try_into()
+            .map_err(|_| JsValue::from_str("s must be 4 u64s"))?;
+        let q: [u64; 8] = q
+            .try_into()
+            .map_err(|_| JsValue::from_str("q must be 8 u64s"))?;
 
         let mut inputs = Vec::new();
         inputs.extend_from_slice(
@@ -197,8 +191,9 @@ impl WasmProver {
     }
 
     pub fn prove_keccak_chain(&self, input: &[u8], num_iters: u32) -> Result<ProveResult, JsValue> {
-        let input: [u8; 32] =
-            input.try_into().map_err(|_| JsValue::from_str("input must be 32 bytes"))?;
+        let input: [u8; 32] = input
+            .try_into()
+            .map_err(|_| JsValue::from_str("input must be 32 bytes"))?;
 
         let mut inputs = Vec::new();
         inputs.extend_from_slice(

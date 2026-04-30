@@ -1,6 +1,5 @@
 import init, {
     initThreadPool,
-    init_inlines,
     init_tracing,
     get_trace_json,
     clear_trace,
@@ -23,7 +22,6 @@ self.onmessage = async (e) => {
                 }
                 wasmExports = await init('/pkg/jolt_wasm_prover_bg.wasm');
                 await initThreadPool(data.numThreads);
-                init_inlines();
                 init_tracing();
                 self.postMessage({ type: 'init-done' });
                 break;

@@ -1,11 +1,14 @@
 use ark_serialize::CanonicalSerialize;
+use jolt_core::curve::Bn254Curve;
+use jolt_core::host::JoltProgramSource;
 use jolt_core::poly::commitment::dory::DoryCommitmentScheme;
+use jolt_core::zkvm::bytecode::PreprocessingError;
 use jolt_core::zkvm::prover::JoltProverPreprocessing;
 use jolt_core::zkvm::verifier::{JoltSharedPreprocessing, JoltVerifierPreprocessing};
 use std::path::{Path, PathBuf};
 
-type ProverPrep = JoltProverPreprocessing<ark_bn254::Fr, DoryCommitmentScheme>;
-type VerifierPrep = JoltVerifierPreprocessing<ark_bn254::Fr, DoryCommitmentScheme>;
+type ProverPrep = JoltProverPreprocessing<ark_bn254::Fr, Bn254Curve, DoryCommitmentScheme>;
+type VerifierPrep = JoltVerifierPreprocessing<ark_bn254::Fr, Bn254Curve, DoryCommitmentScheme>;
 
 struct ProgramSpec {
     name: &'static str,
@@ -13,7 +16,8 @@ struct ProgramSpec {
     verifier_file: &'static str,
     elf_file: &'static str,
     compile: fn(&str) -> jolt_core::host::Program,
-    preprocess_shared: fn(&mut jolt_core::host::Program) -> JoltSharedPreprocessing,
+    preprocess_shared:
+        fn(&mut dyn JoltProgramSource) -> Result<JoltSharedPreprocessing, PreprocessingError>,
     preprocess_prover: fn(JoltSharedPreprocessing) -> ProverPrep,
     verifier_from_prover: fn(&ProverPrep) -> VerifierPrep,
 }
@@ -27,9 +31,11 @@ fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
     let mut program = (spec.compile)(&target_dir);
 
     println!("[{name}] Generating shared preprocessing...");
-    let shared = (spec.preprocess_shared)(&mut program);
+    let shared = (spec.preprocess_shared)(&mut program).expect("Shared preprocessing failed");
 
-    let elf_contents = program.get_elf_contents().expect("Failed to get ELF contents");
+    let elf_contents = program
+        .get_elf_contents()
+        .expect("Failed to get ELF contents");
 
     println!("[{name}] Generating prover preprocessing...");
     let prover_preprocessing = (spec.preprocess_prover)(shared);
@@ -60,21 +66,22 @@ fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
 
 fn serialize_uncompressed<T: CanonicalSerialize>(value: &T) -> Vec<u8> {
     let mut buf = Vec::with_capacity(value.serialized_size(ark_serialize::Compress::No));
-    value.serialize_uncompressed(&mut buf).expect("Failed to serialize");
+    value
+        .serialize_uncompressed(&mut buf)
+        .expect("Failed to serialize");
     buf
 }
 
 fn write_file(www_dir: &Path, filename: &str, program: &str, kind: &str, bytes: &[u8]) {
     let path = www_dir.join(filename);
     std::fs::write(&path, bytes).expect("Failed to write file");
-    println!("[{program}] {kind} preprocessing: {} bytes -> {path:?}", bytes.len());
+    println!(
+        "[{program}] {kind} preprocessing: {} bytes -> {path:?}",
+        bytes.len()
+    );
 }
 
 fn main() {
-    let _ = jolt_inlines_sha2::init_inlines();
-    let _ = jolt_inlines_secp256k1::init_inlines();
-    let _ = jolt_inlines_keccak256::init_inlines();
-
     let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
     std::fs::create_dir_all(&public_dir).expect("Failed to create frontend/public dir");
 

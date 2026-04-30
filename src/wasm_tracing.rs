@@ -72,7 +72,11 @@ where
             pid: 1,
             tid: 1,
             dur: None,
-            args: if args.is_empty() { None } else { Some(serde_json::Value::Object(args)) },
+            args: if args.is_empty() {
+                None
+            } else {
+                Some(serde_json::Value::Object(args))
+            },
         };
 
         TRACE_EVENTS.lock().unwrap().push(event);
@@ -117,7 +121,11 @@ where
             pid: 1,
             tid: 1,
             dur: None,
-            args: if args.is_empty() { None } else { Some(serde_json::Value::Object(args)) },
+            args: if args.is_empty() {
+                None
+            } else {
+                Some(serde_json::Value::Object(args))
+            },
         };
 
         TRACE_EVENTS.lock().unwrap().push(trace_event);
@@ -133,19 +141,31 @@ struct JsonVisitor<'a>(&'a mut serde_json::Map<String, serde_json::Value>);
 
 impl<'a> tracing::field::Visit for JsonVisitor<'a> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        self.0.insert(field.name().to_string(), serde_json::Value::String(format!("{value:?}")));
+        self.0.insert(
+            field.name().to_string(),
+            serde_json::Value::String(format!("{value:?}")),
+        );
     }
 
     fn record_i64(&mut self, field: &tracing::field::Field, value: i64) {
-        self.0.insert(field.name().to_string(), serde_json::Value::Number(value.into()));
+        self.0.insert(
+            field.name().to_string(),
+            serde_json::Value::Number(value.into()),
+        );
     }
 
     fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-        self.0.insert(field.name().to_string(), serde_json::Value::Number(value.into()));
+        self.0.insert(
+            field.name().to_string(),
+            serde_json::Value::Number(value.into()),
+        );
     }
 
     fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-        self.0.insert(field.name().to_string(), serde_json::Value::String(value.to_string()));
+        self.0.insert(
+            field.name().to_string(),
+            serde_json::Value::String(value.to_string()),
+        );
     }
 }
 

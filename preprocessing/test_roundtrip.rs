@@ -1,15 +1,17 @@
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use jolt_core::curve::Bn254G1;
+use jolt_core::curve::Bn254Curve;
 use jolt_core::poly::commitment::dory::{
     ArkworksProverSetup, ArkworksVerifierSetup, DoryCommitmentScheme,
 };
 use jolt_core::zkvm::prover::JoltProverPreprocessing;
-use jolt_core::zkvm::verifier::{JoltSharedPreprocessing, JoltVerifierPreprocessing};
+use jolt_core::zkvm::verifier::{
+    BlindfoldSetup, JoltSharedPreprocessing, JoltVerifierPreprocessing,
+};
 use std::io::Cursor;
 use std::path::Path;
 
-type ProverPrep = JoltProverPreprocessing<ark_bn254::Fr, DoryCommitmentScheme>;
-type VerifierPrep = JoltVerifierPreprocessing<ark_bn254::Fr, DoryCommitmentScheme>;
+type ProverPrep = JoltProverPreprocessing<ark_bn254::Fr, Bn254Curve, DoryCommitmentScheme>;
+type VerifierPrep = JoltVerifierPreprocessing<ark_bn254::Fr, Bn254Curve, DoryCommitmentScheme>;
 
 fn test_prover_roundtrip(bytes: &[u8]) -> Result<(), String> {
     let total = bytes.len();
@@ -19,7 +21,7 @@ fn test_prover_roundtrip(bytes: &[u8]) -> Result<(), String> {
     let mut cursor = Cursor::new(bytes);
 
     println!("Deserializing ArkworksProverSetup with Compress::No...");
-    let generators = ArkworksProverSetup::deserialize_with_mode(
+    let _generators = ArkworksProverSetup::deserialize_with_mode(
         &mut cursor,
         ark_serialize::Compress::No,
         ark_serialize::Validate::No,
@@ -29,7 +31,7 @@ fn test_prover_roundtrip(bytes: &[u8]) -> Result<(), String> {
     println!("  OK - consumed {pos_after_generators} bytes");
 
     println!("Deserializing JoltSharedPreprocessing with Compress::No...");
-    let shared = JoltSharedPreprocessing::deserialize_with_mode(
+    let _shared = JoltSharedPreprocessing::deserialize_with_mode(
         &mut cursor,
         ark_serialize::Compress::No,
         ark_serialize::Validate::No,
@@ -51,12 +53,11 @@ fn test_prover_roundtrip(bytes: &[u8]) -> Result<(), String> {
     }
 
     println!("Testing full ProverPreprocessing::deserialize_uncompressed...");
-    let _full = ProverPrep::deserialize_uncompressed(Cursor::new(bytes))
+    let prep = ProverPrep::deserialize_uncompressed(Cursor::new(bytes))
         .map_err(|e| format!("Full deserialize failed: {e}"))?;
     println!("  OK");
 
     println!("Testing serialize -> deserialize roundtrip...");
-    let prep = ProverPrep { generators, shared };
     let mut reserialized = Vec::new();
     prep.serialize_uncompressed(&mut reserialized)
         .map_err(|e| format!("Reserialize failed: {e}"))?;
@@ -91,7 +92,7 @@ fn test_verifier_roundtrip(bytes: &[u8]) -> Result<(), String> {
     let mut cursor = Cursor::new(bytes);
 
     println!("Deserializing ArkworksVerifierSetup with Compress::No...");
-    let generators = ArkworksVerifierSetup::deserialize_with_mode(
+    let _generators = ArkworksVerifierSetup::deserialize_with_mode(
         &mut cursor,
         ark_serialize::Compress::No,
         ark_serialize::Validate::No,
@@ -101,7 +102,7 @@ fn test_verifier_roundtrip(bytes: &[u8]) -> Result<(), String> {
     println!("  OK - consumed {pos_after_generators} bytes");
 
     println!("Deserializing JoltSharedPreprocessing with Compress::No...");
-    let shared = JoltSharedPreprocessing::deserialize_with_mode(
+    let _shared = JoltSharedPreprocessing::deserialize_with_mode(
         &mut cursor,
         ark_serialize::Compress::No,
         ark_serialize::Validate::No,
@@ -114,57 +115,37 @@ fn test_verifier_roundtrip(bytes: &[u8]) -> Result<(), String> {
     let shared_bytes = pos_after_shared - pos_after_generators;
     println!("  OK - consumed {shared_bytes} bytes (total: {pos_after_shared})");
 
-    println!("Deserializing zk_generator_g1s with Compress::No...");
-    let zk_generator_g1s = Vec::<Bn254G1>::deserialize_with_mode(
+    println!("Deserializing blindfold_setup with Compress::No...");
+    let _blindfold_setup = Option::<BlindfoldSetup<Bn254Curve>>::deserialize_with_mode(
         &mut cursor,
         ark_serialize::Compress::No,
         ark_serialize::Validate::No,
     )
     .map_err(|e| {
         let pos = cursor.position();
-        format!("zk_generator_g1s failed at pos {pos}: {e}")
+        format!("blindfold_setup failed at pos {pos}: {e}")
     })?;
-    let pos_after_g1s = cursor.position() as usize;
-    let g1s_bytes = pos_after_g1s - pos_after_shared;
+    let pos_after_blindfold = cursor.position() as usize;
+    let blindfold_bytes = pos_after_blindfold - pos_after_shared;
     println!(
-        "  OK - {} generators, consumed {g1s_bytes} bytes (total: {pos_after_g1s})",
-        zk_generator_g1s.len()
+        "  OK - present={}, consumed {blindfold_bytes} bytes (total: {pos_after_blindfold})",
+        _blindfold_setup.is_some()
     );
 
-    println!("Deserializing zk_generator_h1 with Compress::No...");
-    let zk_generator_h1 = Bn254G1::deserialize_with_mode(
-        &mut cursor,
-        ark_serialize::Compress::No,
-        ark_serialize::Validate::No,
-    )
-    .map_err(|e| {
-        let pos = cursor.position();
-        format!("zk_generator_h1 failed at pos {pos}: {e}")
-    })?;
-    let pos_after_h1 = cursor.position() as usize;
-    let h1_bytes = pos_after_h1 - pos_after_g1s;
-    println!("  OK - consumed {h1_bytes} bytes (total: {pos_after_h1})");
-
-    if pos_after_h1 != bytes.len() {
+    if pos_after_blindfold != bytes.len() {
         let total = bytes.len();
-        let extra = total - pos_after_h1;
+        let extra = total - pos_after_blindfold;
         return Err(format!(
-            "Verifier: consumed {pos_after_h1} bytes but file has {total} bytes ({extra} extra)"
+            "Verifier: consumed {pos_after_blindfold} bytes but file has {total} bytes ({extra} extra)"
         ));
     }
 
     println!("Testing full VerifierPreprocessing::deserialize_uncompressed...");
-    let _full = VerifierPrep::deserialize_uncompressed(Cursor::new(bytes))
+    let prep = VerifierPrep::deserialize_uncompressed(Cursor::new(bytes))
         .map_err(|e| format!("Full deserialize failed: {e}"))?;
     println!("  OK");
 
     println!("Testing serialize -> deserialize roundtrip...");
-    let prep = VerifierPrep {
-        generators,
-        shared,
-        zk_generator_g1s,
-        zk_generator_h1,
-    };
     let mut reserialized = Vec::new();
     prep.serialize_uncompressed(&mut reserialized)
         .map_err(|e| format!("Reserialize failed: {e}"))?;
@@ -192,10 +173,6 @@ fn test_verifier_roundtrip(bytes: &[u8]) -> Result<(), String> {
 }
 
 fn main() {
-    let _ = jolt_inlines_sha2::init_inlines();
-    let _ = jolt_inlines_secp256k1::init_inlines();
-    let _ = jolt_inlines_keccak256::init_inlines();
-
     let public_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
 
     let programs = [

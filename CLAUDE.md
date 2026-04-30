@@ -48,7 +48,7 @@ Per-run timings printed to stderr. Runs headless Chromium (12 threads max) again
 
 ## Architecture
 
-- `src/lib.rs` — `#[wasm_bindgen]` exports: `WasmProver`, `WasmVerifier`, `init_inlines`, tracing
+- `src/lib.rs` — `#[wasm_bindgen]` exports: `WasmProver`, `WasmVerifier`, tracing
 - `src/wasm_tracing.rs` — Chrome Trace Format layer for `tracing`, outputs Perfetto-compatible JSON
 - `preprocessing/generate.rs` — native binary: compiles guests, generates Dory SRS, serializes prover/verifier preprocessing to `frontend/public/`
 - `preprocessing/test_roundtrip.rs` — native binary: validates serialize/deserialize roundtrip
