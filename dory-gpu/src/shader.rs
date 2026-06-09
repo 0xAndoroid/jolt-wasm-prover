@@ -30,7 +30,7 @@ pub fn limbs16(v: &BigInt<4>) -> [u32; 16] {
 fn wgsl_array16(v: &BigInt<4>) -> String {
     let limbs = limbs16(v);
     let body: Vec<String> = limbs.iter().map(|l| format!("{l:#x}u")).collect();
-    format!("array<u32,16>({})", body.join(","))
+    format!("Fe({})", body.join(","))
 }
 
 /// Montgomery representation limbs of a field element (the raw BigInt inside `Fp`).
@@ -44,10 +44,15 @@ pub fn field_header<C: MontConfig<4>>() -> String {
     let modulus = C::MODULUS;
     let np16 = (C::INV & 0xffff) as u32;
     let mont_one = C::R;
+    // The alias declarations must precede the globals so that naga's MSL
+    // backend gives the globals and all function locals one unified type
+    // (mixing `alias Fe` values with raw array<u32,16> values miscompiles).
     format!(
-        "var<private> FE_MOD: array<u32,16> = {};\n\
+        "alias Fe = array<u32, 16>;\n\
+         alias Fe8 = array<u32, 8>;\n\
+         var<private> FE_MOD: Fe = {};\n\
          const FE_NP: u32 = {:#x}u;\n\
-         var<private> FE_MONT_ONE: array<u32,16> = {};\n",
+         var<private> FE_MONT_ONE: Fe = {};\n",
         wgsl_array16(&modulus),
         np16,
         wgsl_array16(&mont_one)
@@ -111,7 +116,7 @@ fn g1_add(a: Fe, b: Fe) -> Fe { return fe_add(a, b); }
 fn g1_sub(a: Fe, b: Fe) -> Fe { return fe_sub(a, b); }
 fn g1_neg(a: Fe) -> Fe { return fe_neg(a); }
 fn g1_zero() -> Fe { return fe_zero(); }
-fn g1_one() -> Fe { return FE_MONT_ONE; }
+fn g1_one() -> Fe { return fe_mont_one(); }
 fn g1_is_zero(a: Fe) -> bool { return fe_is_zero(a); }
 fn g1_select(c: bool, a: Fe, b: Fe) -> Fe { return fe_select(c, a, b); }
 fn g1_mul_by_3b(a: Fe) -> Fe { return fe_mul9(a); }
@@ -171,7 +176,7 @@ pub fn g2_3b_header() -> String {
     let b = <ark_bn254::g2::Config as SWCurveConfig>::COEFF_B;
     let three_b = b + b + b;
     format!(
-        "var<private> G2_3B_C0: array<u32,16> = {};\nvar<private> G2_3B_C1: array<u32,16> = {};\n",
+        "var<private> G2_3B_C0: Fe = {};\nvar<private> G2_3B_C1: Fe = {};\n",
         wgsl_array16(&three_b.c0.0),
         wgsl_array16(&three_b.c1.0)
     )

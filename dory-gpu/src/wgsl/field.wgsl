@@ -9,11 +9,8 @@
 // BigInt<4> serialized as little-endian u32 words, so host <-> GPU transfers
 // are pure memcpy.
 //
-// Required header constants: FE_MOD (array<u32,16>), FE_NP (u32, -p^-1 mod 2^16),
-// FE_MONT_ONE (array<u32,16>).
-
-alias Fe = array<u32, 16>;
-alias Fe8 = array<u32, 8>;
+// Required header declarations (emitted by shader::field_header): the Fe/Fe8
+// aliases, FE_MOD, FE_NP (-p^-1 mod 2^16) and FE_MONT_ONE.
 
 fn fe_unpack(w: Fe8) -> Fe {
     var r: Fe;
@@ -39,7 +36,10 @@ fn fe_zero() -> Fe {
 }
 
 fn fe_mont_one() -> Fe {
-    return FE_MONT_ONE;
+    // Copy through a local: naga's MSL backend can't return a module-scope
+    // var<private> array directly (wrapper struct type mismatch).
+    var r: Fe = FE_MONT_ONE;
+    return r;
 }
 
 fn fe_is_zero(a: Fe) -> bool {

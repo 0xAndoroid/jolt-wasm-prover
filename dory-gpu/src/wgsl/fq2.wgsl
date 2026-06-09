@@ -10,7 +10,7 @@ fn fq2_zero() -> Fe2 {
 }
 
 fn fq2_mont_one() -> Fe2 {
-    return Fe2(FE_MONT_ONE, fe_zero());
+    return Fe2(fe_mont_one(), fe_zero());
 }
 
 fn fq2_is_zero(a: Fe2) -> bool {
