@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["guests/sha2", "guests/secp256k1", "guests/sha3-chain"]
+members = ["guests/sha2", "guests/secp256k1", "guests/sha3-chain", "dory-gpu"]
 
 [lib]
 crate-type = ["cdylib"]

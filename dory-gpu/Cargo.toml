@@ -1,0 +1,28 @@
+[package]
+name = "dory-gpu"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-bn254 = { path = "../../arkworks-algebra/curves/bn254" }
+ark-ec = { path = "../../arkworks-algebra/ec" }
+ark-ff = { path = "../../arkworks-algebra/ff" }
+ark-serialize = { path = "../../arkworks-algebra/serialize" }
+ark-std = { version = "0.5", default-features = false, features = ["std"] }
+dory-pcs = { version = "0.3.0", features = ["backends"] }
+bytemuck = { version = "1", features = ["derive"] }
+futures-channel = "0.3"
+rayon = "1"
+tracing = "0.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+wgpu = { version = "29", default-features = false, features = ["metal", "wgsl"] }
+pollster = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { version = "29", default-features = false, features = ["webgpu", "wgsl"] }
+wasm-bindgen-futures = "0.4"
+
+[dev-dependencies]
+rand = "0.8"
+rand_chacha = "0.3"
