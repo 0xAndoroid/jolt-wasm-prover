@@ -38,7 +38,7 @@ use crate::repr::{
 type Proof = DoryProof<ArkG1, ArkG2, ArkGT>;
 
 pub struct GpuDory {
-    pub ctx: GpuContext,
+    pub ctx: std::rc::Rc<GpuContext>,
     setup: ProverSetup<BN254>,
     g1_affine: wgpu::Buffer,
     g2_affine: wgpu::Buffer,
@@ -54,7 +54,7 @@ pub struct GpuCommitment {
 }
 
 impl GpuDory {
-    pub fn new(ctx: GpuContext, setup: ProverSetup<BN254>) -> Self {
+    pub fn new(ctx: std::rc::Rc<GpuContext>, setup: ProverSetup<BN254>) -> Self {
         let g1_proj: Vec<G1Projective> = setup.g1_vec.iter().map(|g| g.0).collect();
         let g2_proj: Vec<G2Projective> = setup.g2_vec.iter().map(|g| g.0).collect();
         let g1_aff = G1Projective::normalize_batch(&g1_proj);
@@ -157,6 +157,7 @@ impl GpuDory {
             wgpu::BufferUsages::COPY_SRC,
         );
 
+        let t0 = std::time::Instant::now();
         let mut enc = self.encoder();
         let prepared = encode_prep_scalars(&self.ctx, &mut enc, Curve::G1, matrix, rows * cols);
         encode_msm(
@@ -175,7 +176,17 @@ impl GpuDory {
                 out_offset: 0,
             },
         );
+        self.ctx.queue.submit([enc.finish()]);
+        self.ctx.poll_wait();
+        tracing::info!(ms = t0.elapsed().as_millis() as u64, "commit: row msms");
+
+        let mut enc = self.encoder();
         let rows_affine = encode_normalize(&self.ctx, &mut enc, Curve::G1, &rows_proj, rows);
+        self.ctx.queue.submit([enc.finish()]);
+        self.ctx.poll_wait();
+        tracing::info!(ms = t0.elapsed().as_millis() as u64, "commit: normalize");
+
+        let mut enc = self.encoder();
         let state = encode_miller_prepared(
             &self.ctx,
             &mut enc,
@@ -186,9 +197,12 @@ impl GpuDory {
         );
         encode_product_reduce(&self.ctx, &mut enc, &state, rows, 1);
         self.ctx.queue.submit([enc.finish()]);
+        self.ctx.poll_wait();
+        tracing::info!(ms = t0.elapsed().as_millis() as u64, "commit: tier2 miller");
 
         let f = read_miller_products(&self.ctx, &state, rows, 1).await[0];
         let tier2 = ArkGT(final_exponentiation(f));
+        tracing::info!(ms = t0.elapsed().as_millis() as u64, "commit: done");
 
         GpuCommitment {
             tier2,

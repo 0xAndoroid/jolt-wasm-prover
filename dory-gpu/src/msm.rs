@@ -1,9 +1,10 @@
 //! MSM orchestration: scalar prep (Montgomery -> canonical + carry masks),
 //! projective -> affine normalization, and the bucket MSM over G1 or G2.
 //!
-//! G1 uses a fused accumulate+reduce kernel with shared-memory buckets; G2
-//! uses a split pipeline (clear / accumulate into global buckets / reduce)
-//! because its Fq2-inlined fused kernel crashes the Apple Metal compiler.
+//! Both curves use the split pipeline (clear / accumulate into global
+//! buckets / weight / sum / combine): every kernel stays small enough for
+//! the Apple Metal compiler and uses the unrolled (register-resident) field
+//! ops. Multi-row batches are row-chunked to cap bucket scratch memory.
 //! All MSM bases are affine — projective inputs are normalized on the GPU
 //! first (identity becomes (0,0) and is skipped during accumulation).
 
@@ -11,7 +12,7 @@ use crate::context::GpuContext;
 use crate::shader::{
     fq_header, fr_header, g2_3b_header, msm_header, msm_windows, ShaderBuilder, CURVE_WGSL,
     FIELD_WGSL, FQ2_WGSL, G1_GLUE, G1_SUBST, G1_WINDOW, G2_GLUE, G2_SUBST, G2_WINDOW, MSM_CHUNK,
-    MSM_COMMON_WGSL, MSM_PREP_WGSL, MSM_SPLIT_WGSL, MSM_WGSL, NORMALIZE_WGSL,
+    MSM_COMMON_WGSL, MSM_PREP_WGSL, MSM_SPLIT_WGSL, NORMALIZE_WGSL,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -47,24 +48,21 @@ impl Curve {
         msm_windows(self.window())
     }
 
-    fn buckets(self) -> u32 {
+    pub fn buckets(self) -> u32 {
         1 << (self.window() - 1)
     }
 }
 
 fn msm_module_source(curve: Curve) -> String {
     match curve {
-        // WARNING: the fused G1 kernel must use the rolled field ops; with
-        // the unrolled ones its code size trips an AGX miscompile (silently
-        // wrong results).
         Curve::G1 => ShaderBuilder::new()
             .push(&fq_header())
-            .push(crate::shader::FIELD_ROLLED_WGSL)
+            .push(&FIELD_WGSL)
             .push(G1_GLUE)
             .push_subst(CURVE_WGSL, G1_SUBST)
             .push(&msm_header(G1_WINDOW))
             .push_subst(MSM_COMMON_WGSL, G1_SUBST)
-            .push_subst(MSM_WGSL, G1_SUBST)
+            .push_subst(MSM_SPLIT_WGSL, G1_SUBST)
             .build(),
         Curve::G2 => ShaderBuilder::new()
             .push(&fq_header())
@@ -213,113 +211,115 @@ pub struct MsmCall<'a> {
     pub out_offset: u32,
 }
 
+/// Bucket scratch cap; multi-row batches that would exceed it are encoded in
+/// row chunks.
+const BUCKET_BYTES_CAP: u64 = 256 << 20;
+
 pub fn encode_msm(ctx: &GpuContext, encoder: &mut wgpu::CommandEncoder, call: &MsmCall) {
     debug_assert_eq!(call.scalars.window, call.curve.window());
     let n_chunks = call.n.div_ceil(MSM_CHUNK).max(1);
     let nw = call.curve.windows();
     let pw = call.curve.point_words();
+    let bucket_bytes_per_row = (nw * n_chunks * call.curve.buckets() * pw) as u64 * 4;
+    let rows_per_batch =
+        (BUCKET_BYTES_CAP / bucket_bytes_per_row).clamp(1, call.rows as u64) as u32;
+
+    let mut row_start = 0u32;
+    while row_start < call.rows {
+        let batch_rows = rows_per_batch.min(call.rows - row_start);
+        encode_msm_batch(ctx, encoder, call, row_start, batch_rows, n_chunks);
+        row_start += batch_rows;
+    }
+}
+
+fn encode_msm_batch(
+    ctx: &GpuContext,
+    encoder: &mut wgpu::CommandEncoder,
+    call: &MsmCall,
+    row_start: u32,
+    rows: u32,
+    n_chunks: u32,
+) {
+    let curve = call.curve;
+    let nw = curve.windows();
+    let pw = curve.point_words();
 
     let partials = ctx.empty_buffer(
         "msm-partials",
-        (call.rows * nw * n_chunks * pw) as u64 * 4,
+        (rows * nw * n_chunks * pw) as u64 * 4,
         wgpu::BufferUsages::empty(),
     );
     let params = ctx.buffer_from(
         "msm-params",
         bytemuck::cast_slice(&[
-            call.rows,
+            rows,
             call.n,
             n_chunks,
             call.base_offset,
-            call.scalar_offset,
+            call.scalar_offset + row_start * call.scalar_stride,
             call.scalar_stride,
-            call.out_offset,
+            call.out_offset + row_start,
             0u32,
         ]),
         wgpu::BufferUsages::UNIFORM,
     );
 
-    let module_key = msm_module_key(call.curve);
-    let curve = call.curve;
+    let buckets = ctx.empty_buffer(
+        "msm-buckets",
+        (rows * nw * n_chunks * curve.buckets() * pw) as u64 * 4,
+        wgpu::BufferUsages::empty(),
+    );
+    let total_buckets = rows * nw * n_chunks * curve.buckets();
+    let module_key = msm_module_key(curve);
 
-    match curve {
-        Curve::G1 => {
-            let acc = ctx.pipeline(module_key, "msm_bucket_acc", move || {
-                msm_module_source(curve)
-            });
-            ctx.encode_pass_indexed(
-                encoder,
-                &acc,
-                &[
-                    (0, &params),
-                    (1, call.bases),
-                    (2, &call.scalars.canon),
-                    (3, &call.scalars.masks),
-                    (4, &partials),
-                ],
-                (n_chunks, nw, call.rows),
-            );
-        }
-        Curve::G2 => {
-            // Global bucket buffer: fine for rows = 1 (the only G2 shape in
-            // Dory); a 1024-row G2 batch would need ~800 MB and a row-batched
-            // encode instead.
-            let buckets = ctx.empty_buffer(
-                "msm-buckets",
-                (call.rows * nw * n_chunks * curve.buckets() * pw) as u64 * 4,
-                wgpu::BufferUsages::empty(),
-            );
-            let total_buckets = call.rows * nw * n_chunks * curve.buckets();
-            let clear = ctx.pipeline(module_key, "msm_clear_buckets", move || {
-                msm_module_source(curve)
-            });
-            ctx.encode_pass_indexed(
-                encoder,
-                &clear,
-                &[(0, &params), (6, &buckets)],
-                (total_buckets.div_ceil(64), 1, 1),
-            );
-            let acc = ctx.pipeline(module_key, "msm_acc_global", move || {
-                msm_module_source(curve)
-            });
-            ctx.encode_pass_indexed(
-                encoder,
-                &acc,
-                &[
-                    (0, &params),
-                    (1, call.bases),
-                    (2, &call.scalars.canon),
-                    (3, &call.scalars.masks),
-                    (6, &buckets),
-                ],
-                (n_chunks, nw, call.rows),
-            );
-            let weight = ctx.pipeline(module_key, "msm_weight_global", move || {
-                msm_module_source(curve)
-            });
-            ctx.encode_pass_indexed(
-                encoder,
-                &weight,
-                &[(0, &params), (6, &buckets)],
-                (total_buckets.div_ceil(64), 1, 1),
-            );
-            let sum = ctx.pipeline(module_key, "msm_sum_global", move || {
-                msm_module_source(curve)
-            });
-            ctx.encode_pass_indexed(
-                encoder,
-                &sum,
-                &[(0, &params), (4, &partials), (6, &buckets)],
-                (n_chunks, nw, call.rows),
-            );
-        }
-    }
+    let clear = ctx.pipeline(module_key, "msm_clear_buckets", move || {
+        msm_module_source(curve)
+    });
+    ctx.encode_pass_indexed(
+        encoder,
+        &clear,
+        &[(0, &params), (6, &buckets)],
+        (total_buckets.div_ceil(64), 1, 1),
+    );
+    let acc = ctx.pipeline(module_key, "msm_acc_global", move || {
+        msm_module_source(curve)
+    });
+    ctx.encode_pass_indexed(
+        encoder,
+        &acc,
+        &[
+            (0, &params),
+            (1, call.bases),
+            (2, &call.scalars.canon),
+            (3, &call.scalars.masks),
+            (6, &buckets),
+        ],
+        (n_chunks, nw, rows),
+    );
+    let weight = ctx.pipeline(module_key, "msm_weight_global", move || {
+        msm_module_source(curve)
+    });
+    ctx.encode_pass_indexed(
+        encoder,
+        &weight,
+        &[(0, &params), (6, &buckets)],
+        (total_buckets.div_ceil(64), 1, 1),
+    );
+    let sum = ctx.pipeline(module_key, "msm_sum_global", move || {
+        msm_module_source(curve)
+    });
+    ctx.encode_pass_indexed(
+        encoder,
+        &sum,
+        &[(0, &params), (4, &partials), (6, &buckets)],
+        (n_chunks, nw, rows),
+    );
 
     let combine = ctx.pipeline(module_key, "msm_combine", move || msm_module_source(curve));
     ctx.encode_pass_indexed(
         encoder,
         &combine,
         &[(0, &params), (4, &partials), (5, call.results)],
-        (call.rows, 1, 1),
+        (rows, 1, 1),
     );
 }

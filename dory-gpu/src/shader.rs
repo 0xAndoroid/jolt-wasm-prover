@@ -169,7 +169,6 @@ pub const FQ2_WGSL: &str = include_str!("wgsl/fq2.wgsl");
 pub const CURVE_WGSL: &str = include_str!("wgsl/curve.wgsl");
 pub const FIELD_TEST_WGSL: &str = include_str!("wgsl/field_test.wgsl");
 pub const CURVE_TEST_WGSL: &str = include_str!("wgsl/curve_test.wgsl");
-pub const MSM_WGSL: &str = include_str!("wgsl/msm.wgsl");
 pub const MSM_COMMON_WGSL: &str = include_str!("wgsl/msm_common.wgsl");
 pub const MSM_SPLIT_WGSL: &str = include_str!("wgsl/msm_split.wgsl");
 pub const MSM_PREP_WGSL: &str = include_str!("wgsl/msm_prep.wgsl");

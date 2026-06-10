@@ -143,7 +143,7 @@ fn msm_weight_global(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 // Tree-sum of the (already weighted) buckets of one (row, window, chunk)
-// into a partial point. Requires MSM_NB <= 64.
+// into a partial point. Handles MSM_NB up to 128 (two owned buckets/thread).
 @compute @workgroup_size(64)
 fn msm_sum_global(
     @builtin(workgroup_id) wid: vec3<u32>,
@@ -157,8 +157,8 @@ fn msm_sum_global(
 
     let bucket_base = ((row * MSM_NW + w) * p.n_chunks + chunk) * MSM_NB;
     var v = PF_point_identity();
-    if (tid < MSM_NB) {
-        v = PF_gbucket_load(bucket_base + tid);
+    for (var b = tid; b < MSM_NB; b += 64u) {
+        v = PF_point_add(v, PF_gbucket_load(bucket_base + b));
     }
     PF_shred_store(tid, v);
     workgroupBarrier();

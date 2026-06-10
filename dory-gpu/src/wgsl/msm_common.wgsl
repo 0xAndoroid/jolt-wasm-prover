@@ -145,12 +145,12 @@ fn PF_result_store(point_idx: u32, p: PF_Point) {
     }
 }
 
-// k in [1, 64]: 7-bit double-and-add, branchless.
+// k in [1, 2^(MSM_C-1)] (up to 128 for c=8): 8-bit double-and-add, branchless.
 fn PF_point_mul_small(p: PF_Point, k: u32) -> PF_Point {
     var acc = PF_point_identity();
-    for (var bit = 0u; bit < 7u; bit++) {
+    for (var bit = 0u; bit < 8u; bit++) {
         acc = PF_point_double(acc);
-        let is_set = ((k >> (6u - bit)) & 1u) == 1u;
+        let is_set = ((k >> (7u - bit)) & 1u) == 1u;
         acc = PF_point_select(is_set, PF_point_add(acc, p), acc);
     }
     return acc;
