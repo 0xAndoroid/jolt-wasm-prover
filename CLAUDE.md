@@ -4,6 +4,28 @@
 
 WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compiles Jolt's prover and verifier to WebAssembly, runs in browser with multithreading via `wasm-bindgen-rayon`.
 
+## dory-gpu (WebGPU Dory PCS)
+
+`dory-gpu/` is a workspace crate implementing the full Dory polynomial commitment scheme (BN254) on WebGPU via wgpu 29: commit (row MSMs + tier-2 multipairing) and the complete opening proof (VMV, all reduce rounds with GPU Miller loops, folds, MSMs). Proofs are byte-identical to `dory-pcs` 0.3 (Transparent mode) and verify with its stock verifier. Final exponentiations, transcript, and single pairings stay on CPU.
+
+```bash
+# Native correctness tests (Metal); e2e ones take minutes (AGX pipeline compiles)
+cargo nextest run --cargo-quiet -p dory-gpu
+
+# Native CPU-vs-GPU benchmark at 2^16/2^18/2^20
+cargo nextest run --cargo-quiet -p dory-gpu --test bench --run-ignored all --no-capture
+
+# Browser benchmark (after wasm-pack + frontend build + server, see below)
+node dory-bench.mjs "16,18,20" gpu,cpu     # or open /dory-bench.html manually
+```
+
+Key implementation constraints (Apple Metal compiler pathologies, June 2026):
+- Field ops are emitted as fully **unrolled** straight-line WGSL (`shader.rs::field_ops_unrolled`): rolled limb loops defeat register promotion (naga's forced loop bounding blocks unrolling) and spill every limb access — ~100× slowdown. Do NOT disable naga's loop bounding instead: without it Metal **miscompiles** multi-mul field kernels.
+- Kernels must stay small (≲ a dozen inlined field-mul sites): oversized kernels hang the GPU or crash the AGX compiler service. Hence split MSM pipeline (clear/acc/weight/sum/combine) and per-step Miller dispatches that share one compute pass (pass boundaries are Metal encoder switches, ~tens of ms).
+- Shader constants are injected from arkworks at runtime (`shader.rs`), storage format is bit-identical to arkworks Montgomery `BigInt<4>` (host↔GPU = memcpy); GPU points are homogeneous projective (complete RCB15 formulas), arkworks is Jacobian — converted in `repr.rs`.
+
+Status: native Metal beats vanilla native dory-pcs (2^20 opening 7.4s vs 37s). In-browser the CPU-WASM baseline wins (workspace patches dory-pcs onto the wasm-optimized arkworks fork; Tint+AGX runs the same WGSL 3–17× slower than native Metal). The sequential ~450-dispatch-per-multipairing structure is the known bottleneck; workgroup-cooperative Fq12 kernels are the next lever.
+
 ## Commands
 
 ```bash
