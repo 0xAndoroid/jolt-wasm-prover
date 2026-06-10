@@ -1,0 +1,8 @@
+body { font-family: ui-monospace, monospace; max-width: 720px; margin: 2rem auto; padding: 0 1rem; background: #0d1017; color: #cdd6e4; }
+h1 { font-size: 1.2rem; }
+button { font: inherit; padding: 0.5rem 1rem; margin: 0.25rem; background: #1f2733; color: inherit; border: 1px solid #3a4555; border-radius: 6px; cursor: pointer; }
+button:disabled { opacity: 0.4; cursor: wait; }
+table { border-collapse: collapse; margin-top: 1rem; width: 100%; }
+td, th { border: 1px solid #3a4555; padding: 0.4rem 0.7rem; text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+#log { white-space: pre-wrap; margin-top: 1rem; color: #8a96a8; font-size: 0.85rem; }

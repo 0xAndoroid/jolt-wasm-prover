@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Dory PCS: CPU-WASM vs WebGPU</title>
+    <link rel="stylesheet" href="/dory-bench.css" />
+  </head>
+  <body>
+    <h1>Dory polynomial commitment: CPU-WASM vs WebGPU</h1>
+    <div>
+      size:
+      <select id="size">
+        <option value="16">2^16</option>
+        <option value="18">2^18</option>
+        <option value="20">2^20</option>
+      </select>
+      <button id="run-gpu">Run WebGPU</button>
+      <button id="run-cpu">Run CPU (WASM)</button>
+    </div>
+    <table>
+      <thead><tr><th>run</th><th>setup</th><th>commit</th><th>open</th><th>verified</th></tr></thead>
+      <tbody id="results"></tbody>
+    </table>
+    <div id="log"></div>
+    <script type="module" src="/dory-bench.js"></script>
+  </body>
+</html>

@@ -157,7 +157,6 @@ impl GpuDory {
             wgpu::BufferUsages::COPY_SRC,
         );
 
-        let t0 = std::time::Instant::now();
         let mut enc = self.encoder();
         let prepared = encode_prep_scalars(&self.ctx, &mut enc, Curve::G1, matrix, rows * cols);
         encode_msm(
@@ -178,13 +177,11 @@ impl GpuDory {
         );
         self.ctx.queue.submit([enc.finish()]);
         self.ctx.poll_wait();
-        tracing::info!(ms = t0.elapsed().as_millis() as u64, "commit: row msms");
 
         let mut enc = self.encoder();
         let rows_affine = encode_normalize(&self.ctx, &mut enc, Curve::G1, &rows_proj, rows);
         self.ctx.queue.submit([enc.finish()]);
         self.ctx.poll_wait();
-        tracing::info!(ms = t0.elapsed().as_millis() as u64, "commit: normalize");
 
         let mut enc = self.encoder();
         let state = encode_miller_prepared(
@@ -198,11 +195,9 @@ impl GpuDory {
         encode_product_reduce(&self.ctx, &mut enc, &state, rows, 1);
         self.ctx.queue.submit([enc.finish()]);
         self.ctx.poll_wait();
-        tracing::info!(ms = t0.elapsed().as_millis() as u64, "commit: tier2 miller");
 
         let f = read_miller_products(&self.ctx, &state, rows, 1).await[0];
         let tier2 = ArkGT(final_exponentiation(f));
-        tracing::info!(ms = t0.elapsed().as_millis() as u64, "commit: done");
 
         GpuCommitment {
             tier2,
@@ -353,7 +348,6 @@ impl GpuDory {
         );
         ctx.queue.submit([enc.finish()]);
 
-        tracing::info!("vmv submitted, reading back");
         let t_vec_v = self.read_g1(&vmv_points, 0).await;
         let d2_num = self.read_g1(&vmv_points, 1).await;
         let e1_vmv = self.read_g1(&vmv_points, 2).await;
@@ -376,8 +370,6 @@ impl GpuDory {
         let mut second_messages = Vec::with_capacity(num_rounds);
 
         for round in 0..num_rounds {
-            let t_round = std::time::Instant::now();
-            tracing::info!(round, "round start");
             let n = 1u32 << (num_rounds - round);
             let n2 = n / 2;
 
@@ -477,11 +469,6 @@ impl GpuDory {
             };
             ctx.queue.submit([enc.finish()]);
 
-            tracing::info!(
-                round,
-                elapsed_ms = t_round.elapsed().as_millis() as u64,
-                "first msg encoded+submitted, reading"
-            );
             let d1_fs = read_miller_products(ctx, &d1_state, n2, 2).await;
             let (d1_left, d1_right) = {
                 let (l, r) = rayon::join(
@@ -511,11 +498,6 @@ impl GpuDory {
             let e1_beta = ArkG1(self.read_g1(&beta_points, 0).await);
             let e2_beta = ArkG2(self.read_g2(&e2_beta_buf, 0).await);
 
-            tracing::info!(
-                round,
-                elapsed_ms = t_round.elapsed().as_millis() as u64,
-                "first msg readbacks done"
-            );
             transcript.append_serde(b"d1_left", &d1_left);
             transcript.append_serde(b"d1_right", &d1_right);
             transcript.append_serde(b"d2_left", &d2_left);
@@ -622,11 +604,6 @@ impl GpuDory {
             }
             ctx.queue.submit([enc.finish()]);
 
-            tracing::info!(
-                round,
-                elapsed_ms = t_round.elapsed().as_millis() as u64,
-                "second msg submitted, reading"
-            );
             let c_fs = read_miller_products(ctx, &c_state, n2, 2).await;
             let (c_plus, c_minus) = {
                 let (p, m) = rayon::join(
@@ -640,11 +617,6 @@ impl GpuDory {
             let e2_plus = ArkG2(self.read_g2(&e_points_g2, 0).await);
             let e2_minus = ArkG2(self.read_g2(&e_points_g2, 1).await);
 
-            tracing::info!(
-                round,
-                elapsed_ms = t_round.elapsed().as_millis() as u64,
-                "second msg readbacks done"
-            );
             transcript.append_serde(b"c_plus", &c_plus);
             transcript.append_serde(b"c_minus", &c_minus);
             transcript.append_serde(b"e1_plus", &e1_plus);
@@ -690,11 +662,6 @@ impl GpuDory {
             encode_fold_scalars(ctx, &mut enc, &s1, &fr_to_words(&alpha.0), n2, 0, n2, 0);
             encode_fold_scalars(ctx, &mut enc, &s2, &fr_to_words(&alpha_inv.0), n2, 0, n2, 0);
             ctx.queue.submit([enc.finish()]);
-            tracing::info!(
-                round,
-                elapsed_ms = t_round.elapsed().as_millis() as u64,
-                "alpha folds submitted"
-            );
         }
 
         // --- Final scalar product message ---

@@ -11,7 +11,10 @@ use wasm_bindgen::prelude::*;
 
 pub use wasm_bindgen_rayon::init_thread_pool;
 
+mod dory_bench;
 mod wasm_tracing;
+
+pub use dory_bench::{dory_bench_cpu, dory_bench_gpu};
 
 #[no_mangle]
 #[cfg(not(target_arch = "wasm32"))]
