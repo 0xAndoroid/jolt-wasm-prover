@@ -171,3 +171,26 @@ pub fn pack_slice<T, const N: usize>(items: &[T], f: impl Fn(&T) -> [u32; N]) ->
 pub fn fr_canonical_words(x: &Fr) -> [u32; 8] {
     bigint_to_words(&x.into_bigint())
 }
+
+pub const FQ12_WORDS: usize = 6 * FQ2_WORDS;
+
+/// Fq12 layout used by the pairing kernels: [c0.c0, c0.c1, c0.c2, c1.c0,
+/// c1.c1, c1.c2], each an Fq2 of 16 words.
+pub fn fq12_from_words(w: &[u32]) -> ark_bn254::Fq12 {
+    let c = |i: usize| fq2_from_words(&w[i * 16..(i + 1) * 16]);
+    ark_bn254::Fq12::new(
+        ark_bn254::Fq6::new(c(0), c(1), c(2)),
+        ark_bn254::Fq6::new(c(3), c(4), c(5)),
+    )
+}
+
+pub fn fq12_to_words(x: &ark_bn254::Fq12) -> [u32; FQ12_WORDS] {
+    let mut out = [0u32; FQ12_WORDS];
+    for (i, c) in [&x.c0.c0, &x.c0.c1, &x.c0.c2, &x.c1.c0, &x.c1.c1, &x.c1.c2]
+        .into_iter()
+        .enumerate()
+    {
+        out[i * 16..(i + 1) * 16].copy_from_slice(&fq2_to_words(c));
+    }
+    out
+}

@@ -18,7 +18,7 @@ pub const FOLD_WGSL: &str = include_str!("wgsl/fold.wgsl");
 pub const VMV_WGSL: &str = include_str!("wgsl/vmv.wgsl");
 pub const FQ12_WGSL: &str = include_str!("wgsl/fq12.wgsl");
 pub const PAIRING_WGSL: &str = include_str!("wgsl/pairing.wgsl");
-pub const PAIRING_TEST_WGSL: &str = include_str!("wgsl/pairing_test.wgsl");
+pub const PAIRING_FQ12_WGSL: &str = include_str!("wgsl/pairing_fq12.wgsl");
 
 /// 256-bit big integer as 16 radix-2^16 limbs, little-endian, each stored in a u32.
 pub fn limbs16(v: &BigInt<4>) -> [u32; 16] {
@@ -182,6 +182,28 @@ pub fn g2_3b_header() -> String {
         "var<private> G2_3B_C0: Fe = {};\nvar<private> G2_3B_C1: Fe = {};\n",
         wgsl_array16(&three_b.c0.0),
         wgsl_array16(&three_b.c1.0)
+    )
+}
+
+/// Constants header for the pairing kernels: 1/2 in Fq and the psi twist
+/// constants (all Montgomery form, from arkworks BnConfig).
+pub fn pairing_header() -> String {
+    use ark_ec::bn::BnConfig;
+    use ark_ff::Field;
+    let two_inv = ark_bn254::Fq::from(2u64).inverse().expect("2 invertible");
+    let twqx = <ark_bn254::Config as BnConfig>::TWIST_MUL_BY_Q_X;
+    let twqy = <ark_bn254::Config as BnConfig>::TWIST_MUL_BY_Q_Y;
+    format!(
+        "var<private> FQ_TWO_INV: Fe = {};\n\
+         var<private> TWQX_C0: Fe = {};\n\
+         var<private> TWQX_C1: Fe = {};\n\
+         var<private> TWQY_C0: Fe = {};\n\
+         var<private> TWQY_C1: Fe = {};\n",
+        wgsl_array16(&two_inv.0),
+        wgsl_array16(&twqx.c0.0),
+        wgsl_array16(&twqx.c1.0),
+        wgsl_array16(&twqy.c0.0),
+        wgsl_array16(&twqy.c1.0),
     )
 }
 
