@@ -7,6 +7,7 @@
 //! where they are cheap and inherently sequential.
 
 pub mod context;
+pub mod fold;
 pub mod msm;
 pub mod repr;
 pub mod shader;
