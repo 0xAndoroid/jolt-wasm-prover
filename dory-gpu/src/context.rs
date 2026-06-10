@@ -145,6 +145,21 @@ impl GpuContext {
         buffers: &[(u32, &wgpu::Buffer)],
         workgroups: (u32, u32, u32),
     ) {
+        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+        self.dispatch_in_pass(&mut pass, pipeline, buffers, workgroups);
+    }
+
+    /// Records one dispatch into an already-open compute pass. Long dispatch
+    /// sequences must share a pass: every pass boundary is a Metal encoder
+    /// switch costing tens of milliseconds, while in-pass hazard barriers are
+    /// nearly free.
+    pub fn dispatch_in_pass(
+        &self,
+        pass: &mut wgpu::ComputePass<'_>,
+        pipeline: &wgpu::ComputePipeline,
+        buffers: &[(u32, &wgpu::Buffer)],
+        workgroups: (u32, u32, u32),
+    ) {
         let entries: Vec<wgpu::BindGroupEntry> = buffers
             .iter()
             .map(|(i, b)| wgpu::BindGroupEntry {
@@ -157,7 +172,6 @@ impl GpuContext {
             layout: &pipeline.get_bind_group_layout(0),
             entries: &entries,
         });
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
         pass.set_pipeline(pipeline);
         pass.set_bind_group(0, &bind_group, &[]);
         pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);

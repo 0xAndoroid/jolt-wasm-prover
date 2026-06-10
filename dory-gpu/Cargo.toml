@@ -9,7 +9,9 @@ ark-ec = { path = "../../arkworks-algebra/ec" }
 ark-ff = { path = "../../arkworks-algebra/ff" }
 ark-serialize = { path = "../../arkworks-algebra/serialize" }
 ark-std = { version = "0.5", default-features = false, features = ["std"] }
-dory-pcs = { version = "0.3.0", features = ["backends"] }
+# zk enabled to match jolt-core's workspace feature unification (the proof
+# struct gains cfg-gated fields; Transparent mode leaves them None).
+dory-pcs = { version = "0.3.0", features = ["backends", "zk"] }
 bytemuck = { version = "1", features = ["derive"] }
 futures-channel = "0.3"
 rayon = "1"
@@ -26,3 +28,7 @@ wasm-bindgen-futures = "0.4"
 [dev-dependencies]
 rand = "0.8"
 rand_chacha = "0.3"
+
+[dev-dependencies.tracing-subscriber]
+version = "0.3"
+features = ["fmt"]

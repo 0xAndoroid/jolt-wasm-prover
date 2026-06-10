@@ -54,9 +54,12 @@ impl Curve {
 
 fn msm_module_source(curve: Curve) -> String {
     match curve {
+        // WARNING: the fused G1 kernel must use the rolled field ops; with
+        // the unrolled ones its code size trips an AGX miscompile (silently
+        // wrong results).
         Curve::G1 => ShaderBuilder::new()
             .push(&fq_header())
-            .push(FIELD_WGSL)
+            .push(crate::shader::FIELD_ROLLED_WGSL)
             .push(G1_GLUE)
             .push_subst(CURVE_WGSL, G1_SUBST)
             .push(&msm_header(G1_WINDOW))
@@ -66,7 +69,7 @@ fn msm_module_source(curve: Curve) -> String {
         Curve::G2 => ShaderBuilder::new()
             .push(&fq_header())
             .push(&g2_3b_header())
-            .push(FIELD_WGSL)
+            .push(&FIELD_WGSL)
             .push(FQ2_WGSL)
             .push(G2_GLUE)
             .push_subst(CURVE_WGSL, G2_SUBST)
@@ -81,14 +84,14 @@ fn normalize_module_source(curve: Curve) -> String {
     match curve {
         Curve::G1 => ShaderBuilder::new()
             .push(&fq_header())
-            .push(FIELD_WGSL)
+            .push(&FIELD_WGSL)
             .push(G1_GLUE)
             .push_subst(NORMALIZE_WGSL, G1_SUBST)
             .build(),
         Curve::G2 => ShaderBuilder::new()
             .push(&fq_header())
             .push(&g2_3b_header())
-            .push(FIELD_WGSL)
+            .push(&FIELD_WGSL)
             .push(FQ2_WGSL)
             .push(G2_GLUE)
             .push_subst(NORMALIZE_WGSL, G2_SUBST)
@@ -99,7 +102,7 @@ fn normalize_module_source(curve: Curve) -> String {
 fn prep_module_source(c: u32) -> String {
     ShaderBuilder::new()
         .push(&fr_header())
-        .push(FIELD_WGSL)
+        .push(&FIELD_WGSL)
         .push(&msm_header(c))
         .push(MSM_PREP_WGSL)
         .build()
@@ -173,7 +176,7 @@ pub fn encode_normalize(
     let affine = ctx.empty_buffer(
         "normalized-affine",
         count as u64 * curve.affine_words() as u64 * 4,
-        wgpu::BufferUsages::empty(),
+        wgpu::BufferUsages::COPY_SRC,
     );
     let params = ctx.buffer_from(
         "norm-params",

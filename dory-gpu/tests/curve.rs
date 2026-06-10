@@ -19,7 +19,7 @@ use rand_chacha::ChaCha20Rng;
 fn g1_module() -> String {
     ShaderBuilder::new()
         .push(&fq_header())
-        .push(FIELD_WGSL)
+        .push(&FIELD_WGSL)
         .push(G1_GLUE)
         .push_subst(CURVE_WGSL, G1_SUBST)
         .push_subst(CURVE_TEST_WGSL, G1_SUBST)
@@ -30,7 +30,7 @@ fn g2_module() -> String {
     ShaderBuilder::new()
         .push(&fq_header())
         .push(&g2_3b_header())
-        .push(FIELD_WGSL)
+        .push(&FIELD_WGSL)
         .push(FQ2_WGSL)
         .push(G2_GLUE)
         .push_subst(CURVE_WGSL, G2_SUBST)

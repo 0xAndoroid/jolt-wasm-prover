@@ -24,7 +24,7 @@ fn test_inputs() -> Vec<Fq> {
 fn module_source() -> String {
     dory_gpu::shader::ShaderBuilder::new()
         .push(&fq_header())
-        .push(FIELD_WGSL)
+        .push(&FIELD_WGSL)
         .push(FQ2_WGSL)
         .push(FIELD_TEST_WGSL)
         .build()

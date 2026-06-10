@@ -46,7 +46,7 @@ fn g2step_module_source() -> String {
         .push(&fq_header())
         .push(&g2_3b_header())
         .push(&pairing_header())
-        .push(FIELD_WGSL)
+        .push(&FIELD_WGSL)
         .push(FQ2_WGSL)
         .push(PAIRING_WGSL)
         .build()
@@ -55,7 +55,7 @@ fn g2step_module_source() -> String {
 fn fq12_module_source() -> String {
     ShaderBuilder::new()
         .push(&fq_header())
-        .push(FIELD_WGSL)
+        .push(&FIELD_WGSL)
         .push(FQ2_WGSL)
         .push(FQ12_WGSL)
         .push(PAIRING_FQ12_WGSL)
@@ -107,15 +107,22 @@ pub struct MillerState {
     scratch: wgpu::Buffer,
 }
 
-struct Dispatcher<'a> {
-    ctx: &'a GpuContext,
+/// Records every Miller dispatch into ONE compute pass: pass boundaries are
+/// Metal encoder switches (~tens of ms each), in-pass barriers are cheap.
+struct Dispatcher<'c, 'p> {
+    ctx: &'c GpuContext,
+    pass: wgpu::ComputePass<'p>,
     n_pairs: u32,
 }
 
-impl<'a> Dispatcher<'a> {
+impl<'c, 'p> Dispatcher<'c, 'p> {
+    fn begin(ctx: &'c GpuContext, encoder: &'p mut wgpu::CommandEncoder, n_pairs: u32) -> Self {
+        let pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+        Self { ctx, pass, n_pairs }
+    }
+
     fn run(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
+        &mut self,
         module: &'static str,
         entry: &'static str,
         params: PairParams,
@@ -129,8 +136,12 @@ impl<'a> Dispatcher<'a> {
         let params_buf = params.buffer(self.ctx);
         let mut all = vec![(0u32, &params_buf)];
         all.extend_from_slice(buffers);
-        self.ctx
-            .encode_pass_indexed(encoder, &pipeline, &all, (self.n_pairs.div_ceil(64), 1, 1));
+        self.ctx.dispatch_in_pass(
+            &mut self.pass,
+            &pipeline,
+            &all,
+            (self.n_pairs.div_ceil(64), 1, 1),
+        );
     }
 }
 
@@ -177,7 +188,6 @@ pub fn encode_miller_computed(
     // computed path (uniform branch); satisfy the layout with a stub.
     let dummy_prepared = ctx.empty_buffer("miller-dummy-prep", 4, wgpu::BufferUsages::empty());
 
-    let d = Dispatcher { ctx, n_pairs };
     let base = PairParams {
         n_pairs,
         line_source: 0,
@@ -190,95 +200,128 @@ pub fn encode_miller_computed(
         prep_mod: 1,
     };
 
+    let mut d = Dispatcher::begin(ctx, encoder, n_pairs);
+
     d.run(
-        encoder,
         "pair_fq12",
         "f_init",
         base,
         &[(1, &f), (2, &mask), (3, q), (5, p)],
     );
-    d.run(encoder, "pair_g2", "pair_init", base, &[(2, &t), (3, q)]);
+    d.run("pair_g2", "pair_init", base, &[(2, &t), (3, q)]);
 
-    let sqr = |d: &Dispatcher, enc: &mut wgpu::CommandEncoder| {
+    fn sqr(
+        d: &mut Dispatcher,
+        base: PairParams,
+        f: &wgpu::Buffer,
+        mask: &wgpu::Buffer,
+        scratch: &wgpu::Buffer,
+    ) {
         d.run(
-            enc,
             "pair_fq12",
             "f_sqr_a",
             base,
-            &[(1, &f), (2, &mask), (6, &scratch)],
+            &[(1, f), (2, mask), (6, scratch)],
         );
         d.run(
-            enc,
             "pair_fq12",
             "f_sqr_b",
             base,
-            &[(1, &f), (2, &mask), (6, &scratch)],
+            &[(1, f), (2, mask), (6, scratch)],
         );
-    };
-    let apply = |d: &Dispatcher, enc: &mut wgpu::CommandEncoder| {
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn apply(
+        d: &mut Dispatcher,
+        base: PairParams,
+        f: &wgpu::Buffer,
+        mask: &wgpu::Buffer,
+        lines: &wgpu::Buffer,
+        p: &wgpu::Buffer,
+        scratch: &wgpu::Buffer,
+        dummy_prepared: &wgpu::Buffer,
+    ) {
         d.run(
-            enc,
             "pair_fq12",
             "f_apply_a",
             base,
             &[
-                (1, &f),
-                (2, &mask),
-                (4, &lines),
+                (1, f),
+                (2, mask),
+                (4, lines),
                 (5, p),
-                (6, &scratch),
-                (7, &dummy_prepared),
+                (6, scratch),
+                (7, dummy_prepared),
             ],
         );
         d.run(
-            enc,
             "pair_fq12",
             "f_apply_b",
             base,
-            &[(1, &f), (2, &mask), (6, &scratch)],
+            &[(1, f), (2, mask), (6, scratch)],
         );
-    };
-    let add_step = |d: &Dispatcher, enc: &mut wgpu::CommandEncoder, q_source: u32| {
+    }
+
+    let ate = ate_loop_count();
+    for i in (1..ate.len()).rev() {
+        if i != ate.len() - 1 {
+            sqr(&mut d, base, &f, &mask, &scratch);
+        }
+        d.run("pair_g2", "pair_dbl_step", base, &[(2, &t), (4, &lines)]);
+        apply(
+            &mut d,
+            base,
+            &f,
+            &mask,
+            &lines,
+            p,
+            &scratch,
+            &dummy_prepared,
+        );
+        let bit = ate[i - 1];
+        if bit == 1 || bit == -1 {
+            d.run(
+                "pair_g2",
+                "pair_add_step",
+                PairParams {
+                    q_source: if bit == 1 { 0 } else { 1 },
+                    ..base
+                },
+                &[(2, &t), (3, q), (4, &lines), (7, &q12)],
+            );
+            apply(
+                &mut d,
+                base,
+                &f,
+                &mask,
+                &lines,
+                p,
+                &scratch,
+                &dummy_prepared,
+            );
+        }
+    }
+
+    d.run("pair_g2", "pair_frob", base, &[(3, q), (7, &q12)]);
+    for q_source in [2u32, 3] {
         d.run(
-            enc,
             "pair_g2",
             "pair_add_step",
             PairParams { q_source, ..base },
             &[(2, &t), (3, q), (4, &lines), (7, &q12)],
         );
-    };
-
-    let ate = ate_loop_count();
-    for i in (1..ate.len()).rev() {
-        if i != ate.len() - 1 {
-            sqr(&d, encoder);
-        }
-        d.run(
-            encoder,
-            "pair_g2",
-            "pair_dbl_step",
+        apply(
+            &mut d,
             base,
-            &[(2, &t), (4, &lines)],
+            &f,
+            &mask,
+            &lines,
+            p,
+            &scratch,
+            &dummy_prepared,
         );
-        apply(&d, encoder);
-        match ate[i - 1] {
-            1 => {
-                add_step(&d, encoder, 0);
-                apply(&d, encoder);
-            }
-            -1 => {
-                add_step(&d, encoder, 1);
-                apply(&d, encoder);
-            }
-            _ => {}
-        }
     }
-
-    d.run(encoder, "pair_g2", "pair_frob", base, &[(3, q), (7, &q12)]);
-    add_step(&d, encoder, 2);
-    apply(&d, encoder);
-    add_step(&d, encoder, 3);
-    apply(&d, encoder);
+    drop(d);
 
     MillerState {
         f,
@@ -316,7 +359,6 @@ pub fn encode_miller_prepared(
     );
     let dummy_q = ctx.empty_buffer("miller-dummy-q", 4, wgpu::BufferUsages::empty());
 
-    let d = Dispatcher { ctx, n_pairs };
     let stride = prepared_line_count();
     let mut step = 0u32;
     let base = PairParams {
@@ -331,66 +373,91 @@ pub fn encode_miller_prepared(
         prep_mod,
     };
 
+    let mut d = Dispatcher::begin(ctx, encoder, n_pairs);
+
     d.run(
-        encoder,
         "pair_fq12",
         "f_init",
         base,
         &[(1, &f), (2, &mask), (3, &dummy_q), (5, p)],
     );
 
-    let apply = |enc: &mut wgpu::CommandEncoder, step: u32| {
+    #[allow(clippy::too_many_arguments)]
+    fn apply(
+        d: &mut Dispatcher,
+        base: PairParams,
+        step: u32,
+        f: &wgpu::Buffer,
+        mask: &wgpu::Buffer,
+        dummy_q: &wgpu::Buffer,
+        p: &wgpu::Buffer,
+        scratch: &wgpu::Buffer,
+        prepared: &wgpu::Buffer,
+    ) {
         let params = PairParams { step, ..base };
         d.run(
-            enc,
             "pair_fq12",
             "f_apply_a",
             params,
             &[
-                (1, &f),
-                (2, &mask),
-                (4, &dummy_q),
+                (1, f),
+                (2, mask),
+                (4, dummy_q),
                 (5, p),
-                (6, &scratch),
+                (6, scratch),
                 (7, prepared),
             ],
         );
         d.run(
-            enc,
             "pair_fq12",
             "f_apply_b",
             params,
-            &[(1, &f), (2, &mask), (6, &scratch)],
+            &[(1, f), (2, mask), (6, scratch)],
         );
-    };
+    }
 
     let ate = ate_loop_count();
     for i in (1..ate.len()).rev() {
         if i != ate.len() - 1 {
             d.run(
-                encoder,
                 "pair_fq12",
                 "f_sqr_a",
                 base,
                 &[(1, &f), (2, &mask), (6, &scratch)],
             );
             d.run(
-                encoder,
                 "pair_fq12",
                 "f_sqr_b",
                 base,
                 &[(1, &f), (2, &mask), (6, &scratch)],
             );
         }
-        apply(encoder, step);
+        apply(
+            &mut d, base, step, &f, &mask, &dummy_q, p, &scratch, prepared,
+        );
         step += 1;
         if ate[i - 1] != 0 {
-            apply(encoder, step);
+            apply(
+                &mut d, base, step, &f, &mask, &dummy_q, p, &scratch, prepared,
+            );
             step += 1;
         }
     }
-    apply(encoder, step);
-    apply(encoder, step + 1);
+    apply(
+        &mut d, base, step, &f, &mask, &dummy_q, p, &scratch, prepared,
+    );
+    apply(
+        &mut d,
+        base,
+        step + 1,
+        &f,
+        &mask,
+        &dummy_q,
+        p,
+        &scratch,
+        prepared,
+    );
+    drop(d);
 
     MillerState {
         f,
@@ -411,6 +478,7 @@ pub fn encode_product_reduce(
 ) {
     debug_assert!(segment.is_power_of_two());
     debug_assert_eq!(segment * n_products, state.n_pairs);
+    let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
     let mut stride = segment / 2;
     while stride > 0 {
         let params = PairParams {
@@ -427,8 +495,8 @@ pub fn encode_product_reduce(
         for entry in ["f_red_a", "f_red_b", "f_red_c"] {
             let pipeline = ctx.pipeline("pair_fq12", entry, fq12_module_source);
             let params_buf = params.buffer(ctx);
-            ctx.encode_pass_indexed(
-                encoder,
+            ctx.dispatch_in_pass(
+                &mut pass,
                 &pipeline,
                 &[(0, &params_buf), (1, &state.f), (6, &state.scratch)],
                 (stride.div_ceil(64), n_products, 1),

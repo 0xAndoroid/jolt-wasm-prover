@@ -20,7 +20,7 @@ fn fold_module_source(curve: Curve) -> String {
     match curve {
         Curve::G1 => ShaderBuilder::new()
             .push(&fq_header())
-            .push(FIELD_WGSL)
+            .push(&FIELD_WGSL)
             .push(G1_GLUE)
             .push_subst(CURVE_WGSL, G1_SUBST)
             .push(&msm_header(FIXED_BASE_WINDOW))
@@ -29,7 +29,7 @@ fn fold_module_source(curve: Curve) -> String {
         Curve::G2 => ShaderBuilder::new()
             .push(&fq_header())
             .push(&g2_3b_header())
-            .push(FIELD_WGSL)
+            .push(&FIELD_WGSL)
             .push(FQ2_WGSL)
             .push(G2_GLUE)
             .push_subst(CURVE_WGSL, G2_SUBST)
@@ -42,7 +42,7 @@ fn fold_module_source(curve: Curve) -> String {
 fn fr_ops_module_source() -> String {
     ShaderBuilder::new()
         .push(&fr_header())
-        .push(FIELD_WGSL)
+        .push(&FIELD_WGSL)
         .push(VMV_WGSL)
         .build()
 }

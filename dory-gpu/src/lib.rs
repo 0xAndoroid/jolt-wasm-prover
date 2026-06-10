@@ -10,6 +10,7 @@ pub mod context;
 pub mod fold;
 pub mod msm;
 pub mod pairing;
+pub mod prove;
 pub mod repr;
 pub mod shader;
 

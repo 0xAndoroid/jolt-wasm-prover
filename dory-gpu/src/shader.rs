@@ -4,7 +4,167 @@
 
 use ark_ff::{BigInt, BigInteger, Fp, FpConfig, MontConfig, PrimeField};
 
-pub const FIELD_WGSL: &str = include_str!("wgsl/field.wgsl");
+/// Fully unrolled 254-bit Montgomery field ops. Loops over limbs defeat
+/// Metal's register promotion (naga's forced loop bounding blocks unrolling),
+/// pushing every limb access through device-memory stack — a ~100x slowdown.
+/// Generating straight-line code with constant indices keeps limbs in
+/// registers.
+pub static FIELD_WGSL: std::sync::LazyLock<String> = std::sync::LazyLock::new(field_ops_unrolled);
+
+/// Loop-based variant of the field ops. The fused G1 MSM kernel (shared-mem
+/// buckets, many inlined point-op sites) miscompiles on Apple Metal with the
+/// unrolled ops — its total code size explodes — so it keeps the rolled form.
+pub const FIELD_ROLLED_WGSL: &str = include_str!("wgsl/field.wgsl");
+
+fn field_ops_unrolled() -> String {
+    let mut s = String::with_capacity(64 * 1024);
+
+    s.push_str("fn fe_unpack(w: Fe8) -> Fe {\n    var r: Fe;\n");
+    for k in 0..8 {
+        s.push_str(&format!(
+            "    r[{}] = w[{k}] & 0xffffu;\n    r[{}] = w[{k}] >> 16u;\n",
+            2 * k,
+            2 * k + 1
+        ));
+    }
+    s.push_str("    return r;\n}\n\n");
+
+    s.push_str("fn fe_pack(a: Fe) -> Fe8 {\n    var r: Fe8;\n");
+    for k in 0..8 {
+        s.push_str(&format!(
+            "    r[{k}] = a[{}] | (a[{}] << 16u);\n",
+            2 * k,
+            2 * k + 1
+        ));
+    }
+    s.push_str("    return r;\n}\n\n");
+
+    s.push_str("fn fe_zero() -> Fe {\n    var r: Fe;\n    return r;\n}\n\n");
+    s.push_str("fn fe_mont_one() -> Fe {\n    var r: Fe = FE_MONT_ONE;\n    return r;\n}\n\n");
+
+    s.push_str("fn fe_is_zero(a: Fe) -> bool {\n    var acc = 0u;\n");
+    for i in 0..16 {
+        s.push_str(&format!("    acc |= a[{i}];\n"));
+    }
+    s.push_str("    return acc == 0u;\n}\n\n");
+
+    s.push_str("fn fe_eq(a: Fe, b: Fe) -> bool {\n    var acc = 0u;\n");
+    for i in 0..16 {
+        s.push_str(&format!("    acc |= a[{i}] ^ b[{i}];\n"));
+    }
+    s.push_str("    return acc == 0u;\n}\n\n");
+
+    s.push_str("fn fe_select(c: bool, a: Fe, b: Fe) -> Fe {\n    var r: Fe;\n");
+    for i in 0..16 {
+        s.push_str(&format!("    r[{i}] = select(b[{i}], a[{i}], c);\n"));
+    }
+    s.push_str("    return r;\n}\n\n");
+
+    // Reduces t (< 2p, with optional 2^256 carry bit `hi`) to [0, p).
+    s.push_str("fn fe_reduce_once(t: Fe, hi: u32) -> Fe {\n    var s: Fe;\n    var d = 0u;\n    var brw = 0u;\n");
+    for i in 0..16 {
+        s.push_str(&format!(
+            "    d = t[{i}] - FE_MOD[{i}] - brw;\n    s[{i}] = d & 0xffffu;\n    brw = (d >> 16u) & 1u;\n"
+        ));
+    }
+    s.push_str("    return fe_select((hi != 0u) | (brw == 0u), s, t);\n}\n\n");
+
+    s.push_str(
+        "fn fe_add(a: Fe, b: Fe) -> Fe {\n    var t: Fe;\n    var x = 0u;\n    var c = 0u;\n",
+    );
+    for i in 0..16 {
+        s.push_str(&format!(
+            "    x = a[{i}] + b[{i}] + c;\n    t[{i}] = x & 0xffffu;\n    c = x >> 16u;\n"
+        ));
+    }
+    s.push_str("    return fe_reduce_once(t, c);\n}\n\n");
+
+    s.push_str("fn fe_sub(a: Fe, b: Fe) -> Fe {\n    var t: Fe;\n    var r: Fe;\n    var x = 0u;\n    var brw = 0u;\n    var c = 0u;\n");
+    for i in 0..16 {
+        s.push_str(&format!(
+            "    x = a[{i}] - b[{i}] - brw;\n    t[{i}] = x & 0xffffu;\n    brw = (x >> 16u) & 1u;\n"
+        ));
+    }
+    for i in 0..16 {
+        s.push_str(&format!(
+            "    x = t[{i}] + FE_MOD[{i}] + c;\n    r[{i}] = x & 0xffffu;\n    c = x >> 16u;\n"
+        ));
+    }
+    s.push_str("    return fe_select(brw == 1u, r, t);\n}\n\n");
+
+    s.push_str("fn fe_neg(a: Fe) -> Fe {\n    var t: Fe;\n    var x = 0u;\n    var brw = 0u;\n");
+    for i in 0..16 {
+        s.push_str(&format!(
+            "    x = FE_MOD[{i}] - a[{i}] - brw;\n    t[{i}] = x & 0xffffu;\n    brw = (x >> 16u) & 1u;\n"
+        ));
+    }
+    s.push_str("    return fe_select(fe_is_zero(a), fe_zero(), t);\n}\n\n");
+
+    s.push_str("fn fe_double(a: Fe) -> Fe {\n    return fe_add(a, a);\n}\n\n");
+
+    // CIOS Montgomery multiplication, fully unrolled.
+    s.push_str("fn fe_mont_mul(a: Fe, b: Fe) -> Fe {\n    var t: array<u32, 18>;\n    var x = 0u;\n    var c = 0u;\n    var m = 0u;\n    var bi = 0u;\n");
+    for _i in 0..16 {
+        s.push_str("    bi = b[");
+        s.push_str(&_i.to_string());
+        s.push_str("];\n    c = 0u;\n");
+        for j in 0..16 {
+            s.push_str(&format!(
+                "    x = t[{j}] + a[{j}] * bi + c;\n    t[{j}] = x & 0xffffu;\n    c = x >> 16u;\n"
+            ));
+        }
+        s.push_str("    x = t[16] + c;\n    t[16] = x & 0xffffu;\n    t[17] = x >> 16u;\n");
+        s.push_str("    m = (t[0] * FE_NP) & 0xffffu;\n");
+        s.push_str("    x = t[0] + m * FE_MOD[0];\n    c = x >> 16u;\n");
+        for j in 1..16 {
+            s.push_str(&format!(
+                "    x = t[{j}] + m * FE_MOD[{j}] + c;\n    t[{}] = x & 0xffffu;\n    c = x >> 16u;\n",
+                j - 1
+            ));
+        }
+        s.push_str(
+            "    x = t[16] + c;\n    t[15] = x & 0xffffu;\n    t[16] = t[17] + (x >> 16u);\n",
+        );
+    }
+    s.push_str("    var lo: Fe;\n");
+    for i in 0..16 {
+        s.push_str(&format!("    lo[{i}] = t[{i}];\n"));
+    }
+    s.push_str("    return fe_reduce_once(lo, t[16]);\n}\n\n");
+
+    s.push_str("fn fe_sqr(a: Fe) -> Fe {\n    return fe_mont_mul(a, a);\n}\n\n");
+
+    s.push_str("fn fe_mul9(a: Fe) -> Fe {\n    let a2 = fe_add(a, a);\n    let a4 = fe_add(a2, a2);\n    let a8 = fe_add(a4, a4);\n    return fe_add(a8, a);\n}\n\n");
+
+    // Fermat inversion: bit loop stays rolled (the body dominates); 0 -> 0.
+    s.push_str(
+        "fn fe_inv(a: Fe) -> Fe {\n    var acc = fe_mont_one();\n    for (var i = 0i; i < 256; i++) {\n        let b = 255u - u32(i);\n        acc = fe_mont_mul(acc, acc);\n        let limb = FE_P_MINUS_2[b >> 4u];\n        let is_set = ((limb >> (b & 15u)) & 1u) == 1u;\n        acc = fe_select(is_set, fe_mont_mul(acc, a), acc);\n    }\n    return acc;\n}\n\n",
+    );
+
+    // Montgomery reduction by 1 (out of Montgomery form), unrolled.
+    s.push_str("fn fe_from_mont(a: Fe) -> Fe {\n    var t: array<u32, 17>;\n    var x = 0u;\n    var c = 0u;\n    var m = 0u;\n");
+    for i in 0..16 {
+        s.push_str(&format!("    t[{i}] = a[{i}];\n"));
+    }
+    for _i in 0..16 {
+        s.push_str("    m = (t[0] * FE_NP) & 0xffffu;\n");
+        s.push_str("    x = t[0] + m * FE_MOD[0];\n    c = x >> 16u;\n");
+        for j in 1..16 {
+            s.push_str(&format!(
+                "    x = t[{j}] + m * FE_MOD[{j}] + c;\n    t[{}] = x & 0xffffu;\n    c = x >> 16u;\n",
+                j - 1
+            ));
+        }
+        s.push_str("    x = t[16] + c;\n    t[15] = x & 0xffffu;\n    t[16] = x >> 16u;\n");
+    }
+    s.push_str("    var lo: Fe;\n");
+    for i in 0..16 {
+        s.push_str(&format!("    lo[{i}] = t[{i}];\n"));
+    }
+    s.push_str("    return fe_reduce_once(lo, t[16]);\n}\n");
+
+    s
+}
 pub const FQ2_WGSL: &str = include_str!("wgsl/fq2.wgsl");
 pub const CURVE_WGSL: &str = include_str!("wgsl/curve.wgsl");
 pub const FIELD_TEST_WGSL: &str = include_str!("wgsl/field_test.wgsl");
