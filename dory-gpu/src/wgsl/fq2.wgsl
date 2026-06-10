@@ -71,3 +71,10 @@ fn fq2_mul_by_nonresidue(a: Fe2) -> Fe2 {
 fn fq2_conjugate(a: Fe2) -> Fe2 {
     return Fe2(a.c0, fe_neg(a.c1));
 }
+
+// 1/(a0 + a1 u) = (a0 - a1 u) / (a0^2 + a1^2); returns 0 for 0.
+fn fq2_inv(a: Fe2) -> Fe2 {
+    let norm = fe_add(fe_mont_mul(a.c0, a.c0), fe_mont_mul(a.c1, a.c1));
+    let t = fe_inv(norm);
+    return Fe2(fe_mont_mul(a.c0, t), fe_neg(fe_mont_mul(a.c1, t)));
+}

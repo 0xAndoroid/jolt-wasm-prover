@@ -169,6 +169,20 @@ fn fe_mul9(a: Fe) -> Fe {
     return fe_add(a8, a);
 }
 
+// Fermat inversion: a^(p-2). Returns 0 for a = 0, which makes projective
+// normalization of the identity yield (0, 0) without special-casing.
+fn fe_inv(a: Fe) -> Fe {
+    var acc = fe_mont_one();
+    for (var i = 0i; i < 256; i++) {
+        let b = 255u - u32(i);
+        acc = fe_mont_mul(acc, acc);
+        let limb = FE_P_MINUS_2[b >> 4u];
+        let is_set = ((limb >> (b & 15u)) & 1u) == 1u;
+        acc = fe_select(is_set, fe_mont_mul(acc, a), acc);
+    }
+    return acc;
+}
+
 // Converts out of Montgomery form (multiply by 1): a * R^-1 mod p.
 fn fe_from_mont(a: Fe) -> Fe {
     var t: array<u32, 17>;

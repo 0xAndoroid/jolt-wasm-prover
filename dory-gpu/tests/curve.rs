@@ -10,7 +10,7 @@ use dory_gpu::repr::{
 };
 use dory_gpu::shader::{
     fq_header, g2_3b_header, ShaderBuilder, CURVE_TEST_WGSL, CURVE_WGSL, FIELD_WGSL, FQ2_WGSL,
-    G1_GLUE, G1_SUBST, G1_TEST_GLUE, G2_GLUE, G2_SUBST, G2_TEST_GLUE,
+    G1_GLUE, G1_SUBST, G2_GLUE, G2_SUBST,
 };
 use dory_gpu::GpuContext;
 use rand::SeedableRng;
@@ -21,7 +21,6 @@ fn g1_module() -> String {
         .push(&fq_header())
         .push(FIELD_WGSL)
         .push(G1_GLUE)
-        .push(G1_TEST_GLUE)
         .push_subst(CURVE_WGSL, G1_SUBST)
         .push_subst(CURVE_TEST_WGSL, G1_SUBST)
         .build()
@@ -34,7 +33,6 @@ fn g2_module() -> String {
         .push(FIELD_WGSL)
         .push(FQ2_WGSL)
         .push(G2_GLUE)
-        .push(G2_TEST_GLUE)
         .push_subst(CURVE_WGSL, G2_SUBST)
         .push_subst(CURVE_TEST_WGSL, G2_SUBST)
         .build()

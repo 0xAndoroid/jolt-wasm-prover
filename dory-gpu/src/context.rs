@@ -69,6 +69,11 @@ impl GpuContext {
         }
         let mut modules = self.modules.borrow_mut();
         let module = modules.entry(module_key).or_insert_with(|| {
+            // WARNING: keep default runtime checks (forced loop bounding ON).
+            // On Apple Metal, disabling naga's loop bounding makes the
+            // optimizer miscompile multi-mul field kernels (wrong results);
+            // with it on, oversized kernels hang instead — so kernels must
+            // stay small, which the MSM reduction shape accounts for.
             self.device
                 .create_shader_module(wgpu::ShaderModuleDescriptor {
                     label: Some(module_key),
@@ -122,11 +127,28 @@ impl GpuContext {
         buffers: &[&wgpu::Buffer],
         workgroups: (u32, u32, u32),
     ) {
-        let entries: Vec<wgpu::BindGroupEntry> = buffers
+        let pairs: Vec<(u32, &wgpu::Buffer)> = buffers
             .iter()
             .enumerate()
+            .map(|(i, b)| (i as u32, *b))
+            .collect();
+        self.encode_pass_indexed(encoder, pipeline, &pairs, workgroups);
+    }
+
+    /// Encodes one compute dispatch with explicit binding indices. Bindings
+    /// not statically used by the entry point must be omitted (auto layout
+    /// drops them).
+    pub fn encode_pass_indexed(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        pipeline: &wgpu::ComputePipeline,
+        buffers: &[(u32, &wgpu::Buffer)],
+        workgroups: (u32, u32, u32),
+    ) {
+        let entries: Vec<wgpu::BindGroupEntry> = buffers
+            .iter()
             .map(|(i, b)| wgpu::BindGroupEntry {
-                binding: i as u32,
+                binding: *i,
                 resource: b.as_entire_binding(),
             })
             .collect();
