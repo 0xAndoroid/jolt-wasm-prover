@@ -86,7 +86,7 @@ fn PF_shred_store(slot: u32, p: PF_Point) {
 @compute @workgroup_size(64)
 fn msm_clear_buckets(@builtin(global_invocation_id) gid: vec3<u32>) {
     let p = PF_msm_params;
-    let total = p.rows * MSM_NW * p.n_chunks * MSM_NB;
+    let total = p.rows * p.num_windows * p.n_chunks * MSM_NB;
     if (gid.x < total) {
         PF_gbucket_store(gid.x, PF_point_identity());
     }
@@ -114,7 +114,7 @@ fn msm_acc_global(
     }
     workgroupBarrier();
 
-    let bucket_base = ((row * MSM_NW + w) * p.n_chunks + chunk) * MSM_NB;
+    let bucket_base = ((row * p.num_windows + w) * p.n_chunks + chunk) * MSM_NB;
     for (var e = 0u; e < count; e++) {
         let d = PF_sh_digits[e];
         let mag = d >> 1u;
@@ -135,7 +135,7 @@ fn msm_acc_global(
 @compute @workgroup_size(64)
 fn msm_weight_global(@builtin(global_invocation_id) gid: vec3<u32>) {
     let p = PF_msm_params;
-    let total = p.rows * MSM_NW * p.n_chunks * MSM_NB;
+    let total = p.rows * p.num_windows * p.n_chunks * MSM_NB;
     if (gid.x < total) {
         let k = (gid.x % MSM_NB) + 1u;
         PF_gbucket_store(gid.x, PF_point_mul_small(PF_gbucket_load(gid.x), k));
@@ -155,7 +155,7 @@ fn msm_sum_global(
     let tid = lid.x;
     let p = PF_msm_params;
 
-    let bucket_base = ((row * MSM_NW + w) * p.n_chunks + chunk) * MSM_NB;
+    let bucket_base = ((row * p.num_windows + w) * p.n_chunks + chunk) * MSM_NB;
     var v = PF_point_identity();
     for (var b = tid; b < MSM_NB; b += 64u) {
         v = PF_point_add(v, PF_gbucket_load(bucket_base + b));
@@ -170,7 +170,7 @@ fn msm_sum_global(
     }
 
     if (tid == 0u) {
-        let pidx = (row * MSM_NW + w) * p.n_chunks + chunk;
+        let pidx = (row * p.num_windows + w) * p.n_chunks + chunk;
         PF_partial_store(pidx, PF_shred_load(0u));
     }
 }

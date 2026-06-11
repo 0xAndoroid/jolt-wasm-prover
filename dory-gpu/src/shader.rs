@@ -177,6 +177,7 @@ pub const FOLD_WGSL: &str = include_str!("wgsl/fold.wgsl");
 pub const VMV_WGSL: &str = include_str!("wgsl/vmv.wgsl");
 pub const ONEHOT_WGSL: &str = include_str!("wgsl/onehot.wgsl");
 pub const RLC_WGSL: &str = include_str!("wgsl/rlc.wgsl");
+pub const COOP_PAIRING_WGSL: &str = include_str!("wgsl/coop_pairing.wgsl");
 pub const FQ12_WGSL: &str = include_str!("wgsl/fq12.wgsl");
 pub const PAIRING_WGSL: &str = include_str!("wgsl/pairing.wgsl");
 pub const PAIRING_FQ12_WGSL: &str = include_str!("wgsl/pairing_fq12.wgsl");

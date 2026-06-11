@@ -27,14 +27,12 @@ use dory_pcs::primitives::transcript::Transcript;
 use dory_pcs::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
 use dory_pcs::{DoryProof, Mode};
 
+use crate::coop::{encode_miller_computed_coop, encode_miller_prepared_coop};
 use crate::fold::{
     encode_fixed_base_mul, encode_fold_add_scaled_base, encode_fold_scalars, encode_fold_scale_add,
 };
 use crate::msm::{encode_msm, encode_normalize, encode_prep_scalars, Curve, MsmCall};
-use crate::pairing::{
-    encode_miller_computed, encode_miller_prepared, encode_product_reduce, final_exponentiation,
-    read_miller_products,
-};
+use crate::pairing::{encode_product_reduce, final_exponentiation, read_miller_products};
 use crate::prove::GpuDory;
 use crate::repr::{
     fr_canonical_words, fr_to_words, g1_proj_to_words, pack_slice, G1_PROJ_WORDS, G2_PROJ_WORDS,
@@ -128,7 +126,7 @@ impl GpuDory {
         self.ctx.poll_wait();
 
         let mut enc = self.encoder();
-        let state = encode_miller_prepared(
+        let state = encode_miller_prepared_coop(
             &self.ctx,
             &mut enc,
             &rows_affine,
@@ -368,7 +366,7 @@ impl GpuDory {
             let mut enc = self.encoder();
             let v1_aff = encode_normalize(ctx, &mut enc, Curve::G1, v1, n);
             let d1_state =
-                encode_miller_prepared(ctx, &mut enc, &v1_aff, self.prepared_g2(), n2, n);
+                encode_miller_prepared_coop(ctx, &mut enc, &v1_aff, self.prepared_g2(), n2, n);
             encode_product_reduce(ctx, &mut enc, &d1_state, n2, 2);
 
             let prep_s2 = encode_prep_scalars(ctx, &mut enc, Curve::G1, &s2, n);
@@ -455,7 +453,7 @@ impl GpuDory {
                 let half_bytes = n2 as u64 * 16 * 4;
                 enc.copy_buffer_to_buffer(self.g1_affine(), 0, &g1_dup, 0, half_bytes);
                 enc.copy_buffer_to_buffer(self.g1_affine(), 0, &g1_dup, half_bytes, half_bytes);
-                let state = encode_miller_computed(ctx, &mut enc, &g1_dup, &v2_aff, n);
+                let state = encode_miller_computed_coop(ctx, &mut enc, &g1_dup, &v2_aff, n);
                 encode_product_reduce(ctx, &mut enc, &state, n2, 2);
                 D2Path::Miller(state)
             };
@@ -549,7 +547,7 @@ impl GpuDory {
             let half_q = n2 as u64 * 32 * 4;
             enc.copy_buffer_to_buffer(&v2_aff2, half_q, &q_swap, 0, half_q);
             enc.copy_buffer_to_buffer(&v2_aff2, 0, &q_swap, half_q, half_q);
-            let c_state = encode_miller_computed(ctx, &mut enc, &v1_aff2, &q_swap, n);
+            let c_state = encode_miller_computed_coop(ctx, &mut enc, &v1_aff2, &q_swap, n);
             encode_product_reduce(ctx, &mut enc, &c_state, n2, 2);
 
             // E1± over v1 bases, E2± over v2 bases (cross scalar halves).

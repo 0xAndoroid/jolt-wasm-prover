@@ -14,7 +14,7 @@ struct MsmParams {
     scalar_offset: u32,
     scalar_stride: u32,
     out_offset: u32,
-    flags: u32,
+    num_windows: u32,
 }
 
 const PF_PW: u32 = 3u * PF_FEW;
@@ -41,9 +41,13 @@ fn PF_msm_digit(scalar_idx: u32, w: u32) -> u32 {
     let mask_word = PF_msm_masks[scalar_idx * 2u + (w >> 5u)];
     let carry = (mask_word >> (w & 31u)) & 1u;
     let v = raw + carry;
-    let neg = v > MSM_NB;
-    let mag = select(v, (MSM_NB << 1u) - v, neg);
-    return (mag << 1u) | u32(neg);
+    // Per-scalar sign (signed small-scalar path) lives in bit 31 of the
+    // second mask word — unreachable as a carry bit (windows <= 37) — and
+    // negating a scalar negates every signed digit.
+    let scalar_neg = (PF_msm_masks[scalar_idx * 2u + 1u] >> 31u) & 1u;
+    let neg = u32(v > MSM_NB) ^ scalar_neg;
+    let mag = select(v, (MSM_NB << 1u) - v, v > MSM_NB);
+    return (mag << 1u) | neg;
 }
 
 fn PF_bases_fe(base: u32) -> PF_Fe {
@@ -165,10 +169,10 @@ fn msm_combine(
     let tid = lid.x;
     let p = PF_msm_params;
 
-    for (var w = tid; w < MSM_NW; w += 64u) {
+    for (var w = tid; w < p.num_windows; w += 64u) {
         var acc = PF_point_identity();
         for (var ch = 0u; ch < p.n_chunks; ch++) {
-            let pidx = (row * MSM_NW + w) * p.n_chunks + ch;
+            let pidx = (row * p.num_windows + w) * p.n_chunks + ch;
             acc = PF_point_add(acc, PF_load_partial(pidx));
         }
         for (var k = 0u; k < w * MSM_C; k++) {
@@ -179,7 +183,7 @@ fn msm_combine(
     workgroupBarrier();
 
     for (var off = 32u; off > 0u; off >>= 1u) {
-        if (tid < off && tid + off < MSM_NW) {
+        if (tid < off && tid + off < p.num_windows) {
             PF_shpoint_store(tid, PF_point_add(PF_shpoint_load(tid), PF_shpoint_load(tid + off)));
         }
         workgroupBarrier();

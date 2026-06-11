@@ -115,12 +115,27 @@ fn msm_module_key(curve: Curve) -> &'static str {
 
 /// Prepared scalars: canonical form plus signed-digit carry masks for one
 /// window size. Scalars enter in Montgomery form (bit-identical upload from
-/// arkworks or produced by an earlier GPU pass).
+/// arkworks or produced by an earlier GPU pass), or pre-recoded as signed
+/// canonical magnitudes via [`encode_prep_scalars_small`] — `num_windows`
+/// then clamps every window loop in the bucket pipeline.
 pub struct PreparedScalars {
     pub canon: wgpu::Buffer,
     pub masks: wgpu::Buffer,
     pub count: u32,
     pub window: u32,
+    pub num_windows: u32,
+}
+
+fn prep_pipeline(
+    ctx: &GpuContext,
+    curve: Curve,
+    entry: &'static str,
+) -> std::sync::Arc<wgpu::ComputePipeline> {
+    let (module_key, source): (&'static str, fn() -> String) = match curve {
+        Curve::G1 => ("msm_prep_c8", || prep_module_source(G1_WINDOW)),
+        Curve::G2 => ("msm_prep_c7", || prep_module_source(G2_WINDOW)),
+    };
+    ctx.pipeline(module_key, entry, source)
 }
 
 pub fn encode_prep_scalars(
@@ -130,12 +145,7 @@ pub fn encode_prep_scalars(
     mont_scalars: &wgpu::Buffer,
     count: u32,
 ) -> PreparedScalars {
-    let c = curve.window();
-    let (module_key, source): (&'static str, fn() -> String) = match curve {
-        Curve::G1 => ("msm_prep_c8", || prep_module_source(G1_WINDOW)),
-        Curve::G2 => ("msm_prep_c7", || prep_module_source(G2_WINDOW)),
-    };
-    let pipeline = ctx.pipeline(module_key, "msm_prep", source);
+    let pipeline = prep_pipeline(ctx, curve, "msm_prep");
     let canon = ctx.empty_buffer("msm-canon", count as u64 * 32, wgpu::BufferUsages::COPY_SRC);
     let masks = ctx.empty_buffer("msm-masks", count as u64 * 8, wgpu::BufferUsages::COPY_SRC);
     let params = ctx.buffer_from(
@@ -153,7 +163,45 @@ pub fn encode_prep_scalars(
         canon,
         masks,
         count,
-        window: c,
+        window: curve.window(),
+        num_windows: curve.windows(),
+    }
+}
+
+/// Prep for signed small scalars (jolt-core's `msm_signed` exploit): input
+/// is already-canonical magnitudes plus a packed sign bitmap; only the
+/// carry masks are computed (with the per-scalar sign folded into bit 31 of
+/// the second mask word), and the MSM runs `num_windows` windows instead of
+/// the full 254-bit schedule.
+pub fn encode_prep_scalars_small(
+    ctx: &GpuContext,
+    encoder: &mut wgpu::CommandEncoder,
+    curve: Curve,
+    canon_magnitudes: &wgpu::Buffer,
+    signs: &wgpu::Buffer,
+    count: u32,
+    num_windows: u32,
+) -> PreparedScalars {
+    debug_assert!(num_windows <= curve.windows());
+    let pipeline = prep_pipeline(ctx, curve, "msm_prep_small");
+    let masks = ctx.empty_buffer("msm-masks", count as u64 * 8, wgpu::BufferUsages::COPY_SRC);
+    let params = ctx.buffer_from(
+        "prep-params",
+        bytemuck::cast_slice(&[count, 0u32, 0, 0]),
+        wgpu::BufferUsages::UNIFORM,
+    );
+    ctx.encode_pass_indexed(
+        encoder,
+        &pipeline,
+        &[(0, &params), (1, canon_magnitudes), (3, &masks), (4, signs)],
+        (count.div_ceil(64), 1, 1),
+    );
+    PreparedScalars {
+        canon: canon_magnitudes.clone(),
+        masks,
+        count,
+        window: curve.window(),
+        num_windows,
     }
 }
 
@@ -218,7 +266,7 @@ const BUCKET_BYTES_CAP: u64 = 256 << 20;
 pub fn encode_msm(ctx: &GpuContext, encoder: &mut wgpu::CommandEncoder, call: &MsmCall) {
     debug_assert_eq!(call.scalars.window, call.curve.window());
     let n_chunks = call.n.div_ceil(MSM_CHUNK).max(1);
-    let nw = call.curve.windows();
+    let nw = call.scalars.num_windows;
     let pw = call.curve.point_words();
     let bucket_bytes_per_row = (nw * n_chunks * call.curve.buckets() * pw) as u64 * 4;
     let rows_per_batch =
@@ -241,7 +289,7 @@ fn encode_msm_batch(
     n_chunks: u32,
 ) {
     let curve = call.curve;
-    let nw = curve.windows();
+    let nw = call.scalars.num_windows;
     let pw = curve.point_words();
 
     let partials = ctx.empty_buffer(
@@ -259,7 +307,7 @@ fn encode_msm_batch(
             call.scalar_offset + row_start * call.scalar_stride,
             call.scalar_stride,
             call.out_offset + row_start,
-            0u32,
+            nw,
         ]),
         wgpu::BufferUsages::UNIFORM,
     );

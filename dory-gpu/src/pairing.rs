@@ -107,6 +107,32 @@ pub struct MillerState {
     scratch: wgpu::Buffer,
 }
 
+impl MillerState {
+    /// State for the cooperative Miller kernel (coop.rs), which computes f
+    /// in one dispatch but shares the product-reduction kernels (and their
+    /// scratch layout) with the sequential pipeline.
+    pub(crate) fn new_for_coop(ctx: &GpuContext, n_pairs: u32) -> Self {
+        Self {
+            f: ctx.empty_buffer(
+                "miller-f",
+                n_pairs as u64 * 96 * 4,
+                wgpu::BufferUsages::COPY_SRC,
+            ),
+            n_pairs,
+            mask: ctx.empty_buffer(
+                "miller-mask",
+                n_pairs as u64 * 4,
+                wgpu::BufferUsages::empty(),
+            ),
+            scratch: ctx.empty_buffer(
+                "miller-scratch",
+                n_pairs as u64 * 144 * 4,
+                wgpu::BufferUsages::empty(),
+            ),
+        }
+    }
+}
+
 /// Records every Miller dispatch into ONE compute pass: pass boundaries are
 /// Metal encoder switches (~tens of ms each), in-pass barriers are cheap.
 struct Dispatcher<'c, 'p> {

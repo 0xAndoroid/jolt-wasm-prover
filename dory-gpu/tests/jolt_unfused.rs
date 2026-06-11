@@ -52,19 +52,27 @@ fn gen(spec: Spec) -> Instance {
     let mut uploads = Vec::new();
     let mut full = Vec::new();
 
-    for _ in 0..2 {
+    // One full-width random dense poly (exercises the sign recoding at the
+    // clamped maximum) and one small signed dense poly (exercises the
+    // clamped window count, like RdInc/RamInc increments).
+    for poly in 0..2 {
         let matrix: Vec<Fr> = (0..spec.dense_rows as usize * cols)
-            .map(|_| Fr::rand(&mut rng))
+            .map(|i| {
+                if poly == 0 {
+                    Fr::rand(&mut rng)
+                } else if i % 11 == 0 {
+                    Fr::from(0u64)
+                } else {
+                    Fr::from(rng.gen_range(-(1i64 << 33)..(1i64 << 33)))
+                }
+            })
             .collect();
         let mut f = vec![ArkFr(Fr::zero()); num_rows * cols];
         for (i, m) in matrix.iter().enumerate() {
             f[i] = ArkFr(*m);
         }
         full.push(f);
-        uploads.push(PolyUpload::Dense {
-            matrix,
-            rows: spec.dense_rows,
-        });
+        uploads.push(PolyUpload::dense_from_mont(matrix, spec.dense_rows));
     }
 
     for poly in 0..3 {

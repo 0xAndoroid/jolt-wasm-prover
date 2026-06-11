@@ -645,10 +645,7 @@ impl StreamingCommitmentScheme for GpuDoryCommitmentScheme {
                     RowData::OneHot(_) => panic!("one-hot row in dense polynomial"),
                 }
             }
-            PolyUpload::Dense {
-                matrix,
-                rows: chunks.len() as u32,
-            }
+            PolyUpload::dense_from_mont(matrix, chunks.len() as u32)
         };
 
         let out = GpuEngine::get(setup).commit(upload);

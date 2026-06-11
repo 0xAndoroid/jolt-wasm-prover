@@ -12,11 +12,12 @@ use dory_pcs::backends::arkworks::{ArkFr, ArkGT, BN254};
 use dory_pcs::primitives::transcript::Transcript;
 use dory_pcs::{DoryProof, Mode};
 
-use crate::commit::{encode_onehot_rows, encode_rlc_combine, RLC_META_STRIDE};
+use crate::commit::{encode_onehot_rows, encode_rlc_combine, ONEHOT_STRIPES, RLC_META_STRIDE};
+use crate::coop::encode_miller_prepared_coop;
 use crate::fold::{encode_fold_scale_add, encode_vmv};
-use crate::msm::{encode_msm, encode_normalize, encode_prep_scalars, Curve, MsmCall};
+use crate::msm::{encode_msm, encode_normalize, encode_prep_scalars_small, Curve, MsmCall};
 use crate::open::OpeningBuffers;
-use crate::pairing::{encode_miller_prepared, encode_product_reduce, read_miller_products};
+use crate::pairing::{encode_product_reduce, read_miller_products};
 use crate::prove::GpuDory;
 use crate::repr::{
     fr_canonical_words, fr_from_words, fr_to_words, g1_proj_from_words, g1_proj_to_words,
@@ -28,8 +29,21 @@ type Proof =
 
 /// Raw polynomial data for an unfused commit.
 pub enum PolyUpload {
-    /// Row-major Fr matrix (Montgomery), `rows * cols` entries.
-    Dense { matrix: Vec<Fr>, rows: u32 },
+    /// Row-major Fr matrix, `rows * cols` entries: `mont` (Montgomery form,
+    /// for the joint RLC matrix) plus the signed-canonical recoding for the
+    /// tier-1 MSM — jolt-core's small-scalar exploit: a small negative value
+    /// is `p - |s|` canonically (full width), so magnitude and sign travel
+    /// separately and `num_windows` clamps the Pippenger window count to
+    /// the actual magnitude width.
+    Dense {
+        mont: Vec<Fr>,
+        /// Canonical |s| per entry, 8 little-endian u32 limbs.
+        canon_mag: Vec<[u32; 8]>,
+        /// One sign bit per entry (1 = negative), packed LSB-first.
+        signs: Vec<u32>,
+        rows: u32,
+        num_windows: u32,
+    },
     /// Bucket index per (chunk, column): `indices[c * cols + col]`,
     /// `ONEHOT_NONE` for none. Output rows = `k * rows_per_k`.
     OneHot {
@@ -40,6 +54,44 @@ pub enum PolyUpload {
 }
 
 impl PolyUpload {
+    /// Signed-canonical recoding of Montgomery-form scalars, with the
+    /// window count for the magnitudes' maximum bit width.
+    pub fn dense_from_mont(mont: Vec<Fr>, rows: u32) -> Self {
+        use ark_ff::{BigInteger, PrimeField};
+        let modulus = Fr::MODULUS;
+        let mut half = modulus;
+        half.div2();
+
+        let mut canon_mag = Vec::with_capacity(mont.len());
+        let mut signs = vec![0u32; mont.len().div_ceil(32)];
+        let mut max_bits = 0u32;
+        for (i, s) in mont.iter().enumerate() {
+            let mut big = s.into_bigint();
+            if big > half {
+                let mut neg = modulus;
+                neg.sub_with_borrow(&big);
+                big = neg;
+                signs[i >> 5] |= 1 << (i & 31);
+            }
+            max_bits = max_bits.max(big.num_bits());
+            let mut limbs = [0u32; 8];
+            for (k, w) in big.0.iter().enumerate() {
+                limbs[2 * k] = *w as u32;
+                limbs[2 * k + 1] = (*w >> 32) as u32;
+            }
+            canon_mag.push(limbs);
+        }
+        let c = Curve::G1.window();
+        let num_windows = (max_bits.div_ceil(c) + 1).min(Curve::G1.windows());
+        PolyUpload::Dense {
+            mont,
+            canon_mag,
+            signs,
+            rows,
+            num_windows,
+        }
+    }
+
     fn num_rows(&self) -> u32 {
         match self {
             PolyUpload::Dense { rows, .. } => *rows,
@@ -105,89 +157,154 @@ impl JoltGpuDory {
         let ctx = std::sync::Arc::clone(&self.gpu.ctx);
         let cols = self.cols;
 
-        // Tier 1: per-poly row commitments, one submission per polynomial
-        // (separate submits keep the kernels individually attributable).
-        let mut staged: Vec<(PolyKind, wgpu::Buffer, wgpu::Buffer, u32)> = Vec::new();
+        // Tier 1: dense polys run the small-scalar MSM pipeline (one
+        // submission each); one-hot polys batch every striped gather into a
+        // single compute pass sharing one partials scratch (dispatch order
+        // within a pass is storage-visible, and pass boundaries are Metal
+        // encoder switches). `staged` preserves upload order — results
+        // distribute positionally to the coalesced callers.
+        let mut staged: Vec<Option<(PolyKind, wgpu::Buffer, wgpu::Buffer, u32)>> =
+            (0..uploads.len()).map(|_| None).collect();
         let _t1 = tracing::info_span!("gpu_tier1_pass").entered();
-        for upload in &uploads {
+
+        for (i, upload) in uploads.iter().enumerate() {
+            let PolyUpload::Dense {
+                mont,
+                canon_mag,
+                signs,
+                rows,
+                num_windows,
+            } = upload
+            else {
+                continue;
+            };
+            let _span = tracing::info_span!("gpu_tier1_dense").entered();
+            assert_eq!(mont.len() as u32, rows * cols, "dense matrix shape");
             let num_rows = upload.num_rows();
             let rows_proj = ctx.empty_buffer(
                 "tier1-rows",
                 num_rows as u64 * G1_PROJ_WORDS as u64 * 4,
                 wgpu::BufferUsages::COPY_SRC,
             );
+            let data = ctx.buffer_from(
+                "dense-matrix",
+                bytemuck::cast_slice(&pack_slice(mont, fr_to_words)),
+                wgpu::BufferUsages::COPY_SRC,
+            );
+            let canon = ctx.buffer_from(
+                "dense-canon",
+                bytemuck::cast_slice(canon_mag),
+                wgpu::BufferUsages::empty(),
+            );
+            let sign_buf = ctx.buffer_from(
+                "dense-signs",
+                bytemuck::cast_slice(signs),
+                wgpu::BufferUsages::empty(),
+            );
             let mut enc = self.gpu.encoder();
-            match upload {
-                PolyUpload::Dense { matrix, rows } => {
-                    let _span = tracing::info_span!("gpu_tier1_dense").entered();
-                    assert_eq!(matrix.len() as u32, rows * cols, "dense matrix shape");
-                    let data = ctx.buffer_from(
-                        "dense-matrix",
-                        bytemuck::cast_slice(&pack_slice(matrix, fr_to_words)),
-                        wgpu::BufferUsages::COPY_SRC,
-                    );
-                    let prepared =
-                        encode_prep_scalars(&ctx, &mut enc, Curve::G1, &data, rows * cols);
-                    encode_msm(
-                        &ctx,
-                        &mut enc,
-                        &MsmCall {
-                            curve: Curve::G1,
-                            bases: self.gpu.g1_affine(),
-                            scalars: &prepared,
-                            rows: *rows,
-                            n: cols,
-                            base_offset: 0,
-                            scalar_offset: 0,
-                            scalar_stride: cols,
-                            results: &rows_proj,
-                            out_offset: 0,
-                        },
-                    );
-                    ctx.queue.submit([enc.finish()]);
-                    ctx.poll_wait();
-                    staged.push((PolyKind::Dense { rows: *rows }, data, rows_proj, num_rows));
-                }
-                PolyUpload::OneHot {
+            let prepared = encode_prep_scalars_small(
+                &ctx,
+                &mut enc,
+                Curve::G1,
+                &canon,
+                &sign_buf,
+                rows * cols,
+                *num_windows,
+            );
+            encode_msm(
+                &ctx,
+                &mut enc,
+                &MsmCall {
+                    curve: Curve::G1,
+                    bases: self.gpu.g1_affine(),
+                    scalars: &prepared,
+                    rows: *rows,
+                    n: cols,
+                    base_offset: 0,
+                    scalar_offset: 0,
+                    scalar_stride: cols,
+                    results: &rows_proj,
+                    out_offset: 0,
+                },
+            );
+            ctx.queue.submit([enc.finish()]);
+            ctx.poll_wait();
+            staged[i] = Some((PolyKind::Dense { rows: *rows }, data, rows_proj, num_rows));
+        }
+
+        let onehot_count = uploads
+            .iter()
+            .filter(|u| matches!(u, PolyUpload::OneHot { .. }))
+            .count();
+        if onehot_count > 0 {
+            let _span = tracing::info_span!("gpu_tier1_onehot", polys = onehot_count).entered();
+            let max_rows = uploads
+                .iter()
+                .filter(|u| matches!(u, PolyUpload::OneHot { .. }))
+                .map(|u| u.num_rows())
+                .max()
+                .unwrap();
+            let partials = ctx.empty_buffer(
+                "onehot-partials",
+                max_rows as u64 * ONEHOT_STRIPES as u64 * G1_PROJ_WORDS as u64 * 4,
+                wgpu::BufferUsages::empty(),
+            );
+            let mut enc = self.gpu.encoder();
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+            for (i, upload) in uploads.iter().enumerate() {
+                let PolyUpload::OneHot {
                     indices,
                     k,
                     rows_per_k,
-                } => {
-                    let _span = tracing::info_span!("gpu_tier1_onehot").entered();
-                    assert_eq!(
-                        indices.len() as u32,
-                        rows_per_k * cols,
-                        "one-hot index shape"
-                    );
-                    let data = ctx.buffer_from(
-                        "onehot-indices",
-                        bytemuck::cast_slice(indices),
-                        wgpu::BufferUsages::COPY_SRC,
-                    );
-                    encode_onehot_rows(
-                        &ctx,
-                        &mut enc,
-                        &data,
-                        self.gpu.g1_affine(),
-                        &rows_proj,
-                        cols,
-                        *rows_per_k,
-                        k * rows_per_k,
-                        0,
-                    );
-                    ctx.queue.submit([enc.finish()]);
-                    ctx.poll_wait();
-                    staged.push((
-                        PolyKind::OneHot {
-                            rows_per_k: *rows_per_k,
-                        },
-                        data,
-                        rows_proj,
-                        num_rows,
-                    ));
-                }
+                } = upload
+                else {
+                    continue;
+                };
+                assert_eq!(
+                    indices.len() as u32,
+                    rows_per_k * cols,
+                    "one-hot index shape"
+                );
+                let num_rows = upload.num_rows();
+                let rows_proj = ctx.empty_buffer(
+                    "tier1-rows",
+                    num_rows as u64 * G1_PROJ_WORDS as u64 * 4,
+                    wgpu::BufferUsages::COPY_SRC,
+                );
+                let data = ctx.buffer_from(
+                    "onehot-indices",
+                    bytemuck::cast_slice(indices),
+                    wgpu::BufferUsages::COPY_SRC,
+                );
+                encode_onehot_rows(
+                    &ctx,
+                    &mut pass,
+                    &data,
+                    self.gpu.g1_affine(),
+                    &partials,
+                    &rows_proj,
+                    cols,
+                    *rows_per_k,
+                    k * rows_per_k,
+                    0,
+                );
+                staged[i] = Some((
+                    PolyKind::OneHot {
+                        rows_per_k: *rows_per_k,
+                    },
+                    data,
+                    rows_proj,
+                    num_rows,
+                ));
             }
+            drop(pass);
+            ctx.queue.submit([enc.finish()]);
+            ctx.poll_wait();
         }
+        let staged: Vec<(PolyKind, wgpu::Buffer, wgpu::Buffer, u32)> = staged
+            .into_iter()
+            .map(|s| s.expect("staged poly"))
+            .collect();
         drop(_t1);
 
         // Tier 2: normalize all rows, concatenate into stride-padded groups
@@ -225,7 +342,7 @@ impl JoltGpuDory {
 
         let _t2 = tracing::info_span!("gpu_tier2_multipair", pairs = total).entered();
         let mut enc = self.gpu.encoder();
-        let state = encode_miller_prepared(
+        let state = encode_miller_prepared_coop(
             &ctx,
             &mut enc,
             &concat,

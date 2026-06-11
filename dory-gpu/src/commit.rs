@@ -31,31 +31,47 @@ fn rlc_module_source() -> String {
         .build()
 }
 
+/// Stripe count of the one-hot gather (occupancy multiplier).
+pub const ONEHOT_STRIPES: u32 = 32;
+
 /// Tier-1 row commitments for a one-hot polynomial: out[out_offset + r] is
 /// the sum of `bases[col]` over columns where `indices[c * cols + col] == k`
 /// with `r = k * rows_per_k + c` (jolt-core's scatter layout).
+///
+/// Two dispatches recorded into `pass` (striped partials, then a per-row
+/// reduce); WebGPU orders storage writes between dispatches of one pass, so
+/// callers batch many polynomials into a single pass with one shared
+/// `partials` scratch of `num_rows * ONEHOT_STRIPES` projective points.
 #[allow(clippy::too_many_arguments)]
 pub fn encode_onehot_rows(
     ctx: &GpuContext,
-    encoder: &mut wgpu::CommandEncoder,
+    pass: &mut wgpu::ComputePass<'_>,
     indices: &wgpu::Buffer,
     bases: &wgpu::Buffer,
+    partials: &wgpu::Buffer,
     out: &wgpu::Buffer,
     cols: u32,
     rows_per_k: u32,
     num_rows: u32,
     out_offset: u32,
 ) {
-    let pipeline = ctx.pipeline("onehot_g1", "onehot_rows", onehot_module_source);
     let params = ctx.buffer_from(
         "onehot-params",
         bytemuck::cast_slice(&[cols, rows_per_k, num_rows, out_offset]),
         wgpu::BufferUsages::UNIFORM,
     );
-    ctx.encode_pass_indexed(
-        encoder,
-        &pipeline,
-        &[(0, &params), (1, indices), (2, bases), (3, out)],
+    let phase_a = ctx.pipeline("onehot_g1", "onehot_partials", onehot_module_source);
+    ctx.dispatch_in_pass(
+        pass,
+        &phase_a,
+        &[(0, &params), (1, indices), (2, bases), (4, partials)],
+        (num_rows.div_ceil(64), ONEHOT_STRIPES, 1),
+    );
+    let phase_b = ctx.pipeline("onehot_g1", "onehot_reduce", onehot_module_source);
+    ctx.dispatch_in_pass(
+        pass,
+        &phase_b,
+        &[(0, &params), (3, out), (4, partials)],
         (num_rows.div_ceil(64), 1, 1),
     );
 }

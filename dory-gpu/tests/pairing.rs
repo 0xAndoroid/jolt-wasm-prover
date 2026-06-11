@@ -150,3 +150,98 @@ fn miller_prepared_matches_arkworks() {
         let _ = pack_slice(&[0u32], |_| [0u32; 1]);
     });
 }
+
+#[test]
+fn miller_coop_matches_arkworks() {
+    pollster::block_on(async {
+        let ctx = GpuContext::new().await.expect("gpu context");
+        let mut rng = ChaCha20Rng::seed_from_u64(303);
+        let n = 8usize;
+
+        // Same shape as the sequential prepared test (two products over
+        // shared prepared generators), plus identity P rows that must mask
+        // to f = 1.
+        let gens: Vec<G2Affine> = (0..n).map(|_| G2Affine::rand(&mut rng)).collect();
+        let mut ps_l: Vec<G1Affine> = (0..n).map(|_| G1Affine::rand(&mut rng)).collect();
+        let ps_r: Vec<G1Affine> = (0..n).map(|_| G1Affine::rand(&mut rng)).collect();
+        ps_l[3] = G1Affine::zero();
+
+        let prepared_words = pack_prepared_g2(&gens);
+        let prepared = ctx.buffer_from(
+            "prepared",
+            bytemuck::cast_slice(&prepared_words),
+            wgpu::BufferUsages::empty(),
+        );
+        let all_p: Vec<G1Affine> = ps_l.iter().chain(ps_r.iter()).copied().collect();
+        let p_buf = upload_g1(&ctx, &all_p);
+
+        let mut encoder = ctx
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let state = dory_gpu::coop::encode_miller_prepared_coop(
+            &ctx,
+            &mut encoder,
+            &p_buf,
+            &prepared,
+            n as u32,
+            2 * n as u32,
+        );
+        encode_product_reduce(&ctx, &mut encoder, &state, n as u32, 2);
+        ctx.queue.submit([encoder.finish()]);
+
+        let products = read_miller_products(&ctx, &state, n as u32, 2).await;
+        let cpu_l = {
+            let (ps, qs): (Vec<_>, Vec<_>) = ps_l
+                .iter()
+                .zip(&gens)
+                .filter(|(p, _)| !p.is_zero())
+                .map(|(p, q)| (*p, *q))
+                .unzip();
+            cpu_miller(&ps, &qs)
+        };
+        assert_eq!(products[0], cpu_l, "coop D1L mismatch (with masked pair)");
+        assert_eq!(products[1], cpu_miller(&ps_r, &gens), "coop D1R mismatch");
+    });
+}
+
+#[test]
+fn miller_computed_coop_matches_arkworks() {
+    pollster::block_on(async {
+        let ctx = GpuContext::new().await.expect("gpu context");
+        let mut rng = ChaCha20Rng::seed_from_u64(304);
+
+        for n in [1usize, 4, 16] {
+            let mut ps: Vec<G1Affine> = (0..n).map(|_| G1Affine::rand(&mut rng)).collect();
+            let mut qs: Vec<G2Affine> = (0..n).map(|_| G2Affine::rand(&mut rng)).collect();
+            if n > 4 {
+                ps[1] = G1Affine::zero();
+                qs[3] = G2Affine::zero();
+            }
+
+            let p_buf = upload_g1(&ctx, &ps);
+            let q_buf = upload_g2(&ctx, &qs);
+            let mut encoder = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let state = dory_gpu::coop::encode_miller_computed_coop(
+                &ctx,
+                &mut encoder,
+                &p_buf,
+                &q_buf,
+                n as u32,
+            );
+            encode_product_reduce(&ctx, &mut encoder, &state, n as u32, 1);
+            ctx.queue.submit([encoder.finish()]);
+
+            let gpu_f = read_miller_products(&ctx, &state, n as u32, 1).await[0];
+            let (fps, fqs): (Vec<_>, Vec<_>) = ps
+                .iter()
+                .zip(&qs)
+                .filter(|(p, q)| !p.is_zero() && !q.is_zero())
+                .map(|(p, q)| (*p, *q))
+                .unzip();
+            let cpu_f = cpu_miller(&fps, &fqs);
+            assert_eq!(gpu_f, cpu_f, "computed coop miller mismatch at n={n}");
+        }
+    });
+}

@@ -8,6 +8,7 @@
 
 pub mod commit;
 pub mod context;
+pub mod coop;
 pub mod fold;
 pub mod jolt;
 pub mod msm;

@@ -15,12 +15,12 @@ use dory_pcs::primitives::transcript::Transcript;
 use dory_pcs::{DoryProof, ProverSetup, Transparent};
 
 use crate::context::GpuContext;
+use crate::coop::encode_miller_prepared_coop;
 use crate::fold::{build_fixed_base_table_g2, encode_vmv};
 use crate::msm::{encode_msm, encode_normalize, encode_prep_scalars, Curve, MsmCall};
 use crate::open::OpeningInputs;
 use crate::pairing::{
-    encode_miller_prepared, encode_product_reduce, final_exponentiation, pack_prepared_g2,
-    read_miller_products,
+    encode_product_reduce, final_exponentiation, pack_prepared_g2, read_miller_products,
 };
 use crate::repr::{
     fr_from_words, fr_to_words, g1_affine_to_words, g1_proj_from_words, g2_affine_to_words,
@@ -192,7 +192,7 @@ impl GpuDory {
         self.ctx.poll_wait();
 
         let mut enc = self.encoder();
-        let state = encode_miller_prepared(
+        let state = encode_miller_prepared_coop(
             &self.ctx,
             &mut enc,
             &rows_affine,
