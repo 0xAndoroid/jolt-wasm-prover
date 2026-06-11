@@ -38,6 +38,63 @@ the default for non-benchmark builds (the PCS type parameter is the switch).
 Advice polynomials are out of scope (CPU commit, opening asserts their
 absence); the benchmark guests use none.
 
+## Algorithm parity with jolt-core's CPU tricks (optimization round)
+
+The first measurement round ran textbook GPU pipelines against jolt-core's
+production routines. The second round ports the CPU exploits one-for-one:
+
+1. **Small-scalar signed MSM** (jolt-core `msm_signed`/`msm_i128`): dense
+   tier-1 scalars are recoded CPU-side into sign + canonical magnitude
+   (a small negative is `p - |s|` canonically, which would force full
+   width), the per-scalar sign is folded into the signed-digit decoder, and
+   the Pippenger window count is clamped to the actual magnitude width —
+   RdInc/RamInc run 9 windows instead of 32.
+2. **GLV decompositions** (jolt-core `JoltG1Routines`/`JoltG2Routines`
+   folds): the per-round challenge folds and the row-commitment RLC
+   CPU-decompose the shared scalar with the fork's exact
+   `decomp_2d`/`decomp_4d` and run 2-point (G1, 128-bit) / 4-point (G2,
+   ~66-bit, lazy ψ recompute) Shamir ladders — 2-4x fewer doublings than
+   the 254-bit ladder.
+3. **Prepared pairing lines**: already at parity for fixed-G2 pairings
+   (tier-2 and D1 consume uploaded arkworks `G2Prepared` lines). The
+   varying-Q pairings (C±, later-round D2) — where the CPU also computes
+   lines per call — now run the G2 doubling/addition line steps on-device
+   inside the same dispatch as the evaluation (below).
+4. **Occupancy/dispatch shape**: the one-hot gather is striped 32x with a
+   per-row reduce (all polys in one compute pass); Miller loops gained a
+   workgroup-cooperative variant executing the ENTIRE ate loop in a single
+   dispatch — a 32-lane workgroup per pair runs a CPU-built stream of Fq2
+   micro-ops (one `fq2_mul` call site total, barriers in uniform control
+   flow) over a shared-memory slot file, which is what Apple's Metal
+   compiler constraints allow of the CUDA warp-cooperative design. It wins
+   only in the dispatch-bound regime: above ~512 pairs the sequential
+   per-pair-thread pipeline (full occupancy, register-resident Fq6 chains)
+   is faster, so dispatch is hybrid (`COOP_MAX_PAIRS`).
+
+### Native per-phase, before → after (one run, keccak 2^20)
+
+| Phase | GPU before | GPU after | CPU (busy/12 threads) |
+|---|---|---|---|
+| tier-1 dense (2 polys) | 15.1 s | **5.6 s** | 3.0 s busy (`msm_i128`) |
+| tier-1 one-hot (42 polys) | 9.1 s | **6.8 s** | 11.6 s busy |
+| tier-2 multipairings | 4.3 s | **4.4 s** | 33.0 s busy (~2.8 s wall) |
+| `combine_hints` (row RLC) | 1.5 s | **0.7 s** | 0.9 s |
+| opening rounds | 11.3 s | **9.1 s** | ~1.0 s (in `create_evaluation_proof`) |
+| witness commit total | 29.6 s | **17.9 s** | 4.9 s |
+| stage 8 total | 13.0 s | **10.0 s** | 2.1 s |
+| **prove e2e** | **44.8 s** | **30.2 s** | **9.1 s** |
+
+Remaining gap analysis (native): the CPU's 12 performance cores execute
+~3.7 GHz superscalar 64-bit Montgomery arithmetic with GLV + prepared
+lines; the GPU runs 16-bit-limb unrolled WGSL of the same algorithms. The
+residual loss is spread across the opening's wide rounds (9.1 s — early
+rounds are occupancy-fine but each round is still ~450 dispatch barriers x
+2 multipairings plus G2 MSMs), the one-hot gather's uncoalesced base loads
+(6.8 s), and the dense MSM's bucket passes (5.6 s). Next levers, in
+impact order: two-pairs-per-workgroup cooperative scheduling with f kept
+in registers (lifts the <512-pair crossover), digit-sorted bucket
+accumulation for the MSMs, and column-major index layout for the gather.
+
 ## Native (Apple Silicon, Metal)
 
 Guest: `sha3-chain` (keccak), 300 iterations → 1,003,399 cycles, padded
@@ -92,36 +149,44 @@ run pays Tint pipeline compilation: 746 s at 2^18, 1447 s at 2^20 — Tint
 recompiles the unrolled BN254 modules per fresh device). Every proof
 verified in-browser by the stock `WasmVerifier`.
 
-| scale (cycles) | CPU-WASM Dory | full-GPU Dory | GPU/CPU | wasm heap peak |
-|---|---|---|---|---|
-| 2^18 (201,547) | **10.71 s** (10.66/10.71/10.76) | **221.1 s** (189.3/221.1/234.3) | 20.6x | 0.23 / 0.30 GB |
-| 2^20 (1,003,399) | **26.80 s** (26.75/26.80/27.38) | **848.6 s** (single timed run) | 31.7x | 0.95 / 1.20 GB |
+| scale (cycles) | CPU-WASM Dory | full-GPU before | full-GPU after parity round |
+|---|---|---|---|
+| 2^18 (201,547) | **10.69 s** (10.69/10.69/10.90) | 221.1 s (189.3/221.1/234.3) | **212.9 s** (190.8/212.9/238.5) |
+| 2^20 (1,003,399) | **32.61 s** (32.54/32.61/32.63) | 848.6 s (single timed run) | **876.6 s** (single timed run) |
 
-The browser amplifies every native bottleneck: Tint+AGX executes the same
-WGSL 3-17x slower than naga+Metal and per-dispatch overhead is larger, so
-the sequential-dispatch pairing structure dominates even harder. The 2^20
-materialized path fits wasm's 4 GB cap with room (1.2 GB peak). GPU
-run-to-run variance is high (189-234 s at 2^18) — thermals plus wasm heap
-growth; medians over 3 runs except browser-GPU 2^20 (one timed run,
-~14 min each).
+(CPU 2^20 measured 26.8 s in the first session and 32.6 s in this one —
+long-session thermal drift; pairs above are same-session. GPU heap peaks
+0.31 / 1.17 GB — fits wasm's 4 GB cap.)
+
+**The browser numbers did not move with the parity round, and that is the
+finding:** the same kernels got 33% faster on native Metal, so the
+browser's binding constraint is not algorithm choice or dispatch count but
+Tint's codegen of the unrolled BN254 field arithmetic (the known 3-17x
+penalty vs naga+Metal). Routing every multipairing through the
+single-dispatch cooperative path — eliminating the ~450-dispatch
+structure entirely — measured the same within thermal variance (212.9 vs
+223.7 medians, identical first runs), confirming per-dispatch overhead is
+not the limiter either. A browser-side win needs Tint to emit better code
+for the 16-bit-limb Montgomery kernels (or a different limb encoding
+tuned for Tint), not protocol-level restructuring.
 
 ## Summary
 
-| | CPU Dory e2e | full-GPU Dory e2e |
-|---|---|---|
-| native Metal, 2^20 | **9.01 s** | 44.8 s (5.0x slower) |
-| browser, 2^18 | **10.71 s** | 221.1 s (20.6x) |
-| browser, 2^20 | **26.80 s** | 848.6 s (31.7x) |
+| | CPU Dory e2e | GPU (first round) | GPU (parity round) |
+|---|---|---|---|
+| native Metal, 2^20 | **9.10 s** | 44.8 s (5.0x) | **30.2 s** (3.3x) |
+| browser, 2^18 | **10.69 s** | 221.1 s | **212.9 s** (19.9x) |
+| browser, 2^20 | **32.61 s** | 848.6 s | **876.6 s** (26.9x) |
 
 The full-GPU port is correct everywhere (stock-verifier acceptance in all
-configurations, byte-identical commitments) but loses end-to-end in both
-environments. The standalone-bench conclusion ("native GPU wins") does not
-transfer: it measured against stock dory-pcs CPU routines, while the e2e
-prover's CPU baseline is the heavily optimized GLV/prepared-line code on
-all cores. Closing the native 5x gap needs, in impact order: small-scalar
-window clamping for the dense tier-1 MSMs, workgroup-cooperative Fq12
-kernels to collapse the ~450-dispatch multipairings, and striped one-hot
-gather accumulation.
+configurations, byte-identical commitments) and now runs jolt-core's own
+algorithms — small-scalar signed MSMs, GLV-decomposed folds, prepared
+pairing lines — yet still loses end-to-end: natively 3.3x (down from
+5.0x), in-browser ~20-27x. The remaining native gap is hardware-shaped
+(12 superscalar 3.7 GHz cores on 64-bit Montgomery limbs vs 16-bit-limb
+WGSL), concentrated in the opening's wide rounds, the gather's uncoalesced
+loads, and the MSM bucket passes; the browser gap is dominated by Tint's
+arithmetic codegen.
 
 ## Reproducing
 
@@ -138,11 +203,13 @@ node e2e-bench-browser.mjs 300 3 cpu,gpu
 
 Correctness gates, all green:
 
-- `cargo nextest run -p dory-gpu` — 30 tests: kernel-level vs arkworks,
-  Transparent proofs byte-identical to dory-pcs (square + rectangular,
-  matrix-resident + virtual + unfused-commit paths), ZK proofs accepted by
-  the stock dory-pcs verifier, batched tier-2 vs `multi_pair_g2_setup`
-  (including identity rows).
+- `cargo nextest run -p dory-gpu` — 33 tests: kernel-level vs arkworks
+  (incl. the cooperative Miller kernels and GLV folds bit-matching
+  arkworks with masked/identity inputs), Transparent proofs byte-identical
+  to dory-pcs (square + rectangular, matrix-resident + virtual +
+  unfused-commit paths), ZK proofs accepted by the stock dory-pcs
+  verifier, batched tier-2 vs `multi_pair_g2_setup` (including identity
+  rows).
 - `bench-e2e --check` — full Jolt proofs from both PCS implementations
   verify with the stock verifier; witness commitments byte-identical
   (exercised at 2^15 rectangular and 2^20 square).

@@ -578,6 +578,10 @@ pub fn encode_miller_computed_coop(
 /// pipeline is dispatch-bound (~450 sequential dispatches dominate); above
 /// it the per-pair-thread pipeline's full occupancy and register-resident
 /// Fq6 chains win over 32-lane cooperation with ~1/3 lane utilization.
+/// Measured in-browser too: routing every width through the cooperative
+/// single-dispatch path changes nothing there (Tint's codegen of the
+/// field arithmetic, not dispatch count, is the browser ceiling), so one
+/// threshold serves both targets.
 pub const COOP_MAX_PAIRS: u32 = 512;
 
 /// Prepared-line Miller loop with automatic dispatch policy.
