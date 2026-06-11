@@ -178,9 +178,16 @@ pub const VMV_WGSL: &str = include_str!("wgsl/vmv.wgsl");
 pub const ONEHOT_WGSL: &str = include_str!("wgsl/onehot.wgsl");
 pub const RLC_WGSL: &str = include_str!("wgsl/rlc.wgsl");
 pub const COOP_PAIRING_WGSL: &str = include_str!("wgsl/coop_pairing.wgsl");
+pub const GLV_FOLD_G1_WGSL: &str = include_str!("wgsl/glv_fold_g1.wgsl");
+pub const GLV_FOLD_G2_WGSL: &str = include_str!("wgsl/glv_fold_g2.wgsl");
 pub const FQ12_WGSL: &str = include_str!("wgsl/fq12.wgsl");
 pub const PAIRING_WGSL: &str = include_str!("wgsl/pairing.wgsl");
 pub const PAIRING_FQ12_WGSL: &str = include_str!("wgsl/pairing_fq12.wgsl");
+
+/// Emits a module-scope Fe constant declaration (16 radix-2^16 limbs).
+pub fn fe_const_decl(name: &str, v: &BigInt<4>) -> String {
+    format!("var<private> {name}: Fe = {};\n", wgsl_array16(v))
+}
 
 /// 256-bit big integer as 16 radix-2^16 limbs, little-endian, each stored in a u32.
 pub fn limbs16(v: &BigInt<4>) -> [u32; 16] {

@@ -573,3 +573,40 @@ pub fn encode_miller_computed_coop(
         n_pairs,
     )
 }
+
+/// Width threshold for the cooperative kernels: below it the sequential
+/// pipeline is dispatch-bound (~450 sequential dispatches dominate); above
+/// it the per-pair-thread pipeline's full occupancy and register-resident
+/// Fq6 chains win over 32-lane cooperation with ~1/3 lane utilization.
+pub const COOP_MAX_PAIRS: u32 = 512;
+
+/// Prepared-line Miller loop with automatic dispatch policy.
+pub fn encode_miller_prepared_auto(
+    ctx: &GpuContext,
+    encoder: &mut wgpu::CommandEncoder,
+    p: &wgpu::Buffer,
+    prepared: &wgpu::Buffer,
+    prep_mod: u32,
+    n_pairs: u32,
+) -> MillerState {
+    if n_pairs <= COOP_MAX_PAIRS {
+        encode_miller_prepared_coop(ctx, encoder, p, prepared, prep_mod, n_pairs)
+    } else {
+        crate::pairing::encode_miller_prepared(ctx, encoder, p, prepared, prep_mod, n_pairs)
+    }
+}
+
+/// Computed-line Miller loop with automatic dispatch policy.
+pub fn encode_miller_computed_auto(
+    ctx: &GpuContext,
+    encoder: &mut wgpu::CommandEncoder,
+    p: &wgpu::Buffer,
+    q: &wgpu::Buffer,
+    n_pairs: u32,
+) -> MillerState {
+    if n_pairs <= COOP_MAX_PAIRS {
+        encode_miller_computed_coop(ctx, encoder, p, q, n_pairs)
+    } else {
+        crate::pairing::encode_miller_computed(ctx, encoder, p, q, n_pairs)
+    }
+}

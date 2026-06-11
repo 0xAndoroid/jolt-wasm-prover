@@ -261,3 +261,189 @@ fn vmv_and_fold_scalars_match() {
         }
     });
 }
+
+#[test]
+fn glv_folds_match_cpu() {
+    use ark_ec::CurveGroup;
+    use dory_gpu::fold::{
+        encode_glv_fold_add_scaled_base, encode_glv_fold_scale_add, glv_decompose,
+    };
+    use dory_gpu::msm::Curve;
+    use dory_gpu::repr::{
+        g1_affine_to_words, g1_proj_from_words, g1_proj_to_words, g2_affine_to_words,
+        g2_proj_from_words, g2_proj_to_words, pack_slice, G1_PROJ_WORDS, G2_PROJ_WORDS,
+    };
+
+    pollster::block_on(async {
+        let ctx = GpuContext::new().await.expect("gpu context");
+        let mut rng = ChaCha20Rng::seed_from_u64(500);
+        let n = 64usize;
+
+        for trial in 0..3 {
+            let k = Fr::rand(&mut rng);
+
+            // --- G1 scale_add: v[i] = k*v[i] + v[n + i] ---
+            let mut pts: Vec<ark_bn254::G1Projective> = (0..2 * n)
+                .map(|_| ark_bn254::G1Projective::rand(&mut rng))
+                .collect();
+            pts[5] = ark_bn254::G1Projective::default(); // identity input
+            let buf = ctx.buffer_from(
+                "glv-v",
+                bytemuck::cast_slice(&pack_slice(&pts, g1_proj_to_words)),
+                wgpu::BufferUsages::COPY_SRC,
+            );
+            let d = glv_decompose(Curve::G1, &k);
+            let mut enc = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            encode_glv_fold_scale_add(
+                &ctx,
+                &mut enc,
+                Curve::G1,
+                &buf,
+                &d,
+                n as u32,
+                0,
+                n as u32,
+                0,
+            );
+            ctx.queue.submit([enc.finish()]);
+            let bytes = ctx
+                .read_buffer(&buf, 0, n as u64 * G1_PROJ_WORDS as u64 * 4)
+                .await;
+            let words: &[u32] = bytemuck::cast_slice(&bytes);
+            for (i, chunk) in words.chunks_exact(G1_PROJ_WORDS).enumerate() {
+                let got = g1_proj_from_words(chunk);
+                let want = pts[i] * k + pts[n + i];
+                assert_eq!(
+                    got, want,
+                    "G1 glv scale_add mismatch at {i} (trial {trial})"
+                );
+            }
+
+            // --- G1 add_scaled_base: v[i] = v[i] + k*base[i] ---
+            let bases: Vec<ark_bn254::G1Affine> = (0..n)
+                .map(|_| ark_bn254::G1Projective::rand(&mut rng).into_affine())
+                .collect();
+            let vs: Vec<ark_bn254::G1Projective> = (0..n)
+                .map(|_| ark_bn254::G1Projective::rand(&mut rng))
+                .collect();
+            let vbuf = ctx.buffer_from(
+                "glv-v2",
+                bytemuck::cast_slice(&pack_slice(&vs, g1_proj_to_words)),
+                wgpu::BufferUsages::COPY_SRC,
+            );
+            let bbuf = ctx.buffer_from(
+                "glv-b",
+                bytemuck::cast_slice(&pack_slice(&bases, g1_affine_to_words)),
+                wgpu::BufferUsages::empty(),
+            );
+            let mut enc = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            encode_glv_fold_add_scaled_base(
+                &ctx,
+                &mut enc,
+                Curve::G1,
+                &vbuf,
+                &bbuf,
+                &d,
+                n as u32,
+                0,
+                0,
+                0,
+            );
+            ctx.queue.submit([enc.finish()]);
+            let bytes = ctx
+                .read_buffer(&vbuf, 0, n as u64 * G1_PROJ_WORDS as u64 * 4)
+                .await;
+            let words: &[u32] = bytemuck::cast_slice(&bytes);
+            for (i, chunk) in words.chunks_exact(G1_PROJ_WORDS).enumerate() {
+                let got = g1_proj_from_words(chunk);
+                let want = vs[i] + bases[i] * k;
+                assert_eq!(got, want, "G1 glv add_scaled_base mismatch at {i}");
+            }
+
+            // --- G2 scale_add ---
+            let pts2: Vec<ark_bn254::G2Projective> = (0..2 * n)
+                .map(|_| ark_bn254::G2Projective::rand(&mut rng))
+                .collect();
+            let buf2 = ctx.buffer_from(
+                "glv-v-g2",
+                bytemuck::cast_slice(&pack_slice(&pts2, g2_proj_to_words)),
+                wgpu::BufferUsages::COPY_SRC,
+            );
+            let d2 = glv_decompose(Curve::G2, &k);
+            let mut enc = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            encode_glv_fold_scale_add(
+                &ctx,
+                &mut enc,
+                Curve::G2,
+                &buf2,
+                &d2,
+                n as u32,
+                0,
+                n as u32,
+                0,
+            );
+            ctx.queue.submit([enc.finish()]);
+            let bytes = ctx
+                .read_buffer(&buf2, 0, n as u64 * G2_PROJ_WORDS as u64 * 4)
+                .await;
+            let words: &[u32] = bytemuck::cast_slice(&bytes);
+            for (i, chunk) in words.chunks_exact(G2_PROJ_WORDS).enumerate() {
+                let got = g2_proj_from_words(chunk);
+                let want = pts2[i] * k + pts2[n + i];
+                assert_eq!(
+                    got, want,
+                    "G2 glv scale_add mismatch at {i} (trial {trial})"
+                );
+            }
+
+            // --- G2 add_scaled_base ---
+            let bases2: Vec<ark_bn254::G2Affine> = (0..n)
+                .map(|_| ark_bn254::G2Projective::rand(&mut rng).into_affine())
+                .collect();
+            let vs2: Vec<ark_bn254::G2Projective> = (0..n)
+                .map(|_| ark_bn254::G2Projective::rand(&mut rng))
+                .collect();
+            let vbuf2 = ctx.buffer_from(
+                "glv-v2-g2",
+                bytemuck::cast_slice(&pack_slice(&vs2, g2_proj_to_words)),
+                wgpu::BufferUsages::COPY_SRC,
+            );
+            let bbuf2 = ctx.buffer_from(
+                "glv-b-g2",
+                bytemuck::cast_slice(&pack_slice(&bases2, g2_affine_to_words)),
+                wgpu::BufferUsages::empty(),
+            );
+            let mut enc = ctx
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            encode_glv_fold_add_scaled_base(
+                &ctx,
+                &mut enc,
+                Curve::G2,
+                &vbuf2,
+                &bbuf2,
+                &d2,
+                n as u32,
+                0,
+                0,
+                0,
+            );
+            ctx.queue.submit([enc.finish()]);
+            let bytes = ctx
+                .read_buffer(&vbuf2, 0, n as u64 * G2_PROJ_WORDS as u64 * 4)
+                .await;
+            let words: &[u32] = bytemuck::cast_slice(&bytes);
+            for (i, chunk) in words.chunks_exact(G2_PROJ_WORDS).enumerate() {
+                let got = g2_proj_from_words(chunk);
+                let want = vs2[i] + bases2[i] * k;
+                assert_eq!(got, want, "G2 glv add_scaled_base mismatch at {i}");
+            }
+        }
+    });
+}

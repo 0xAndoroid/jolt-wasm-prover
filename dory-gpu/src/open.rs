@@ -27,16 +27,15 @@ use dory_pcs::primitives::transcript::Transcript;
 use dory_pcs::reduce_and_fold::{generate_sigma1_proof, generate_sigma2_proof};
 use dory_pcs::{DoryProof, Mode};
 
-use crate::coop::{encode_miller_computed_coop, encode_miller_prepared_coop};
+use crate::coop::{encode_miller_computed_auto, encode_miller_prepared_auto};
 use crate::fold::{
-    encode_fixed_base_mul, encode_fold_add_scaled_base, encode_fold_scalars, encode_fold_scale_add,
+    encode_fixed_base_mul, encode_fold_scalars, encode_glv_fold_add_scaled_base,
+    encode_glv_fold_scale_add, glv_decompose,
 };
 use crate::msm::{encode_msm, encode_normalize, encode_prep_scalars, Curve, MsmCall};
 use crate::pairing::{encode_product_reduce, final_exponentiation, read_miller_products};
 use crate::prove::GpuDory;
-use crate::repr::{
-    fr_canonical_words, fr_to_words, g1_proj_to_words, pack_slice, G1_PROJ_WORDS, G2_PROJ_WORDS,
-};
+use crate::repr::{fr_to_words, g1_proj_to_words, pack_slice, G1_PROJ_WORDS, G2_PROJ_WORDS};
 
 type Proof = DoryProof<ArkG1, ArkG2, ArkGT>;
 
@@ -126,7 +125,7 @@ impl GpuDory {
         self.ctx.poll_wait();
 
         let mut enc = self.encoder();
-        let state = encode_miller_prepared_coop(
+        let state = encode_miller_prepared_auto(
             &self.ctx,
             &mut enc,
             &rows_affine,
@@ -366,7 +365,7 @@ impl GpuDory {
             let mut enc = self.encoder();
             let v1_aff = encode_normalize(ctx, &mut enc, Curve::G1, v1, n);
             let d1_state =
-                encode_miller_prepared_coop(ctx, &mut enc, &v1_aff, self.prepared_g2(), n2, n);
+                encode_miller_prepared_auto(ctx, &mut enc, &v1_aff, self.prepared_g2(), n2, n);
             encode_product_reduce(ctx, &mut enc, &d1_state, n2, 2);
 
             let prep_s2 = encode_prep_scalars(ctx, &mut enc, Curve::G1, &s2, n);
@@ -453,7 +452,7 @@ impl GpuDory {
                 let half_bytes = n2 as u64 * 16 * 4;
                 enc.copy_buffer_to_buffer(self.g1_affine(), 0, &g1_dup, 0, half_bytes);
                 enc.copy_buffer_to_buffer(self.g1_affine(), 0, &g1_dup, half_bytes, half_bytes);
-                let state = encode_miller_computed_coop(ctx, &mut enc, &g1_dup, &v2_aff, n);
+                let state = encode_miller_computed_auto(ctx, &mut enc, &g1_dup, &v2_aff, n);
                 encode_product_reduce(ctx, &mut enc, &state, n2, 2);
                 D2Path::Miller(state)
             };
@@ -512,26 +511,28 @@ impl GpuDory {
             blinds.r_c = blinds.r_c + blinds.r_d2 * beta.0 + blinds.r_d1 * beta_inv;
 
             // --- Apply first challenge + second message ---
+            let beta_glv = glv_decompose(Curve::G1, &beta.0);
+            let beta_inv_glv = glv_decompose(Curve::G2, &beta_inv);
             let mut enc = self.encoder();
-            encode_fold_add_scaled_base(
+            encode_glv_fold_add_scaled_base(
                 ctx,
                 &mut enc,
                 Curve::G1,
                 v1,
                 self.g1_affine(),
-                &fr_canonical_words(&beta.0),
+                &beta_glv,
                 n,
                 0,
                 0,
                 0,
             );
-            encode_fold_add_scaled_base(
+            encode_glv_fold_add_scaled_base(
                 ctx,
                 &mut enc,
                 Curve::G2,
                 &v2,
                 self.g2_affine(),
-                &fr_canonical_words(&beta_inv),
+                &beta_inv_glv,
                 n,
                 0,
                 0,
@@ -547,7 +548,7 @@ impl GpuDory {
             let half_q = n2 as u64 * 32 * 4;
             enc.copy_buffer_to_buffer(&v2_aff2, half_q, &q_swap, 0, half_q);
             enc.copy_buffer_to_buffer(&v2_aff2, 0, &q_swap, half_q, half_q);
-            let c_state = encode_miller_computed_coop(ctx, &mut enc, &v1_aff2, &q_swap, n);
+            let c_state = encode_miller_computed_auto(ctx, &mut enc, &v1_aff2, &q_swap, n);
             encode_product_reduce(ctx, &mut enc, &c_state, n2, 2);
 
             // E1± over v1 bases, E2± over v2 bases (cross scalar halves).
@@ -656,29 +657,11 @@ impl GpuDory {
             blinds.r_e2 = blinds.r_e2 + round_e2[0] * alpha.0 + round_e2[1] * alpha_inv;
 
             // --- Apply second challenge (fold to n/2) ---
+            let alpha_glv = glv_decompose(Curve::G1, &alpha.0);
+            let alpha_inv_glv = glv_decompose(Curve::G2, &alpha_inv);
             let mut enc = self.encoder();
-            encode_fold_scale_add(
-                ctx,
-                &mut enc,
-                Curve::G1,
-                v1,
-                &fr_canonical_words(&alpha.0),
-                n2,
-                0,
-                n2,
-                0,
-            );
-            encode_fold_scale_add(
-                ctx,
-                &mut enc,
-                Curve::G2,
-                &v2,
-                &fr_canonical_words(&alpha_inv),
-                n2,
-                0,
-                n2,
-                0,
-            );
+            encode_glv_fold_scale_add(ctx, &mut enc, Curve::G1, v1, &alpha_glv, n2, 0, n2, 0);
+            encode_glv_fold_scale_add(ctx, &mut enc, Curve::G2, &v2, &alpha_inv_glv, n2, 0, n2, 0);
             encode_fold_scalars(ctx, &mut enc, &s1, &fr_to_words(&alpha.0), n2, 0, n2, 0);
             encode_fold_scalars(ctx, &mut enc, &s2, &fr_to_words(&alpha_inv), n2, 0, n2, 0);
             ctx.queue.submit([enc.finish()]);

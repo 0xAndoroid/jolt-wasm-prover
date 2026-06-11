@@ -12,6 +12,7 @@ ark-std = { version = "0.5", default-features = false, features = ["std"] }
 # zk enabled to match jolt-core's workspace feature unification (the proof
 # struct gains cfg-gated fields; Transparent mode leaves them None).
 dory-pcs = { version = "0.3.0", features = ["backends", "zk", "cache"] }
+jolt-optimizations = { path = "../../arkworks-algebra/jolt-optimizations" }
 bytemuck = { version = "1", features = ["derive"] }
 futures-channel = "0.3"
 rayon = "1"

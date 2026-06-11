@@ -15,7 +15,7 @@ use dory_pcs::primitives::transcript::Transcript;
 use dory_pcs::{DoryProof, ProverSetup, Transparent};
 
 use crate::context::GpuContext;
-use crate::coop::encode_miller_prepared_coop;
+use crate::coop::encode_miller_prepared_auto;
 use crate::fold::{build_fixed_base_table_g2, encode_vmv};
 use crate::msm::{encode_msm, encode_normalize, encode_prep_scalars, Curve, MsmCall};
 use crate::open::OpeningInputs;
@@ -192,7 +192,7 @@ impl GpuDory {
         self.ctx.poll_wait();
 
         let mut enc = self.encoder();
-        let state = encode_miller_prepared_coop(
+        let state = encode_miller_prepared_auto(
             &self.ctx,
             &mut enc,
             &rows_affine,

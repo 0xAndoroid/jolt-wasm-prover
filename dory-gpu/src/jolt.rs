@@ -13,15 +13,15 @@ use dory_pcs::primitives::transcript::Transcript;
 use dory_pcs::{DoryProof, Mode};
 
 use crate::commit::{encode_onehot_rows, encode_rlc_combine, ONEHOT_STRIPES, RLC_META_STRIDE};
-use crate::coop::encode_miller_prepared_coop;
-use crate::fold::{encode_fold_scale_add, encode_vmv};
+use crate::coop::encode_miller_prepared_auto;
+use crate::fold::{encode_glv_fold_scale_add, encode_vmv, glv_decompose};
 use crate::msm::{encode_msm, encode_normalize, encode_prep_scalars_small, Curve, MsmCall};
 use crate::open::OpeningBuffers;
 use crate::pairing::{encode_product_reduce, read_miller_products};
 use crate::prove::GpuDory;
 use crate::repr::{
-    fr_canonical_words, fr_from_words, fr_to_words, g1_proj_from_words, g1_proj_to_words,
-    pack_slice, G1_AFFINE_WORDS, G1_PROJ_WORDS,
+    fr_from_words, fr_to_words, g1_proj_from_words, g1_proj_to_words, pack_slice, G1_AFFINE_WORDS,
+    G1_PROJ_WORDS,
 };
 
 type Proof =
@@ -342,7 +342,7 @@ impl JoltGpuDory {
 
         let _t2 = tracing::info_span!("gpu_tier2_multipair", pairs = total).entered();
         let mut enc = self.gpu.encoder();
-        let state = encode_miller_prepared_coop(
+        let state = encode_miller_prepared_auto(
             &ctx,
             &mut enc,
             &concat,
@@ -427,12 +427,12 @@ impl JoltGpuDory {
                 0,
                 poly.num_rows.min(num_rows) as u64 * point_bytes,
             );
-            encode_fold_scale_add(
+            encode_glv_fold_scale_add(
                 &ctx,
                 &mut enc,
                 Curve::G1,
                 &scratch,
-                &fr_canonical_words(coeff),
+                &glv_decompose(Curve::G1, coeff),
                 num_rows,
                 0,
                 acc_off,
