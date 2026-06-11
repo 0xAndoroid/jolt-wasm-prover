@@ -61,7 +61,7 @@ fn run_e2e(log_n: usize) {
 
         // GPU.
         let ctx = GpuContext::new().await.expect("gpu context");
-        let gpu = GpuDory::new(std::rc::Rc::new(ctx), prover_setup.clone());
+        let gpu = GpuDory::new(std::sync::Arc::new(ctx), prover_setup.clone());
         let matrix = gpu.upload_matrix(&coeffs_fr);
         let commitment = gpu.commit(&matrix, nu, sigma).await;
         assert_eq!(commitment.tier2, cpu_tier2, "tier-2 commitment mismatch");

@@ -6,12 +6,16 @@
 //! shaders. Final exponentiations, masks and transcript work stay on the CPU,
 //! where they are cheap and inherently sequential.
 
+pub mod commit;
 pub mod context;
 pub mod fold;
+pub mod jolt;
 pub mod msm;
+pub mod open;
 pub mod pairing;
 pub mod prove;
 pub mod repr;
 pub mod shader;
 
 pub use context::GpuContext;
+pub use wgpu;

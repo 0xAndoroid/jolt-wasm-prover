@@ -12,6 +12,8 @@ use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 mod dory_bench;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod gpu_pcs;
 mod wasm_tracing;
 
 pub use dory_bench::{dory_bench_cpu, dory_bench_gpu};
@@ -131,14 +133,18 @@ impl WasmProver {
 
         let proof_size = proof.serialized_size(ark_serialize::Compress::Yes);
 
-        let stage8_compressed =
-            proof.joint_opening_proof.serialized_size(ark_serialize::Compress::Yes);
-        let stage8_uncompressed =
-            proof.joint_opening_proof.serialized_size(ark_serialize::Compress::No);
-        let commitments_compressed =
-            proof.commitments.serialized_size(ark_serialize::Compress::Yes);
-        let commitments_uncompressed =
-            proof.commitments.serialized_size(ark_serialize::Compress::No);
+        let stage8_compressed = proof
+            .joint_opening_proof
+            .serialized_size(ark_serialize::Compress::Yes);
+        let stage8_uncompressed = proof
+            .joint_opening_proof
+            .serialized_size(ark_serialize::Compress::No);
+        let commitments_compressed = proof
+            .commitments
+            .serialized_size(ark_serialize::Compress::Yes);
+        let commitments_uncompressed = proof
+            .commitments
+            .serialized_size(ark_serialize::Compress::No);
 
         let compressed_proof_size = proof_size - stage8_compressed + (stage8_uncompressed / 3)
             - commitments_compressed
@@ -174,10 +180,18 @@ impl WasmProver {
         s: &[u64],
         q: &[u64],
     ) -> Result<ProveResult, JsValue> {
-        let z: [u64; 4] = z.try_into().map_err(|_| JsValue::from_str("z must be 4 u64s"))?;
-        let r: [u64; 4] = r.try_into().map_err(|_| JsValue::from_str("r must be 4 u64s"))?;
-        let s: [u64; 4] = s.try_into().map_err(|_| JsValue::from_str("s must be 4 u64s"))?;
-        let q: [u64; 8] = q.try_into().map_err(|_| JsValue::from_str("q must be 8 u64s"))?;
+        let z: [u64; 4] = z
+            .try_into()
+            .map_err(|_| JsValue::from_str("z must be 4 u64s"))?;
+        let r: [u64; 4] = r
+            .try_into()
+            .map_err(|_| JsValue::from_str("r must be 4 u64s"))?;
+        let s: [u64; 4] = s
+            .try_into()
+            .map_err(|_| JsValue::from_str("s must be 4 u64s"))?;
+        let q: [u64; 8] = q
+            .try_into()
+            .map_err(|_| JsValue::from_str("q must be 8 u64s"))?;
 
         let mut inputs = Vec::new();
         inputs.extend_from_slice(
@@ -200,8 +214,9 @@ impl WasmProver {
     }
 
     pub fn prove_keccak_chain(&self, input: &[u8], num_iters: u32) -> Result<ProveResult, JsValue> {
-        let input: [u8; 32] =
-            input.try_into().map_err(|_| JsValue::from_str("input must be 32 bytes"))?;
+        let input: [u8; 32] = input
+            .try_into()
+            .map_err(|_| JsValue::from_str("input must be 32 bytes"))?;
 
         let mut inputs = Vec::new();
         inputs.extend_from_slice(

@@ -29,7 +29,9 @@ fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
     println!("[{name}] Generating shared preprocessing...");
     let shared = (spec.preprocess_shared)(&mut program);
 
-    let elf_contents = program.get_elf_contents().expect("Failed to get ELF contents");
+    let elf_contents = program
+        .get_elf_contents()
+        .expect("Failed to get ELF contents");
 
     println!("[{name}] Generating prover preprocessing...");
     let prover_preprocessing = (spec.preprocess_prover)(shared);
@@ -60,14 +62,19 @@ fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
 
 fn serialize_uncompressed<T: CanonicalSerialize>(value: &T) -> Vec<u8> {
     let mut buf = Vec::with_capacity(value.serialized_size(ark_serialize::Compress::No));
-    value.serialize_uncompressed(&mut buf).expect("Failed to serialize");
+    value
+        .serialize_uncompressed(&mut buf)
+        .expect("Failed to serialize");
     buf
 }
 
 fn write_file(www_dir: &Path, filename: &str, program: &str, kind: &str, bytes: &[u8]) {
     let path = www_dir.join(filename);
     std::fs::write(&path, bytes).expect("Failed to write file");
-    println!("[{program}] {kind} preprocessing: {} bytes -> {path:?}", bytes.len());
+    println!(
+        "[{program}] {kind} preprocessing: {} bytes -> {path:?}",
+        bytes.len()
+    );
 }
 
 fn main() {

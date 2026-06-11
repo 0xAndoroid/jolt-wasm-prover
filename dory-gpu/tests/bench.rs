@@ -24,7 +24,7 @@ const DOMAIN: &[u8] = b"dory-gpu-bench";
 #[ignore = "benchmark; run explicitly"]
 fn bench_cpu_vs_gpu() {
     pollster::block_on(async {
-        let ctx = std::rc::Rc::new(GpuContext::new().await.expect("gpu context"));
+        let ctx = std::sync::Arc::new(GpuContext::new().await.expect("gpu context"));
         let mut results = Vec::new();
 
         for log_n in [16usize, 18, 20] {

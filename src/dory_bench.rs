@@ -117,7 +117,7 @@ pub fn dory_bench_cpu(log_n: usize) -> Result<String, JsValue> {
 }
 
 thread_local! {
-    static GPU_CTX: std::cell::RefCell<Option<std::rc::Rc<GpuContext>>> =
+    static GPU_CTX: std::cell::RefCell<Option<std::sync::Arc<GpuContext>>> =
         const { std::cell::RefCell::new(None) };
 }
 
@@ -134,7 +134,7 @@ pub async fn dory_bench_gpu(log_n: usize) -> Result<String, JsValue> {
         Some(ctx) => ctx,
         None => {
             clog("gpu ctx…");
-            let ctx = std::rc::Rc::new(
+            let ctx = std::sync::Arc::new(
                 GpuContext::new()
                     .await
                     .map_err(|e| JsValue::from_str(&format!("webgpu init: {e}")))?,

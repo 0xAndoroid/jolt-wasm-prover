@@ -1,9 +1,8 @@
 //! wgpu device management: initialization, pipeline cache, buffer helpers,
 //! and async readback that works on both native (Metal) and WASM (WebGPU).
 
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 
 use wgpu::util::DeviceExt;
 
@@ -11,8 +10,11 @@ pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub limits: wgpu::Limits,
-    modules: RefCell<HashMap<&'static str, wgpu::ShaderModule>>,
-    pipelines: RefCell<HashMap<(&'static str, &'static str), Rc<wgpu::ComputePipeline>>>,
+    // Mutex (not RefCell) so the context can be shared across threads on
+    // native, where wgpu types are Send + Sync; on WASM the context stays
+    // on its creating thread and the locks are uncontended.
+    modules: Mutex<HashMap<&'static str, wgpu::ShaderModule>>,
+    pipelines: Mutex<HashMap<(&'static str, &'static str), Arc<wgpu::ComputePipeline>>>,
 }
 
 impl GpuContext {
@@ -50,8 +52,8 @@ impl GpuContext {
             device,
             queue,
             limits,
-            modules: RefCell::new(HashMap::new()),
-            pipelines: RefCell::new(HashMap::new()),
+            modules: Mutex::new(HashMap::new()),
+            pipelines: Mutex::new(HashMap::new()),
         })
     }
 
@@ -63,11 +65,11 @@ impl GpuContext {
         module_key: &'static str,
         entry: &'static str,
         source: impl FnOnce() -> String,
-    ) -> Rc<wgpu::ComputePipeline> {
-        if let Some(p) = self.pipelines.borrow().get(&(module_key, entry)) {
+    ) -> Arc<wgpu::ComputePipeline> {
+        if let Some(p) = self.pipelines.lock().unwrap().get(&(module_key, entry)) {
             return p.clone();
         }
-        let mut modules = self.modules.borrow_mut();
+        let mut modules = self.modules.lock().unwrap();
         let module = modules.entry(module_key).or_insert_with(|| {
             // WARNING: keep default runtime checks (forced loop bounding ON).
             // On Apple Metal, disabling naga's loop bounding makes the
@@ -80,7 +82,7 @@ impl GpuContext {
                     source: wgpu::ShaderSource::Wgsl(source().into()),
                 })
         });
-        let pipeline = Rc::new(self.device.create_compute_pipeline(
+        let pipeline = Arc::new(self.device.create_compute_pipeline(
             &wgpu::ComputePipelineDescriptor {
                 label: Some(entry),
                 layout: None,
@@ -91,7 +93,8 @@ impl GpuContext {
             },
         ));
         self.pipelines
-            .borrow_mut()
+            .lock()
+            .unwrap()
             .insert((module_key, entry), pipeline.clone());
         pipeline
     }

@@ -26,7 +26,7 @@ fn gpu_only_2_16() {
         let point_fr: Vec<Fr> = (0..log_n).map(|_| Fr::rand(&mut rng)).collect();
         let setup = ProverSetup::<BN254>::new(log_n);
 
-        let ctx = std::rc::Rc::new(GpuContext::new().await.unwrap());
+        let ctx = std::sync::Arc::new(GpuContext::new().await.unwrap());
         let gpu = GpuDory::new(ctx, setup);
         let matrix = gpu.upload_matrix(&coeffs_fr);
 

@@ -7,11 +7,16 @@ edition = "2021"
 members = ["guests/sha2", "guests/secp256k1", "guests/sha3-chain", "dory-gpu"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [[bin]]
 name = "generate-preprocessing"
 path = "preprocessing/generate.rs"
+required-features = ["native"]
+
+[[bin]]
+name = "bench-e2e"
+path = "preprocessing/bench_e2e.rs"
 required-features = ["native"]
 
 [[bin]]
@@ -37,7 +42,8 @@ web-sys = { version = "0.3", features = ["console", "Window", "Performance"] }
 console_error_panic_hook = "0.1"
 getrandom = { version = "0.2.16", features = ["js"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["std"] }
+rayon = "1"
+tracing-subscriber = { version = "0.3", features = ["std", "registry"] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 postcard = { version = "1.1", features = ["use-std"] }
@@ -57,6 +63,7 @@ jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", features = ["ho
 jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", features = ["host"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "0.4"
 jolt-sdk = { git = "https://github.com/a16z/jolt", features = ["host", "zk"] }
 sha2-guest = { path = "guests/sha2" }
 secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
