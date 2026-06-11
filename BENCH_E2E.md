@@ -83,14 +83,45 @@ Attribution of the GPU loss, in order:
    reduce pass would multiply parallelism by ~32.
 4. Tier-2 batching works as designed (4.3 s for 184k pairings).
 
-## Browser (Chrome, WebGPU/Tint + wasm)
+## Browser (headless Chromium, WebGPU/Tint + wasm, 10 worker threads)
 
-See the results table below (same guest and protocol; the prover runs in a
-worker with up to 12 rayon worker threads, the GPU engine on a dedicated
-worker sharing the wasm heap; first GPU run pays Tint pipeline compilation
-and is discarded as warmup).
+Same guest and protocol: the prover runs in a worker (rayon pool of 10),
+the GPU engine on a dedicated worker sharing the wasm heap (shared-memory
+job queue, `Atomics.waitAsync` pump). Warmup run discarded (the first GPU
+run pays Tint pipeline compilation: 746 s at 2^18, 1447 s at 2^20 — Tint
+recompiles the unrolled BN254 modules per fresh device). Every proof
+verified in-browser by the stock `WasmVerifier`.
 
-<!-- BROWSER RESULTS -->
+| scale (cycles) | CPU-WASM Dory | full-GPU Dory | GPU/CPU | wasm heap peak |
+|---|---|---|---|---|
+| 2^18 (201,547) | **10.71 s** (10.66/10.71/10.76) | **221.1 s** (189.3/221.1/234.3) | 20.6x | 0.23 / 0.30 GB |
+| 2^20 (1,003,399) | **26.80 s** (26.75/26.80/27.38) | **848.6 s** (single timed run) | 31.7x | 0.95 / 1.20 GB |
+
+The browser amplifies every native bottleneck: Tint+AGX executes the same
+WGSL 3-17x slower than naga+Metal and per-dispatch overhead is larger, so
+the sequential-dispatch pairing structure dominates even harder. The 2^20
+materialized path fits wasm's 4 GB cap with room (1.2 GB peak). GPU
+run-to-run variance is high (189-234 s at 2^18) — thermals plus wasm heap
+growth; medians over 3 runs except browser-GPU 2^20 (one timed run,
+~14 min each).
+
+## Summary
+
+| | CPU Dory e2e | full-GPU Dory e2e |
+|---|---|---|
+| native Metal, 2^20 | **9.01 s** | 44.8 s (5.0x slower) |
+| browser, 2^18 | **10.71 s** | 221.1 s (20.6x) |
+| browser, 2^20 | **26.80 s** | 848.6 s (31.7x) |
+
+The full-GPU port is correct everywhere (stock-verifier acceptance in all
+configurations, byte-identical commitments) but loses end-to-end in both
+environments. The standalone-bench conclusion ("native GPU wins") does not
+transfer: it measured against stock dory-pcs CPU routines, while the e2e
+prover's CPU baseline is the heavily optimized GLV/prepared-line code on
+all cores. Closing the native 5x gap needs, in impact order: small-scalar
+window clamping for the dense tier-1 MSMs, workgroup-cooperative Fq12
+kernels to collapse the ~450-dispatch multipairings, and striped one-hot
+gather accumulation.
 
 ## Reproducing
 

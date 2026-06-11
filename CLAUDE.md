@@ -8,15 +8,23 @@ WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compile
 
 `dory-gpu/` is a workspace crate implementing the full Dory polynomial commitment scheme (BN254) on WebGPU via wgpu 29: commit (row MSMs + tier-2 multipairing) and the complete opening proof (VMV, all reduce rounds with GPU Miller loops, folds, MSMs). Proofs are byte-identical to `dory-pcs` 0.3 (Transparent mode) and verify with its stock verifier. Final exponentiations, transcript, and single pairings stay on CPU.
 
+`gpu-pcs/` wires it into the e2e Jolt prover as `GpuDoryCommitmentScheme` — a drop-in PCS type parameter (same proof/commitment types, stock verifier verifies unchanged). It unfuses jolt-core's streamed witness commit through the `ChunkState` associated type (raw rows buffered, MSMs deferred to batched GPU passes; one-hot gather kernel `onehot.wgsl`), keeps the polynomial data GPU-resident, rebuilds the joint RLC matrix on-device (`rlc.wgsl`), and runs the GPU VMV + opening in ZK mode. GPU work executes on a device-owning engine: a thread with a private rayon pool natively (engine-side rayon on the global pool deadlocks — callers park pool threads while waiting on the engine), a dedicated worker with a shared-memory job queue on wasm (serial CPU fallbacks in `dory-gpu/src/par.rs` for the same reason). See BENCH_E2E.md for results.
+
 ```bash
 # Native correctness tests (Metal); e2e ones take minutes (AGX pipeline compiles)
 cargo nextest run --cargo-quiet -p dory-gpu
 
-# Native CPU-vs-GPU benchmark at 2^16/2^18/2^20
+# Native CPU-vs-GPU benchmark at 2^16/2^18/2^20 (standalone PCS, stock dory-pcs CPU baseline)
 cargo nextest run --cargo-quiet -p dory-gpu --test bench --run-ignored all --no-capture
 
-# Browser benchmark (after wasm-pack + frontend build + server, see below)
+# Browser standalone benchmark (after wasm-pack + frontend build + server, see below)
 node dory-bench.mjs "16,18,20" gpu,cpu     # or open /dory-bench.html manually
+
+# E2E Jolt prover benchmarks (full prove, CPU vs GPU PCS, stock-verifier gated)
+cargo build --release --features native --bin bench-e2e
+./target/release/bench-e2e --guest keccak --iters 300 --check        # byte-equality + verify gates
+./target/release/bench-e2e --guest keccak --iters 300 --pcs gpu --runs 3
+node e2e-bench-browser.mjs 300 3 cpu,gpu                              # browser e2e
 ```
 
 Key implementation constraints (Apple Metal compiler pathologies, June 2026):
@@ -24,7 +32,7 @@ Key implementation constraints (Apple Metal compiler pathologies, June 2026):
 - Kernels must stay small (≲ a dozen inlined field-mul sites): oversized kernels hang the GPU or crash the AGX compiler service. Hence split MSM pipeline (clear/acc/weight/sum/combine) and per-step Miller dispatches that share one compute pass (pass boundaries are Metal encoder switches, ~tens of ms).
 - Shader constants are injected from arkworks at runtime (`shader.rs`), storage format is bit-identical to arkworks Montgomery `BigInt<4>` (host↔GPU = memcpy); GPU points are homogeneous projective (complete RCB15 formulas), arkworks is Jacobian — converted in `repr.rs`.
 
-Status: native Metal beats vanilla native dory-pcs (2^20 opening 7.4s vs 37s). In-browser the CPU-WASM baseline wins (workspace patches dory-pcs onto the wasm-optimized arkworks fork; Tint+AGX runs the same WGSL 3–17× slower than native Metal). The sequential ~450-dispatch-per-multipairing structure is the known bottleneck; workgroup-cooperative Fq12 kernels are the next lever.
+Status: standalone, native Metal beats vanilla native dory-pcs (2^20 opening 7.4s vs 37s). **E2E, the optimized CPU baseline wins everywhere** (jolt-core's GLV/prepared-line routines on all cores are a ~10–30× faster opponent than stock dory-pcs): keccak 2^20 native 9.0s CPU vs 44.8s GPU; browser 2^18 10.7s vs 221s, 2^20 26.8s vs 849s — all GPU proofs stock-verified, commitments byte-identical to CPU (see BENCH_E2E.md). GPU loss attribution: dense tier-1 full-width MSMs (CPU uses small-scalar msm_i128 — lever: window clamping), the sequential ~450-dispatch-per-multipairing opening rounds (lever: workgroup-cooperative Fq12 kernels), occupancy-starved one-hot gather (lever: striped partial accumulators). Tint first-compile of the unrolled modules ≈10min per fresh device (persistent Chrome profile caches Dawn shaders).
 
 ## Commands
 
