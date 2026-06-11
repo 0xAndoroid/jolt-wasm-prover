@@ -2,7 +2,6 @@
 //! (v2 construction), the Fr vector-matrix product and Fr folds.
 
 use ark_bn254::G2Projective;
-use ark_ec::CurveGroup;
 
 use crate::context::GpuContext;
 use crate::msm::{Curve, PreparedScalars};
@@ -175,7 +174,7 @@ pub fn build_fixed_base_table_g2(base: &G2Projective) -> Vec<u32> {
         // base is 2^c * window_base = 2 * entries * window_base.
         window_base = acc + acc - window_base - window_base;
     }
-    let affine = G2Projective::normalize_batch(&all);
+    let affine = crate::par::normalize_batch(&all);
     let mut words = Vec::with_capacity(affine.len() * 32);
     for p in &affine {
         words.extend_from_slice(&g2_affine_to_words(p));

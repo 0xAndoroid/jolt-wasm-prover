@@ -3,6 +3,9 @@
 //   node server.mjs &        (after wasm-pack + frontend build, see CLAUDE.md)
 //   node e2e-bench-browser.mjs [iters] [runs] [modes]
 //   e.g. node e2e-bench-browser.mjs 300 3 cpu,gpu
+//
+// Uses a persistent profile so Dawn's shader cache survives across
+// invocations (first-ever GPU run pays ~10 min of Tint compilation).
 import { chromium } from "playwright";
 
 const iters = process.argv[2] || "300";
@@ -10,7 +13,7 @@ const runs = process.argv[3] || "3";
 const modes = process.argv[4] || "cpu,gpu";
 const url = `http://localhost:8080/e2e-bench.html?auto=${modes}&iters=${iters}&runs=${runs}`;
 
-const browser = await chromium.launch({
+const context = await chromium.launchPersistentContext("/tmp/e2e-bench-chrome-profile", {
   headless: true,
   args: [
     "--enable-unsafe-webgpu",
@@ -18,7 +21,8 @@ const browser = await chromium.launch({
     "--ignore-gpu-blocklist",
   ],
 });
-const page = await browser.newPage();
+const page = await context.newPage();
+page.on("crash", () => console.error("[PAGE CRASHED]"));
 page.on("console", (msg) => console.error(`[page] ${msg.text()}`));
 page.on("pageerror", (err) => console.error(`[pageerror] ${err}`));
 
@@ -31,10 +35,16 @@ let printed = 0;
 let done = false;
 while (!done && Date.now() < deadline) {
   await new Promise((r) => setTimeout(r, 5000));
-  const state = await page.evaluate(() => ({
-    results: window.__e2eResults,
-    done: window.__e2eDone === true,
-  }));
+  let state;
+  try {
+    state = await page.evaluate(() => ({
+      results: window.__e2eResults,
+      done: window.__e2eDone === true,
+    }));
+  } catch (e) {
+    console.error("[driver] evaluate failed (page gone?): " + e.message);
+    break;
+  }
   while (printed < state.results.length) {
     console.log("RESULT " + JSON.stringify(state.results[printed]));
     printed++;
@@ -42,4 +52,4 @@ while (!done && Date.now() < deadline) {
   done = state.done;
 }
 console.log(done ? "DONE" : "TIMEOUT");
-await browser.close();
+await context.close();

@@ -9,7 +9,6 @@
 //! single pairings of the VMV message, and the length-1 final message.
 
 use ark_bn254::{Fr, G1Projective, G2Projective};
-use ark_ec::CurveGroup;
 use dory_pcs::backends::arkworks::{ArkFr, ArkG1, ArkG2, ArkGT, BN254};
 use dory_pcs::primitives::poly::compute_left_right_vectors;
 use dory_pcs::primitives::transcript::Transcript;
@@ -50,8 +49,8 @@ impl GpuDory {
     pub fn new(ctx: std::sync::Arc<GpuContext>, setup: ProverSetup<BN254>) -> Self {
         let g1_proj: Vec<G1Projective> = setup.g1_vec.iter().map(|g| g.0).collect();
         let g2_proj: Vec<G2Projective> = setup.g2_vec.iter().map(|g| g.0).collect();
-        let g1_aff = G1Projective::normalize_batch(&g1_proj);
-        let g2_aff = G2Projective::normalize_batch(&g2_proj);
+        let g1_aff = crate::par::normalize_batch(&g1_proj);
+        let g2_aff = crate::par::normalize_batch(&g2_proj);
 
         let g1_words = pack_slice(&g1_aff, g1_affine_to_words);
         let g2_words = pack_slice(&g2_aff, g2_affine_to_words);
