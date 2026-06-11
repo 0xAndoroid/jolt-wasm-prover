@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 use ark_bn254::Fr;
 use ark_serialize::CanonicalDeserialize;
 use common::jolt_device::{JoltDevice, MemoryConfig};
+use gpu_pcs::GpuDoryCommitmentScheme;
 use jolt_core::curve::Bn254Curve;
 use jolt_core::poly::commitment::commitment_scheme::{
     CommitmentScheme, StreamingCommitmentScheme, ZkEvalCommitment,
@@ -26,7 +27,6 @@ use jolt_core::zkvm::proof_serialization::JoltProof;
 use jolt_core::zkvm::prover::{JoltCpuProver, JoltProverPreprocessing};
 use jolt_core::zkvm::verifier::{JoltSharedPreprocessing, JoltVerifierPreprocessing};
 use jolt_core::zkvm::{RV64IMACVerifier, Serializable};
-use jolt_wasm_prover::gpu_pcs::GpuDoryCommitmentScheme;
 
 // ---------------------------------------------------------------------------
 // Span timing layer: aggregates busy time per span name across threads.

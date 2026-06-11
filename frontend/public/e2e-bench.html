@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Jolt e2e prover bench — CPU-WASM vs full-GPU Dory</title>
+    <link rel="stylesheet" href="/dory-bench.css" />
+  </head>
+  <body>
+    <h1>Jolt e2e prover bench (keccak chain)</h1>
+    <label>iters <input id="iters" value="300" size="6" /></label>
+    <label>runs <input id="runs" value="3" size="3" /></label>
+    <button id="run-cpu">CPU e2e</button>
+    <button id="run-gpu">GPU e2e</button>
+    <table>
+      <thead>
+        <tr><th>mode</th><th>cycles</th><th>median prove</th><th>runs</th><th>verified</th></tr>
+      </thead>
+      <tbody id="results"></tbody>
+    </table>
+    <pre id="log"></pre>
+    <script type="module" src="/e2e-bench.js"></script>
+  </body>
+</html>

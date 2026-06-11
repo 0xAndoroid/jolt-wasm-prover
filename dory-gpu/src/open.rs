@@ -141,10 +141,7 @@ impl GpuDory {
         self.ctx.poll_wait();
 
         let fs = read_miller_products(&self.ctx, &state, stride, n_groups).await;
-        use rayon::prelude::*;
-        fs.into_par_iter()
-            .map(|f| ArkGT(final_exponentiation(f)))
-            .collect()
+        crate::par::final_exps(fs)
     }
 
     /// Mirror of `dory_pcs::create_evaluation_proof` over a virtual matrix:
@@ -468,7 +465,7 @@ impl GpuDory {
             let round_d2 = [sample::<Mo>(), sample::<Mo>()];
 
             let d1_fs = read_miller_products(ctx, &d1_state, n2, 2).await;
-            let (d1l, d1r) = rayon::join(
+            let (d1l, d1r) = crate::par::join2(
                 || final_exponentiation(d1_fs[0]),
                 || final_exponentiation(d1_fs[1]),
             );
@@ -485,7 +482,7 @@ impl GpuDory {
                 }
                 D2Path::Miller(state) => {
                     let fs = read_miller_products(ctx, state, n2, 2).await;
-                    rayon::join(
+                    crate::par::join2(
                         || final_exponentiation(fs[0]),
                         || final_exponentiation(fs[1]),
                     )
@@ -609,7 +606,7 @@ impl GpuDory {
             let round_e2 = [sample::<Mo>(), sample::<Mo>()];
 
             let c_fs = read_miller_products(ctx, &c_state, n2, 2).await;
-            let (cp, cm) = rayon::join(
+            let (cp, cm) = crate::par::join2(
                 || final_exponentiation(c_fs[0]),
                 || final_exponentiation(c_fs[1]),
             );

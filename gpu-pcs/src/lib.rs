@@ -1,3 +1,4 @@
+#![cfg_attr(target_arch = "wasm32", feature(stdarch_wasm_atomic_wait))]
 //! Full-GPU Dory commitment scheme for the Jolt prover (benchmark path).
 //!
 //! Drop-in replacement for `jolt_core`'s `DoryCommitmentScheme` with the
@@ -73,22 +74,139 @@ fn ark_to_jolt(ark: &ArkFr) -> Fr {
 // borrow the caller's stack.
 // ---------------------------------------------------------------------------
 
-type Job = Box<dyn FnOnce(&mut JoltGpuDory) + Send + 'static>;
+/// A queued engine job: receives the (lazily initialized) engine state and
+/// returns a future driven by the engine's executor — `pollster` on the
+/// native engine thread, the GPU worker's event loop on WASM.
+///
+/// The state is a raw pointer and the lifetimes are erased (`'static`):
+/// soundness rests on two invariants — the executor drives each job future
+/// to completion before starting the next (no state aliasing), and the
+/// submitting caller blocks until its job completed (captured borrows
+/// outlive execution).
+type JobFuture = std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'static>>;
+type Job = Box<dyn FnOnce(*mut Option<JoltGpuDory>) -> JobFuture + Send + 'static>;
 
 pub struct GpuEngine {
-    tx: std::sync::mpsc::Sender<Job>,
+    transport: Transport,
+    init: std::sync::Once,
     commit_pending: Mutex<Vec<(PolyUpload, SyncSender<CommitOut>)>>,
     commit_flush: Mutex<()>,
 }
 
 static ENGINE: OnceLock<GpuEngine> = OnceLock::new();
 
+#[cfg(not(target_arch = "wasm32"))]
+struct Transport {
+    tx: std::sync::mpsc::Sender<Job>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Transport {
+    fn start() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel::<Job>();
+        std::thread::Builder::new()
+            .name("dory-gpu-engine".into())
+            .spawn(move || {
+                // Jobs run inside a private rayon pool: callers block
+                // global-pool threads while waiting on the engine, so any
+                // engine-side parallel work routed to the global pool (ark
+                // normalize_batch during init, final exponentiations during
+                // passes) would deadlock.
+                let pool = rayon::ThreadPoolBuilder::new()
+                    .thread_name(|i| format!("dory-gpu-cpu-{i}"))
+                    .build()
+                    .expect("engine rayon pool");
+                let mut state: Option<JoltGpuDory> = None;
+                let state_addr = &mut state as *mut Option<JoltGpuDory> as usize;
+                while let Ok(job) = rx.recv() {
+                    // The pointer travels as usize: pool.install moves the
+                    // closure to a (Send-requiring) pool thread.
+                    pool.install(move || {
+                        pollster::block_on(job(state_addr as *mut Option<JoltGpuDory>))
+                    });
+                }
+            })
+            .expect("failed to spawn GPU engine thread");
+        Self { tx }
+    }
+
+    fn submit(&self, job: Job) {
+        self.tx.send(job).expect("GPU engine thread died");
+    }
+}
+
+/// WASM transport: jobs queue in shared memory; an atomic signal wakes the
+/// dedicated GPU worker (`Atomics.waitAsync` in the GPU worker's JS loop),
+/// which drains the queue through the async [`gpu_engine_drain`] export.
+/// Callers run on worker threads and may block; the GPU worker never blocks
+/// (its event loop drives the WebGPU callbacks).
+#[cfg(target_arch = "wasm32")]
+struct Transport;
+
+#[cfg(target_arch = "wasm32")]
+static WASM_JOBS: Mutex<std::collections::VecDeque<Job>> =
+    Mutex::new(std::collections::VecDeque::new());
+#[cfg(target_arch = "wasm32")]
+static WASM_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+#[cfg(target_arch = "wasm32")]
+impl Transport {
+    fn start() -> Self {
+        Self
+    }
+
+    fn submit(&self, job: Job) {
+        WASM_JOBS.lock().unwrap().push_back(job);
+        WASM_SIGNAL.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        // SAFETY: notifying a valid i32 in shared linear memory.
+        unsafe {
+            core::arch::wasm32::memory_atomic_notify(
+                &WASM_SIGNAL as *const _ as *mut i32,
+                u32::MAX,
+            );
+        }
+    }
+}
+
+/// Byte address of the GPU job signal word inside the WASM linear memory,
+/// for `Atomics.waitAsync` in the GPU worker's JS loop.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn gpu_engine_signal_addr() -> u32 {
+    &WASM_SIGNAL as *const _ as u32
+}
+
+/// Executes every queued GPU job. Must be called from the dedicated GPU
+/// worker (the thread that owns the WebGPU device); the JS loop awaits each
+/// call, so jobs run sequentially to completion.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub async fn gpu_engine_drain() {
+    thread_local! {
+        static STATE: std::cell::RefCell<Option<JoltGpuDory>> =
+            const { std::cell::RefCell::new(None) };
+    }
+    loop {
+        let job = WASM_JOBS.lock().unwrap().pop_front();
+        let Some(job) = job else { break };
+        let state_ptr = STATE.with(|s| s.as_ptr());
+        job(state_ptr).await;
+    }
+}
+
 impl GpuEngine {
-    /// Returns the process-global engine, initializing it on first use with
-    /// the setup sliced to the current Dory context's column count (Jolt's
-    /// balanced layout guarantees rows <= columns).
+    /// Returns the process-global engine, initializing the device and the
+    /// setup buffers on first use with the setup sliced to the current Dory
+    /// context's column count (Jolt's balanced layout guarantees
+    /// rows <= columns).
     pub fn get(setup: &ArkworksProverSetup) -> &'static GpuEngine {
-        ENGINE.get_or_init(|| {
+        let engine = ENGINE.get_or_init(|| GpuEngine {
+            transport: Transport::start(),
+            init: std::sync::Once::new(),
+            commit_pending: Mutex::new(Vec::new()),
+            commit_flush: Mutex::new(()),
+        });
+        engine.init.call_once(|| {
             let n = DoryGlobals::get_num_columns();
             assert!(n.is_power_of_two() && n > 1, "Dory context not initialized");
             let sliced = ProverSetup::<BN254> {
@@ -98,60 +216,70 @@ impl GpuEngine {
                 h2: setup.h2,
                 ht: setup.ht,
             };
-            let (tx, rx) = std::sync::mpsc::channel::<Job>();
-            std::thread::Builder::new()
-                .name("dory-gpu-engine".into())
-                .spawn(move || {
-                    // Initialization and jobs run inside a private rayon
-                    // pool: callers block global-pool threads while waiting
-                    // on the engine, so any engine-side parallel work routed
-                    // to the global pool (ark normalize_batch during init,
-                    // final exponentiations during jobs) would deadlock.
-                    let pool = rayon::ThreadPoolBuilder::new()
-                        .thread_name(|i| format!("dory-gpu-cpu-{i}"))
-                        .build()
-                        .expect("engine rayon pool");
-                    let mut jolt = pool.install(|| {
-                        let ctx =
-                            pollster::block_on(GpuContext::new()).expect("WebGPU init failed");
-                        let gpu = GpuDory::new(std::sync::Arc::new(ctx), sliced);
-                        JoltGpuDory::new(gpu, n as u32)
-                    });
-                    while let Ok(job) = rx.recv() {
-                        pool.install(|| job(&mut jolt));
-                    }
+            let (rtx, rrx) = std::sync::mpsc::sync_channel::<()>(1);
+            engine.transport.submit(Box::new(move |state| {
+                Box::pin(async move {
+                    let ctx = GpuContext::new().await.expect("WebGPU init failed");
+                    let gpu = GpuDory::new(std::sync::Arc::new(ctx), sliced);
+                    // SAFETY: jobs run sequentially to completion on the
+                    // engine's executor; the state pointer is valid for the
+                    // executor's lifetime.
+                    unsafe { *state = Some(JoltGpuDory::new(gpu, n as u32)) };
+                    let _ = rtx.send(());
                 })
-                .expect("failed to spawn GPU engine thread");
-            GpuEngine {
-                tx,
-                commit_pending: Mutex::new(Vec::new()),
-                commit_flush: Mutex::new(()),
-            }
-        })
+            }));
+            rrx.recv().expect("GPU engine init failed");
+        });
+        engine
     }
 
-    /// Runs `f` on the engine thread and blocks until it completes. `f` may
-    /// borrow from the caller's stack.
-    pub fn run<'env, R: Send + 'env>(
-        &self,
-        f: Box<dyn FnOnce(&mut JoltGpuDory) -> R + Send + 'env>,
-    ) -> R {
+    /// Runs `f` against the engine state and blocks until it completes.
+    /// `f` may borrow from the caller's stack.
+    pub fn run<'env, R, F>(&self, f: F) -> R
+    where
+        R: Send + 'env,
+        F: FnOnce(
+                &'env mut JoltGpuDory,
+            ) -> std::pin::Pin<Box<dyn std::future::Future<Output = R> + 'env>>
+            + Send
+            + 'env,
+    {
+        type JobIn<'e> = Box<
+            dyn FnOnce(
+                    *mut Option<JoltGpuDory>,
+                )
+                    -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'e>>
+                + Send
+                + 'e,
+        >;
+
         let (rtx, rrx) = std::sync::mpsc::sync_channel::<R>(1);
-        let job: Box<dyn FnOnce(&mut JoltGpuDory) + Send + 'env> = Box::new(move |gpu| {
-            let _ = rtx.send(f(gpu));
+        let job: JobIn<'env> = Box::new(move |state| {
+            // SAFETY: jobs run sequentially to completion on the engine's
+            // executor — the state is never aliased — and the caller blocks
+            // until completion, so 'env covers the execution.
+            let gpu: &'env mut JoltGpuDory =
+                unsafe { (*state).as_mut().expect("GPU engine not initialized") };
+            let fut = f(gpu);
+            Box::pin(async move {
+                let _ = rtx.send(fut.await);
+            })
         });
         // SAFETY: the environment lifetime is erased, but we block on `rrx`
-        // until the job has run to completion (or the engine thread died),
-        // so every borrow captured by `f` outlives its use — the same
-        // argument as scoped threads.
+        // until the job has run to completion (or the engine died), so every
+        // borrow captured by `f` outlives its use — the same argument as
+        // scoped threads.
         let job: Job = unsafe { std::mem::transmute(job) };
-        self.tx.send(job).expect("GPU engine thread died");
+        self.transport.submit(job);
         rrx.recv().expect("GPU engine dropped job (engine panic)")
     }
 
     /// Unfused commit with cross-caller coalescing: requests that arrive
     /// while a batch is in flight merge into the next batched GPU pass
-    /// (Jolt commits ~45 polynomials from a rayon `par_iter`).
+    /// (Jolt commits ~45 polynomials from a rayon `par_iter`). A short
+    /// collection window lets concurrently flattening callers land in the
+    /// same batch — each batched pass costs a near-constant ~450 Miller
+    /// dispatches, so batch COUNT dominates tier-2 wall time.
     fn commit(&self, upload: PolyUpload) -> CommitOut {
         let (rtx, rrx) = std::sync::mpsc::sync_channel::<CommitOut>(1);
         self.commit_pending.lock().unwrap().push((upload, rtx));
@@ -163,9 +291,10 @@ impl GpuEngine {
         let batch: Vec<_> = std::mem::take(&mut *self.commit_pending.lock().unwrap());
         debug_assert!(!batch.is_empty());
         let (uploads, senders): (Vec<_>, Vec<_>) = batch.into_iter().unzip();
-        let outs = self.run(Box::new(move |gpu| {
-            pollster::block_on(gpu.commit_batch(uploads))
-        }));
+        let outs = self.run(move |gpu| {
+            Box::pin(async move { gpu.commit_batch(uploads).await })
+                as std::pin::Pin<Box<dyn std::future::Future<Output = Vec<CommitOut>> + '_>>
+        });
         for (sender, out) in senders.into_iter().zip(outs) {
             let _ = sender.send(out);
         }
@@ -178,7 +307,9 @@ impl GpuEngine {
 /// Initializes the GPU engine (device, setup buffers, prepared G2 lines)
 /// outside any timed region. Requires an active Dory context.
 pub fn warmup_gpu_engine(setup: &ArkworksProverSetup) {
-    GpuEngine::get(setup).run(Box::new(|_| ()));
+    GpuEngine::get(setup).run(|_| {
+        Box::pin(async {}) as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + '_>>
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -364,15 +495,18 @@ impl CommitmentScheme for GpuDoryCommitmentScheme {
         let engine = GpuEngine::get(setup);
         let (proof, y_blinding) = {
             let _span = trace_span!("gpu_opening").entered();
-            engine.run(Box::new(move |gpu| {
-                pollster::block_on(gpu.open::<dory_pcs::ZK, _>(
-                    &left_fr,
-                    &right_fr,
-                    nu,
-                    sigma,
-                    &mut dory_transcript,
-                ))
-            }))
+            engine.run(move |gpu| {
+                Box::pin(async move {
+                    gpu.open::<dory_pcs::ZK, _>(
+                        &left_fr,
+                        &right_fr,
+                        nu,
+                        sigma,
+                        &mut dory_transcript,
+                    )
+                    .await
+                })
+            })
         };
 
         (proof, y_blinding.map(|b| ark_to_jolt(&b)))
@@ -424,9 +558,9 @@ impl CommitmentScheme for GpuDoryCommitmentScheme {
             .collect();
 
         let engine = ENGINE.get().expect("GPU engine not initialized");
-        let combined = engine.run(Box::new(move |gpu| {
-            pollster::block_on(gpu.combine_rows(&parts, num_rows as u32))
-        }));
+        let combined = engine.run(move |gpu| {
+            Box::pin(async move { gpu.combine_rows(&parts, num_rows as u32).await })
+        });
 
         GpuDoryHint {
             gpu_id: Some(JOINT_HINT),

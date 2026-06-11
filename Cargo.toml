@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["guests/sha2", "guests/secp256k1", "guests/sha3-chain", "dory-gpu"]
+members = ["guests/sha2", "guests/secp256k1", "guests/sha3-chain", "dory-gpu", "gpu-pcs"]
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [[bin]]
 name = "generate-preprocessing"
@@ -56,6 +56,7 @@ ark-serialize = { path = "../arkworks-algebra/serialize" }
 ark-ff = { path = "../arkworks-algebra/ff" }
 ark-std = { version = "0.5", default-features = false, features = ["std"] }
 dory-gpu = { path = "dory-gpu" }
+gpu-pcs = { path = "gpu-pcs" }
 dory-pcs = { version = "0.3.0", features = ["backends", "zk", "cache"] }
 
 jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", features = ["host"] }

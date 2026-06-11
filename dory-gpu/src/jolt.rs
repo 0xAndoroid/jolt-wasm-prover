@@ -11,15 +11,12 @@ use ark_std::Zero;
 use dory_pcs::backends::arkworks::{ArkFr, ArkGT, BN254};
 use dory_pcs::primitives::transcript::Transcript;
 use dory_pcs::{DoryProof, Mode};
-use rayon::prelude::*;
 
 use crate::commit::{encode_onehot_rows, encode_rlc_combine, RLC_META_STRIDE};
 use crate::fold::{encode_fold_scale_add, encode_vmv};
 use crate::msm::{encode_msm, encode_normalize, encode_prep_scalars, Curve, MsmCall};
 use crate::open::OpeningBuffers;
-use crate::pairing::{
-    encode_miller_prepared, encode_product_reduce, final_exponentiation, read_miller_products,
-};
+use crate::pairing::{encode_miller_prepared, encode_product_reduce, read_miller_products};
 use crate::prove::GpuDory;
 use crate::repr::{
     fr_canonical_words, fr_from_words, fr_to_words, g1_proj_from_words, g1_proj_to_words,
@@ -104,12 +101,14 @@ impl JoltGpuDory {
     /// stay resident for the opening.
     pub async fn commit_batch(&mut self, uploads: Vec<PolyUpload>) -> Vec<CommitOut> {
         assert!(!uploads.is_empty());
+        let _span = tracing::info_span!("gpu_commit_batch", polys = uploads.len()).entered();
         let ctx = std::sync::Arc::clone(&self.gpu.ctx);
         let cols = self.cols;
 
-        // Tier 1: per-poly row commitments, one submission.
-        let mut enc = self.gpu.encoder();
+        // Tier 1: per-poly row commitments, one submission per polynomial
+        // (separate submits keep the kernels individually attributable).
         let mut staged: Vec<(PolyKind, wgpu::Buffer, wgpu::Buffer, u32)> = Vec::new();
+        let _t1 = tracing::info_span!("gpu_tier1_pass").entered();
         for upload in &uploads {
             let num_rows = upload.num_rows();
             let rows_proj = ctx.empty_buffer(
@@ -117,8 +116,10 @@ impl JoltGpuDory {
                 num_rows as u64 * G1_PROJ_WORDS as u64 * 4,
                 wgpu::BufferUsages::COPY_SRC,
             );
+            let mut enc = self.gpu.encoder();
             match upload {
                 PolyUpload::Dense { matrix, rows } => {
+                    let _span = tracing::info_span!("gpu_tier1_dense").entered();
                     assert_eq!(matrix.len() as u32, rows * cols, "dense matrix shape");
                     let data = ctx.buffer_from(
                         "dense-matrix",
@@ -143,6 +144,8 @@ impl JoltGpuDory {
                             out_offset: 0,
                         },
                     );
+                    ctx.queue.submit([enc.finish()]);
+                    ctx.poll_wait();
                     staged.push((PolyKind::Dense { rows: *rows }, data, rows_proj, num_rows));
                 }
                 PolyUpload::OneHot {
@@ -150,6 +153,7 @@ impl JoltGpuDory {
                     k,
                     rows_per_k,
                 } => {
+                    let _span = tracing::info_span!("gpu_tier1_onehot").entered();
                     assert_eq!(
                         indices.len() as u32,
                         rows_per_k * cols,
@@ -171,6 +175,8 @@ impl JoltGpuDory {
                         k * rows_per_k,
                         0,
                     );
+                    ctx.queue.submit([enc.finish()]);
+                    ctx.poll_wait();
                     staged.push((
                         PolyKind::OneHot {
                             rows_per_k: *rows_per_k,
@@ -182,8 +188,7 @@ impl JoltGpuDory {
                 }
             }
         }
-        ctx.queue.submit([enc.finish()]);
-        ctx.poll_wait();
+        drop(_t1);
 
         // Tier 2: normalize all rows, concatenate into stride-padded groups
         // (zeroed pad = the (0,0) masked-pair convention), one multipairing.
@@ -218,6 +223,7 @@ impl JoltGpuDory {
         ctx.queue.submit([enc.finish()]);
         ctx.poll_wait();
 
+        let _t2 = tracing::info_span!("gpu_tier2_multipair", pairs = total).entered();
         let mut enc = self.gpu.encoder();
         let state = encode_miller_prepared(
             &ctx,
@@ -230,12 +236,10 @@ impl JoltGpuDory {
         encode_product_reduce(&ctx, &mut enc, &state, stride, n_groups);
         ctx.queue.submit([enc.finish()]);
         ctx.poll_wait();
+        drop(_t2);
 
         let fs = read_miller_products(&ctx, &state, stride, n_groups).await;
-        let tier2s: Vec<ArkGT> = fs
-            .into_par_iter()
-            .map(|f| ArkGT(final_exponentiation(f)))
-            .collect();
+        let tier2s: Vec<ArkGT> = crate::par::final_exps(fs);
 
         // Row readbacks (CPU hint copies) + registry.
         let mut out = Vec::with_capacity(staged.len());
@@ -360,6 +364,7 @@ impl JoltGpuDory {
         sigma: usize,
         transcript: &mut T,
     ) -> (Proof, Option<ArkFr>) {
+        let setup_span = tracing::info_span!("gpu_open_matrix_vmv").entered();
         let joint = self
             .joint
             .take()
@@ -491,11 +496,13 @@ impl JoltGpuDory {
         let v_words: &[u32] = bytemuck::cast_slice(&v_bytes);
         let v_vec_cpu: Vec<Fr> = v_words.chunks_exact(8).map(fr_from_words).collect();
         let y: Fr = v_vec_cpu
-            .par_iter()
-            .zip(right.par_iter())
+            .iter()
+            .zip(right.iter())
             .map(|(v, r)| *v * *r)
             .sum();
 
+        drop(setup_span);
+        let rounds_span = tracing::info_span!("gpu_open_rounds").entered();
         let buffers = OpeningBuffers {
             v1: &v1,
             v_vec: &v_vec_buf,
@@ -508,6 +515,7 @@ impl JoltGpuDory {
             .gpu
             .prove_from_buffers::<Mo, T>(&buffers, || y, transcript)
             .await;
+        drop(rounds_span);
 
         // A proof consumes the registered polynomials.
         self.polys.clear();

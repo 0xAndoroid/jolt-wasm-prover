@@ -1,0 +1,20 @@
+[package]
+name = "gpu-pcs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ark-bn254 = { path = "../../arkworks-algebra/curves/bn254" }
+ark-serialize = { path = "../../arkworks-algebra/serialize" }
+dory-gpu = { path = "../dory-gpu" }
+dory-pcs = { version = "0.3.0", features = ["backends", "zk", "cache"] }
+jolt-core = { git = "https://github.com/a16z/jolt", default-features = false, features = ["prover", "zk"] }
+rayon = "1"
+tracing = "0.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster = "0.4"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"

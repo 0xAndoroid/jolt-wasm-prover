@@ -13,6 +13,7 @@ pub mod jolt;
 pub mod msm;
 pub mod open;
 pub mod pairing;
+pub mod par;
 pub mod prove;
 pub mod repr;
 pub mod shader;

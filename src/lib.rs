@@ -12,8 +12,6 @@ use wasm_bindgen::prelude::*;
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 mod dory_bench;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod gpu_pcs;
 mod wasm_tracing;
 
 pub use dory_bench::{dory_bench_cpu, dory_bench_gpu};
@@ -228,6 +226,122 @@ impl WasmProver {
                 .map_err(|e| JsValue::from_str(&format!("num_iters serialization error: {e}")))?,
         );
         self.prove_with_inputs(&inputs)
+    }
+}
+
+/// Prover backed by the full-GPU Dory PCS (WebGPU). Requires the dedicated
+/// GPU worker to be pumping `gpu_engine_drain` (see e2e-gpu-worker.js);
+/// proofs verify with the stock `WasmVerifier`.
+#[wasm_bindgen]
+pub struct WasmGpuProver {
+    preprocessing: JoltProverPreprocessing<Fr, gpu_pcs::GpuDoryCommitmentScheme>,
+    elf_bytes: Vec<u8>,
+}
+
+#[wasm_bindgen]
+impl WasmGpuProver {
+    #[wasm_bindgen(constructor)]
+    pub fn new(preprocessing_bytes: &[u8], elf_bytes: &[u8]) -> Result<WasmGpuProver, JsValue> {
+        use jolt_core::poly::commitment::dory::ArkworksProverSetup;
+        use jolt_core::zkvm::verifier::JoltSharedPreprocessing;
+        use std::io::Cursor;
+
+        let mut cursor = Cursor::new(preprocessing_bytes);
+        let generators = ArkworksProverSetup::deserialize_with_mode(
+            &mut cursor,
+            ark_serialize::Compress::No,
+            ark_serialize::Validate::No,
+        )
+        .map_err(|e| JsValue::from_str(&format!("ProverSetup deserialize error: {e}")))?;
+        let shared = JoltSharedPreprocessing::deserialize_with_mode(
+            &mut cursor,
+            ark_serialize::Compress::No,
+            ark_serialize::Validate::No,
+        )
+        .map_err(|e| JsValue::from_str(&format!("SharedPreprocessing deserialize error: {e}")))?;
+
+        Ok(Self {
+            preprocessing: JoltProverPreprocessing { generators, shared },
+            elf_bytes: elf_bytes.to_vec(),
+        })
+    }
+
+    pub fn prove_keccak_chain(&self, input: &[u8], num_iters: u32) -> Result<ProveResult, JsValue> {
+        use jolt_core::zkvm::prover::JoltCpuProver;
+
+        let input: [u8; 32] = input
+            .try_into()
+            .map_err(|_| JsValue::from_str("input must be 32 bytes"))?;
+        let mut inputs = Vec::new();
+        inputs.extend_from_slice(
+            &postcard::to_allocvec(&input)
+                .map_err(|e| JsValue::from_str(&format!("input serialization error: {e}")))?,
+        );
+        inputs.extend_from_slice(
+            &postcard::to_allocvec(&num_iters)
+                .map_err(|e| JsValue::from_str(&format!("num_iters serialization error: {e}")))?,
+        );
+
+        let layout = &self.preprocessing.shared.memory_layout;
+        let memory_config = MemoryConfig {
+            max_untrusted_advice_size: layout.max_untrusted_advice_size,
+            max_trusted_advice_size: layout.max_trusted_advice_size,
+            max_input_size: layout.max_input_size,
+            max_output_size: layout.max_output_size,
+            stack_size: layout.stack_size,
+            heap_size: layout.heap_size,
+            program_size: Some(layout.program_size),
+        };
+
+        let (lazy_trace, trace, final_memory, program_io, _advice_tape) =
+            jolt_core::guest::program::trace(
+                &self.elf_bytes,
+                None,
+                &inputs,
+                &[],
+                &[],
+                &memory_config,
+                None,
+            );
+        let num_cycles = trace.len();
+
+        let prover: JoltCpuProver<
+            '_,
+            Fr,
+            Bn254Curve,
+            gpu_pcs::GpuDoryCommitmentScheme,
+            Blake2bTranscript,
+        > = JoltCpuProver::gen_from_trace(
+            &self.preprocessing,
+            lazy_trace,
+            trace,
+            program_io.clone(),
+            None,
+            None,
+            final_memory,
+        );
+
+        let (proof, _) = prover.prove();
+
+        let proof_size = proof.serialized_size(ark_serialize::Compress::Yes);
+        // `Serializable` is only implemented for the stock-PCS proof alias;
+        // the field types are identical, so CanonicalSerialize produces the
+        // same byte format the stock verifier deserializes.
+        let mut proof_bytes = Vec::new();
+        proof
+            .serialize_compressed(&mut proof_bytes)
+            .map_err(|e| JsValue::from_str(&format!("Proof serialization error: {e}")))?;
+        let program_io_bytes = program_io
+            .serialize_to_bytes()
+            .map_err(|e| JsValue::from_str(&format!("Program IO serialization error: {e}")))?;
+
+        Ok(ProveResult {
+            proof_bytes,
+            proof_size,
+            compressed_proof_size: proof_size,
+            program_io_bytes,
+            num_cycles,
+        })
     }
 }
 
