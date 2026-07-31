@@ -8,6 +8,7 @@
 
 import fs from 'node:fs';
 import http from 'node:http';
+import { execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -42,6 +43,29 @@ async function acquireLock() {
 
 function releaseLock() {
   try { fs.rmdirSync(LOCK); } catch {}
+}
+
+// The mkdir-lock only serializes cooperating benches; it cannot see zombie
+// Metal dispatches (in-flight GPU work SURVIVES the death of the submitting
+// process — a catastrophic-tier kernel dispatch pins the device at 100% for
+// tens of minutes and silently poisons every co-run measurement). Gate timed
+// runs on actual device utilization.
+async function waitGpuQuiet(maxMs = 180_000) {
+  const start = Date.now();
+  for (;;) {
+    let util = 0;
+    try {
+      const out = execSync('ioreg -r -c IOAccelerator -d 1', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+      util = Number((out.match(/"Device Utilization %"=(\d+)/) || [])[1] ?? 0);
+    } catch { return; }
+    if (util < 10) return;
+    if (Date.now() - start > maxMs) {
+      console.error(`WARN: GPU still ${util}% busy after ${maxMs / 1000}s — proceeding, results may be co-run polluted`);
+      return;
+    }
+    console.error(`GPU busy (${util}%) — waiting for quiet device...`);
+    await sleep(10_000);
+  }
 }
 
 async function runNode(flagged, jobs) {
@@ -112,7 +136,10 @@ const flagged = arm.endsWith('flagged');
 const isChrome = arm.startsWith('chrome');
 
 let contended = false;
-if (!katOnly) contended = await acquireLock();
+if (!katOnly) {
+  contended = await acquireLock();
+  await waitGpuQuiet();
+}
 let outcome;
 try {
   const t0 = Date.now();

@@ -17,13 +17,15 @@ const tick = typeof device.tick === 'function' ? setInterval(() => device.tick()
 const tag = `${kind}-u${unroll}${guarded ? "g" : "n"} wg${wg} n${n} k${k}`;
 setTimeout(() => { console.log(`${tag} WATCHDOG ${wd || 60000}ms`); process.exit(9); }, wd || 60000);
 
-const mod = kind === "dbl" ? K.ecDblModule(wg, unroll) : K.ecMaddModule(wg, unroll, { guarded: !!guarded });
+const mod = kind === 'dbl' ? K.ecDblModule(wg, unroll)
+  : kind === 'xyzz' ? K.ecXyzzModule(wg, unroll)
+  : K.ecMaddModule(wg, unroll, { guarded: !!guarded });
 const t0 = Date.now();
 const m = device.createShaderModule({ code: mod.src });
 const pipe = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: m, entryPoint: 'main_bench' } });
 console.log(`${tag} pipeline ${Date.now() - t0}ms`);
 
-const outbuf = device.createBuffer({ size: n * 48 * 4, usage: GPUBufferUsage.STORAGE });
+const outbuf = device.createBuffer({ size: n * mod.wordsPerElem * 4, usage: GPUBufferUsage.STORAGE });
 const params = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 device.queue.writeBuffer(params, 0, new Uint32Array([k, n, 0, 0]));
 const bg = device.createBindGroup({
