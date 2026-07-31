@@ -1,5 +1,5 @@
 target
 pkg
-Cargo.lock
 node_modules
 frontend/dist
+.wasm-deps

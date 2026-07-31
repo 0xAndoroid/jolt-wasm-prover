@@ -1,0 +1,37 @@
+From b811fb6a50ff71898ad4927b475cde62b81a9d61 Mon Sep 17 00:00:00 2001
+From: Andrew Tretyakov <42178850+0xAndoroid@users.noreply.github.com>
+Date: Fri, 31 Jul 2026 02:54:06 -0400
+Subject: [PATCH] fix(ec): don't build nested rayon pools in MSM on wasm32
+
+wasm-bindgen-rayon provides exactly one fixed global pool;
+ThreadPoolBuilder::build() cannot spawn OS threads on wasm32 and
+panics at runtime. Run the inner parallel MSM on the global pool.
+Minimal wasm enablement for the Jolt WebGPU campaign, based on
+dev/twist-shout @76bb3a45 (the jolt perf/manycore-scaling pin).
+---
+ ec/src/scalar_mul/variable_base/mod.rs | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/ec/src/scalar_mul/variable_base/mod.rs b/ec/src/scalar_mul/variable_base/mod.rs
+index f9b2396e..5dc2ff49 100644
+--- a/ec/src/scalar_mul/variable_base/mod.rs
++++ b/ec/src/scalar_mul/variable_base/mod.rs
+@@ -849,7 +849,14 @@ fn msm_bigint_wnaf<V: VariableBaseMSM>(
+     cfg_chunks!(bases, chunk_size)
+         .zip(cfg_chunks!(scalars, chunk_size))
+         .map(|(bases, scalars)| {
+-            #[cfg(feature = "parallel")]
++            // wasm32: the global rayon pool is the only pool that exists
++            // (wasm-bindgen-rayon workers); ThreadPoolBuilder::build() cannot
++            // spawn OS threads and panics. Run the inner parallel MSM on the
++            // global pool instead.
++            #[cfg(all(feature = "parallel", target_arch = "wasm32"))]
++            let result = msm_bigint_wnaf_parallel::<V>(bases, scalars);
++
++            #[cfg(all(feature = "parallel", not(target_arch = "wasm32")))]
+             let result = rayon::ThreadPoolBuilder::new()
+                 .num_threads(THREADS_PER_CHUNK.min(rayon::current_num_threads()))
+                 .build()
+-- 
+2.50.1 (Apple Git-155)
+

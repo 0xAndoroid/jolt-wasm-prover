@@ -36,20 +36,20 @@ bincode = { version = "2", features = ["serde"] }
 ark-serialize = "0.5.0"
 dory = { package = "dory-pcs", version = "0.4.0", features = ["backends"] }
 
-jolt-prover = { path = "../../../jolt/.worktrees/webgpu-jolt-base/crates/jolt-prover" }
-jolt-verifier = { path = "../../../jolt/.worktrees/webgpu-jolt-base/crates/jolt-verifier" }
-jolt-witness = { path = "../../../jolt/.worktrees/webgpu-jolt-base/crates/jolt-witness" }
-jolt-dory = { path = "../../../jolt/.worktrees/webgpu-jolt-base/crates/jolt-dory" }
-jolt-field = { path = "../../../jolt/.worktrees/webgpu-jolt-base/crates/jolt-field" }
-jolt-crypto = { path = "../../../jolt/.worktrees/webgpu-jolt-base/crates/jolt-crypto" }
-jolt-transcript = { path = "../../../jolt/.worktrees/webgpu-jolt-base/crates/jolt-transcript" }
-jolt-program = { path = "../../../jolt/.worktrees/webgpu-jolt-base/crates/jolt-program" }
-tracer = { path = "../../../jolt/.worktrees/webgpu-jolt-base/tracer" }
-common = { path = "../../../jolt/.worktrees/webgpu-jolt-base/common", features = ["std"] }
+jolt-prover = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+jolt-verifier = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+jolt-witness = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+jolt-dory = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+jolt-field = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+jolt-crypto = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+jolt-transcript = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+jolt-program = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+tracer = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
+common = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["std"] }
 
-jolt-inlines-sha2 = { path = "../../../jolt/.worktrees/webgpu-jolt-base/jolt-inlines/sha2", features = ["host"] }
-jolt-inlines-secp256k1 = { path = "../../../jolt/.worktrees/webgpu-jolt-base/jolt-inlines/secp256k1", features = ["host"] }
-jolt-inlines-keccak256 = { path = "../../../jolt/.worktrees/webgpu-jolt-base/jolt-inlines/keccak256", features = ["host"] }
+jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
+jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
+jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
@@ -63,7 +63,7 @@ tracing-subscriber = { version = "0.3", features = ["std"] }
 serde_json = "1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-jolt = { package = "jolt-sdk", path = "../../../jolt/.worktrees/webgpu-jolt-base/jolt-sdk", features = ["host"] }
+jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
 sha2-guest = { path = "guests/sha2" }
 secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
 sha3-chain-guest = { path = "guests/sha3-chain" }
@@ -78,22 +78,25 @@ panic = "abort"
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
 
-# One ark world for the whole graph (the jolt workspace root does the same
-# with [replace] onto the fork). Both the registry ark-* (dory-pcs's deps) and
-# the a16z git fork (the jolt tree's deps) are redirected to a local worktree
-# of the fork pinned at dev/twist-shout@76bb3a45 plus the minimal wasm32 MSM
-# fix (branch webgpu/wasm-minimal).
+# One ark world for the whole graph: dory-pcs (crates.io) depends on registry
+# ark-* 0.5.0 while the jolt crates use the a16z fork (branch dev/twist-shout);
+# without the crates-io redirect the two resolve to distinct crate instances
+# and the fork's trait bounds are unsatisfiable. (The jolt workspace root does
+# the same with a [replace] section.) The redirect must use the same
+# branch source as jolt's own ark dependencies — a rev-pinned source would be
+# a distinct package source and split the world again, and cargo rejects
+# same-repo [patch.'…/arkworks-algebra'] tables. The exact rev
+# (76bb3a4518928f1ff7f15875f940d614bb9845e6, validated with jolt
+# 70a294ad58629af59ab89f646d6d0079b57174cb) is pinned by the committed
+# Cargo.lock; only `cargo update` can drift it.
+#
+# Proving IN THE BROWSER additionally needs two one-line wasm32 fixes that are
+# not upstream yet — see patches/ and ./setup-wasm-deps.sh, which rewrites the
+# block below onto locally patched checkouts.
+# >>> wasm-deps overrides (managed by setup-wasm-deps.sh — keep markers)
 [patch.crates-io]
-ark-bn254 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/bn254" }
-ark-ff = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ff" }
-ark-ec = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ec" }
-ark-serialize = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/serialize" }
-
-[patch.'https://github.com/a16z/arkworks-algebra']
-ark-bn254 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/bn254" }
-ark-ff = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ff" }
-ark-ec = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ec" }
-ark-serialize = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/serialize" }
-ark-poly = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/poly" }
-ark-secp256k1 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/secp256k1" }
-jolt-optimizations = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/jolt-optimizations" }
+ark-bn254 = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+ark-ff = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+ark-ec = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+ark-serialize = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+# <<< wasm-deps overrides
