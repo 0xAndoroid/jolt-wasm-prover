@@ -118,7 +118,10 @@ cargo run --release --features native --bin test-roundtrip
 ## Dependency pins
 
 Jolt crates come from [a16z/jolt](https://github.com/a16z/jolt) at rev
-`70a294ad58629af59ab89f646d6d0079b57174cb` (branch `perf/manycore-scaling`).
+`be900fc55de099c4cb50ee79310d624ed9488af8` (branch `perf/kernels-optimized`,
+PR #1714) — the optimized kernel backend rebased over main's BlindFold ZK
+support (#1690), so one pin carries both. The extra `perf/manycore-scaling`
+commits from the previous pin are not included.
 Arkworks comes from [a16z/arkworks-algebra](https://github.com/a16z/arkworks-algebra)
 branch `dev/twist-shout`; the committed `Cargo.lock` pins it to
 `76bb3a4518928f1ff7f15875f940d614bb9845e6`. The `[patch.crates-io]` block in

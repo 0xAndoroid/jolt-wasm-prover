@@ -12,7 +12,7 @@
 # Native builds (generate-preprocessing, test-roundtrip) do not need this.
 set -euo pipefail
 
-JOLT_REV=70a294ad58629af59ab89f646d6d0079b57174cb
+JOLT_REV=be900fc55de099c4cb50ee79310d624ed9488af8
 ARK_REV=76bb3a4518928f1ff7f15875f940d614bb9845e6
 JOLT_URL=https://github.com/a16z/jolt
 ARK_URL=https://github.com/a16z/arkworks-algebra

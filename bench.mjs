@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 
 const RUNS = parseInt(process.argv[2] || '3', 10);
-const TIMEOUT = 120_000;
+const TIMEOUT = parseInt(process.env.BENCH_TIMEOUT || '120000', 10);
 
 async function run() {
     const browser = await chromium.launch({

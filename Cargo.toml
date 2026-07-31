@@ -39,20 +39,20 @@ bincode = { version = "2", features = ["serde"] }
 ark-serialize = "0.5.0"
 dory = { package = "dory-pcs", version = "0.4.0", features = ["backends"] }
 
-jolt-prover = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-verifier = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-witness = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-dory = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-field = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-crypto = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-transcript = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-program = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-tracer = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-common = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["std"] }
+jolt-prover = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+jolt-verifier = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+jolt-witness = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+jolt-dory = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+jolt-field = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+jolt-crypto = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+jolt-transcript = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+jolt-program = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+tracer = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+common = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8", features = ["std"] }
 
-jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
-jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
-jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
+jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8", features = ["host"] }
+jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8", features = ["host"] }
+jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8", features = ["host"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
@@ -66,7 +66,7 @@ tracing-subscriber = { version = "0.3", features = ["std"] }
 serde_json = "1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
+jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8", features = ["host"] }
 sha2-guest = { path = "guests/sha2" }
 secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
 sha3-chain-guest = { path = "guests/sha3-chain" }
@@ -90,7 +90,7 @@ wasm-opt = false
 # a distinct package source and split the world again, and cargo rejects
 # same-repo [patch.'…/arkworks-algebra'] tables. The exact rev
 # (76bb3a4518928f1ff7f15875f940d614bb9845e6, validated with jolt
-# 70a294ad58629af59ab89f646d6d0079b57174cb) is pinned by the committed
+# be900fc55de099c4cb50ee79310d624ed9488af8) is pinned by the committed
 # Cargo.lock; only `cargo update` can drift it.
 #
 # Proving IN THE BROWSER additionally needs two one-line wasm32 fixes that are

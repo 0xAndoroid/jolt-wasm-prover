@@ -64,7 +64,7 @@ node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js
 
 ## Key Dependencies
 
-- Jolt modular crates (`jolt-prover`, `jolt-verifier`, `jolt-dory`, `tracer`, `common`, `jolt-sdk`, `jolt-inlines-*`, …) from `https://github.com/a16z/jolt` rev `70a294ad58629af59ab89f646d6d0079b57174cb` (branch `perf/manycore-scaling`)
+- Jolt modular crates (`jolt-prover`, `jolt-verifier`, `jolt-dory`, `tracer`, `common`, `jolt-sdk`, `jolt-inlines-*`, …) from `https://github.com/a16z/jolt` rev `be900fc55de099c4cb50ee79310d624ed9488af8` (branch `perf/kernels-optimized`, PR #1714 rebased over main's BlindFold #1690; the `perf/manycore-scaling` extras are not included)
 - Arkworks from `a16z/arkworks-algebra` branch `dev/twist-shout`, pinned by the committed `Cargo.lock` to `76bb3a4518928f1ff7f15875f940d614bb9845e6`; the `[patch.crates-io]` block redirects registry `ark-*` (dory-pcs's deps) onto the fork — one ark world, mirroring the jolt workspace's `[replace]`
 - `dory-pcs` 0.4.0 from crates.io
 - Browser proving needs two unpushed wasm32 fixes shipped as `patches/` + `setup-wasm-deps.sh` (see README "WASM runtime patches"); native builds work from the pinned revs directly

@@ -11,7 +11,7 @@ type LegacyProverPrep = jolt::JoltProverPreprocessing<jolt::F, jolt::Curve, jolt
 
 fn emit(
     name: &str,
-    mut program: jolt::host::Program,
+    program: jolt::host::Program,
     shared: jolt::JoltSharedPreprocessing,
     public_dir: &Path,
 ) {
