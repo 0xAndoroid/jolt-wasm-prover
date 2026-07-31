@@ -56,6 +56,7 @@ mod wasm {
         miller_cpu_fraction: f64,
         commit_pipeline: bool,
         bucket_xyzz: bool,
+        min_terms_commit: u32,
     ) {
         let mut options = jolt_kernels::webgpu::WebGpuOptions {
             disable,
@@ -65,6 +66,11 @@ mod wasm {
         };
         if min_terms > 0 {
             options.min_terms = min_terms as usize;
+        }
+        if min_terms_commit > 0 {
+            let _ = options
+                .min_terms_per_slot
+                .insert("commit".to_owned(), min_terms_commit as usize);
         }
         if handoff_len > 0 {
             options.handoff_len = handoff_len as usize;
