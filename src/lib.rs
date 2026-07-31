@@ -218,13 +218,12 @@ mod wasm {
             self.out.proof_bytes.clone()
         }
 
+        /// Size of the one wire format there is: a bincode envelope whose
+        /// curve points are arkworks-compressed (jolt-dory/jolt-crypto serde
+        /// impls all use `serialize_compressed`). The legacy demo's separate
+        /// "compressed" size does not exist for the modular proof type.
         #[wasm_bindgen(getter)]
         pub fn proof_size(&self) -> usize {
-            self.out.proof_bytes.len()
-        }
-
-        #[wasm_bindgen(getter)]
-        pub fn compressed_proof_size(&self) -> usize {
             self.out.proof_bytes.len()
         }
 

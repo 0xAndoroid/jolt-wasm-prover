@@ -76,7 +76,7 @@ All Jolt crates pulled from `https://github.com/a16z/jolt` (default branch). Ark
 
 ## Serialization
 
-Preprocessing uses **uncompressed** arkworks serialization (`Compress::No`) for fast deserialization in WASM. Proofs use **compressed** serialization (`Serializable::serialize_to_bytes`) for smaller transfer size.
+SRS preprocessing uses **uncompressed** arkworks serialization (`Compress::No`) for fast deserialization in WASM; verifier preprocessing is bincode/serde. Proofs have ONE wire format: a bincode/serde envelope whose curve points are arkworks-**compressed** (the jolt-dory/jolt-crypto serde impls all use `serialize_compressed`) — there is no separate compressed/uncompressed proof split in the modular tree.
 
 ## Deployment
 

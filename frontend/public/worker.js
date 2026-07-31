@@ -144,7 +144,6 @@ self.onmessage = async (e) => {
                     program: data.program,
                     proof: result.proof,
                     proofSize: result.proof_size,
-                    compressedProofSize: result.compressed_proof_size,
                     programIo: result.program_io,
                     numCycles: result.num_cycles,
                     paddedCycles: result.padded_cycles,
