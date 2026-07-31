@@ -55,10 +55,12 @@ mod wasm {
         handoff_len: u32,
         miller_cpu_fraction: f64,
         commit_pipeline: bool,
+        bucket_xyzz: bool,
     ) {
         let mut options = jolt_kernels::webgpu::WebGpuOptions {
             disable,
             commit_pipeline,
+            bucket_xyzz,
             ..Default::default()
         };
         if min_terms > 0 {

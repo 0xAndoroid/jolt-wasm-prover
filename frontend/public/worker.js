@@ -39,6 +39,7 @@ async function initWebGpu(module, config) {
         config.handoffLen || 0,
         config.millerCpuFraction ?? -1,
         config.commitPipeline !== false,
+        config.bucketXyzz === true,
     );
     const t1 = performance.now();
     webgpu_warmup();
