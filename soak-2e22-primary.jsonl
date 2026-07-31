@@ -1,0 +1,15 @@
+{"outcome":"ok","prove_s":79.44,"verify_s":0.369,"peakMemoryMB":2611,"millerServed":50,"wedgeCount":0,"batch":0,"run":0,"iters":1112,"wall_s":79.8}
+{"outcome":"ok","prove_s":76.23,"verify_s":0.37,"peakMemoryMB":3251,"millerServed":100,"wedgeCount":0,"batch":0,"run":1,"iters":1112,"wall_s":76.6}
+{"outcome":"ok","prove_s":75.92,"verify_s":0.361,"peakMemoryMB":3251,"millerServed":150,"wedgeCount":0,"batch":0,"run":2,"iters":1112,"wall_s":76.3}
+{"outcome":"ok","prove_s":76.54,"verify_s":0.367,"peakMemoryMB":3251,"millerServed":200,"wedgeCount":0,"batch":0,"run":3,"iters":1112,"wall_s":76.9}
+{"outcome":"ok","prove_s":75.8,"verify_s":0.363,"peakMemoryMB":3251,"millerServed":250,"wedgeCount":0,"batch":0,"run":4,"iters":1112,"wall_s":76.2}
+{"outcome":"ok","prove_s":80.23,"verify_s":0.377,"peakMemoryMB":2611,"millerServed":50,"wedgeCount":0,"batch":1,"run":0,"iters":1112,"wall_s":80.6}
+{"outcome":"ok","prove_s":76.52,"verify_s":0.369,"peakMemoryMB":3251,"millerServed":100,"wedgeCount":0,"batch":1,"run":1,"iters":1112,"wall_s":76.9}
+{"outcome":"ok","prove_s":77.33,"verify_s":0.371,"peakMemoryMB":3251,"millerServed":150,"wedgeCount":0,"batch":1,"run":2,"iters":1112,"wall_s":77.7}
+{"outcome":"ok","prove_s":76.65,"verify_s":0.366,"peakMemoryMB":3251,"millerServed":200,"wedgeCount":0,"batch":1,"run":3,"iters":1112,"wall_s":77}
+{"outcome":"ok","prove_s":76.96,"verify_s":0.365,"peakMemoryMB":3251,"millerServed":250,"wedgeCount":0,"batch":1,"run":4,"iters":1112,"wall_s":77.3}
+{"outcome":"ok","prove_s":87.27,"verify_s":0.735,"peakMemoryMB":2611,"millerServed":50,"wedgeCount":0,"batch":2,"run":0,"iters":1112,"wall_s":88}
+{"outcome":"ok","prove_s":89.92,"verify_s":0.366,"peakMemoryMB":3251,"millerServed":100,"wedgeCount":0,"batch":2,"run":1,"iters":1112,"wall_s":90.3}
+{"outcome":"ok","prove_s":77.05,"verify_s":0.367,"peakMemoryMB":3251,"millerServed":150,"wedgeCount":0,"batch":2,"run":2,"iters":1112,"wall_s":77.4}
+{"outcome":"ok","prove_s":79.36,"verify_s":0.367,"peakMemoryMB":3251,"millerServed":200,"wedgeCount":0,"batch":2,"run":3,"iters":1112,"wall_s":79.8}
+{"outcome":"ok","prove_s":78.83,"verify_s":0.374,"peakMemoryMB":3251,"millerServed":250,"wedgeCount":0,"batch":2,"run":4,"iters":1112,"wall_s":79.2}
