@@ -44,6 +44,14 @@ fn roundtrip(dir: &PathBuf, name: &str, inputs: &[u8]) {
     let start = Instant::now();
     engine::verify(&verifier_prep, &out.proof_bytes, &out.io_bytes).expect("verify");
     println!("[{name}] verified in {:.3}s", start.elapsed().as_secs_f64());
+
+    // Byte-parity gate hook: `JOLT_DUMP_PROOF_DIR=<dir>` writes the proof so
+    // arm-on/arm-off runs can be compared with `cmp`.
+    if let Ok(dir) = std::env::var("JOLT_DUMP_PROOF_DIR") {
+        let path = PathBuf::from(dir).join(format!("{name}_proof.bin"));
+        std::fs::write(&path, &out.proof_bytes).unwrap_or_else(|e| panic!("write {path:?}: {e}"));
+        println!("[{name}] proof bytes -> {path:?}");
+    }
 }
 
 // Inline registration is inventory-based (link-time); keeping the crates

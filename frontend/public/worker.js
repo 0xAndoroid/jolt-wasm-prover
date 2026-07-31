@@ -4,6 +4,8 @@ import init, {
     init_tracing,
     get_trace_json,
     clear_trace,
+    webgpu_configure,
+    webgpu_warmup,
     WasmProver,
     WasmVerifier,
 } from '/pkg/jolt_wasm_prover.js';
@@ -12,17 +14,55 @@ let wasmExports = null;
 const provers = {};
 const verifiers = {};
 
+// Spawns the dedicated GPU worker (sharing our module + memory), waits for
+// its pump to come up, then runs the blocking device warmup through the
+// job queue. Any failure leaves the prover CPU-only — the Rust side is
+// fail-closed and worker.js just reports what happened.
+async function initWebGpu(module, config) {
+    const gpuWorker = new Worker('/gpu-worker.js', { type: 'module' });
+    const ready = new Promise((resolve, reject) => {
+        gpuWorker.onmessage = (ev) => {
+            if (ev.data.type === 'gpu-ready') resolve();
+            if (ev.data.type === 'gpu-error') reject(new Error(ev.data.error));
+        };
+    });
+    const t0 = performance.now();
+    gpuWorker.postMessage({ module, memory: wasmExports.memory });
+    await ready;
+    const readyMs = performance.now() - t0;
+
+    webgpu_configure(false, config.minTerms || 0, config.handoffLen || 0);
+    const t1 = performance.now();
+    webgpu_warmup();
+    const warmupMs = performance.now() - t1;
+    console.log(
+        `[worker] webgpu up: gpu-worker ${readyMs.toFixed(0)}ms, ` +
+        `device+pipelines ${warmupMs.toFixed(0)}ms`
+    );
+    return { readyMs, warmupMs };
+}
+
 self.onmessage = async (e) => {
     const { type, data } = e.data;
 
     try {
         switch (type) {
             case 'init': {
-                wasmExports = await init('/pkg/jolt_wasm_prover_bg.wasm');
+                const response = await fetch('/pkg/jolt_wasm_prover_bg.wasm');
+                const module = await WebAssembly.compileStreaming(response);
+                wasmExports = await init({ module_or_path: module });
                 await initThreadPool(data.numThreads);
                 init_inlines();
                 init_tracing();
-                self.postMessage({ type: 'init-done' });
+                let webgpu = null;
+                if (data.webgpu) {
+                    try {
+                        webgpu = await initWebGpu(module, data.webgpu);
+                    } catch (err) {
+                        console.warn('[worker] webgpu unavailable, CPU-only:', err.message || err);
+                    }
+                }
+                self.postMessage({ type: 'init-done', webgpu });
                 break;
             }
 

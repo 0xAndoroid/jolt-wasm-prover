@@ -42,6 +42,33 @@ mod wasm {
         Ok(())
     }
 
+    /// Installs the webgpu arm's gates from the JS config. Zero values keep
+    /// the defaults. Call before [`webgpu_warmup`].
+    #[wasm_bindgen]
+    pub fn webgpu_configure(disable: bool, min_terms: u32, handoff_len: u32) {
+        let mut options = jolt_kernels::webgpu::WebGpuOptions {
+            disable,
+            ..Default::default()
+        };
+        if min_terms > 0 {
+            options.min_terms = min_terms as usize;
+        }
+        if handoff_len > 0 {
+            options.handoff_len = handoff_len as usize;
+        }
+        jolt_kernels::webgpu::configure(options);
+    }
+
+    /// Brings the WebGPU engine up (adapter, device, every pipeline),
+    /// blocking this worker until the dedicated GPU worker reports. The GPU
+    /// worker MUST already be pumping the job queue (`gpu-ready` handshake
+    /// in worker.js), or this never returns. Errors mean the prover runs
+    /// CPU-only — the caller just logs them.
+    #[wasm_bindgen]
+    pub fn webgpu_warmup() -> Result<(), JsValue> {
+        jolt_kernels::webgpu::warmup().map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
     #[wasm_bindgen]
     pub struct WasmProver {
         preprocessing: engine::ProverPrep,

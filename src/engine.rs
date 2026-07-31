@@ -117,7 +117,7 @@ pub fn prove(prep: &ProverPrep, elf: &[u8], inputs: &[u8]) -> Result<ProveOutput
         JoltVmWitnessInputs::new(&program, program_preprocessing, padded),
     );
 
-    let backend = JoltBackend::<Fr, Pcs>::optimized();
+    let backend = build_backend();
     let proof = jolt_prover::prove::<Fr, Pcs, Vc, Transcript, _>(
         &backend, prep, &config, None, &witness, &public_io,
     )
@@ -134,6 +134,32 @@ pub fn prove(prep: &ProverPrep, elf: &[u8], inputs: &[u8]) -> Result<ProveOutput
         unpadded_cycles,
         padded_cycles: config.trace_length,
     })
+}
+
+/// The webgpu arm when its engine was explicitly brought up (browser:
+/// `webgpu_warmup` after the GPU-worker handshake; native: `JOLT_WEBGPU=1`
+/// on the test binaries), the optimized arm otherwise. Fail-closed: any
+/// webgpu construction error degrades to the optimized arm, and with no
+/// warmup this is byte-for-byte the Phase-1 code path.
+fn build_backend() -> JoltBackend<Fr, Pcs> {
+    #[cfg(not(target_arch = "wasm32"))]
+    if std::env::var("JOLT_WEBGPU").is_ok_and(|v| !v.is_empty() && v != "0") {
+        if let Err(error) = jolt_kernels::webgpu::warmup() {
+            tracing::warn!(%error, "JOLT_WEBGPU=1 but warmup failed");
+        }
+    }
+    if jolt_kernels::webgpu::WebGpuEngine::get().is_some() {
+        match JoltBackend::<Fr, Pcs>::webgpu() {
+            Ok(backend) => {
+                tracing::info!("proving with the webgpu arm");
+                #[cfg(not(target_arch = "wasm32"))]
+                eprintln!("[engine] webgpu arm active");
+                return backend;
+            }
+            Err(error) => tracing::warn!(%error, "webgpu arm unavailable; optimized arm"),
+        }
+    }
+    JoltBackend::<Fr, Pcs>::optimized()
 }
 
 #[tracing::instrument(skip_all, name = "engine::verify")]
