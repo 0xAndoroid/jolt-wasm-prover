@@ -52,6 +52,7 @@ jolt-inlines-secp256k1 = { path = "../../../jolt/.worktrees/webgpu-jolt-base/jol
 jolt-inlines-keccak256 = { path = "../../../jolt/.worktrees/webgpu-jolt-base/jolt-inlines/keccak256", features = ["host"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+rayon = "1"
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen-rayon = "1.3"

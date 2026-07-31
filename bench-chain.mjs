@@ -30,7 +30,8 @@ async function run() {
     page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'));
     await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
-    await page.evaluate(async () => {
+    const tracing = process.env.BENCH_TRACING !== '0';
+    await page.evaluate(async ({ tracing }) => {
         window.__bench = { pending: new Map() };
         const worker = new Worker('/worker.js', { type: 'module' });
         window.__bench.worker = worker;
@@ -52,7 +53,7 @@ async function run() {
         const initDone = window.__bench.wait('init-done');
         worker.postMessage({
             type: 'init',
-            data: { numThreads: Math.min(navigator.hardwareConcurrency || 4, 12) },
+            data: { numThreads: Math.min(navigator.hardwareConcurrency || 4, 12), tracing },
         });
         await initDone;
 
@@ -77,8 +78,8 @@ async function run() {
             [prover, verifier, elf],
         );
         await loaded;
-    });
-    process.stderr.write('worker ready, sha2-chain loaded\n');
+    }, { tracing });
+    process.stderr.write(`worker ready, sha2-chain loaded (tracing=${tracing})\n`);
 
     const results = [];
     for (const iters of itersList) {

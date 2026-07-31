@@ -10,6 +10,26 @@ use wasm_bindgen::JsCast;
 static TRACE_EVENTS: Mutex<Vec<TraceEvent>> = Mutex::new(Vec::new());
 static START_TIME: Mutex<Option<f64>> = Mutex::new(None);
 
+/// Real per-thread ids so the aggregator can rebuild per-thread span stacks:
+/// without them, concurrent rayon-worker spans interleave on one virtual
+/// thread and B/E nesting is garbage. Driver thread = whichever tid holds
+/// the `prove` span; ids are assignment-ordered, not meaningful.
+static NEXT_TID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
+fn current_tid() -> u32 {
+    thread_local! {
+        static TID: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+    }
+    TID.with(|t| {
+        let mut id = t.get();
+        if id == 0 {
+            id = NEXT_TID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            t.set(id);
+        }
+        id
+    })
+}
+
 #[derive(Serialize, Clone)]
 struct TraceEvent {
     name: String,
@@ -70,7 +90,7 @@ where
             ph: "B".to_string(),
             ts,
             pid: 1,
-            tid: 1,
+            tid: current_tid(),
             dur: None,
             args: if args.is_empty() {
                 None
@@ -96,7 +116,7 @@ where
                 ph: "E".to_string(),
                 ts,
                 pid: 1,
-                tid: 1,
+                tid: current_tid(),
                 dur: None,
                 args: None,
             };
@@ -119,7 +139,7 @@ where
             ph: "i".to_string(),
             ts,
             pid: 1,
-            tid: 1,
+            tid: current_tid(),
             dur: None,
             args: if args.is_empty() {
                 None

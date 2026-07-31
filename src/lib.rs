@@ -1,6 +1,9 @@
 pub mod engine;
 
 #[cfg(target_arch = "wasm32")]
+pub mod bench_stream;
+
+#[cfg(target_arch = "wasm32")]
 mod wasm_tracing;
 
 #[cfg(target_arch = "wasm32")]

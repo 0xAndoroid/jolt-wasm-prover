@@ -4,6 +4,7 @@ import init, {
     init_tracing,
     get_trace_json,
     clear_trace,
+    bench_stream,
     WasmProver,
     WasmVerifier,
 } from '/pkg/jolt_wasm_prover.js';
@@ -21,8 +22,14 @@ self.onmessage = async (e) => {
                 wasmExports = await init('/pkg/jolt_wasm_prover_bg.wasm');
                 await initThreadPool(data.numThreads);
                 init_inlines();
-                init_tracing();
+                if (data.tracing !== false) init_tracing();
                 self.postMessage({ type: 'init-done' });
+                break;
+            }
+
+            case 'bench-stream': {
+                const out = bench_stream(data.kind, data.log2Len, data.passes);
+                self.postMessage({ type: 'bench-done', result: JSON.parse(out) });
                 break;
             }
 
