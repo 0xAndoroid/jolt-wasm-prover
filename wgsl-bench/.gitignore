@@ -1,0 +1,4 @@
+node_modules/
+results/*-kat.json
+results/*-quick.json
+package-lock.json
