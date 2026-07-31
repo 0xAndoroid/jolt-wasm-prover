@@ -1,6 +1,13 @@
 //! Modular-prover engine shared by the wasm bindings and the native
 //! roundtrip test: deserializes shipped preprocessing, traces the guest ELF,
 //! and runs `jolt_prover::prove` / `jolt_verifier::verify`.
+//!
+//! Compiled with `jolt-prover/zk`: proofs are BlindFold ZK (hiding witness
+//! commitments, committed sumcheck rounds, BlindFold tail), randomized per
+//! run — there is no byte oracle, the correctness bar is verifier acceptance.
+//! The verifier preprocessing must carry the BlindFold vector-commitment
+//! setup (`vc_setup`), which `generate-preprocessing` emits under the same
+//! feature.
 
 use std::io::Cursor;
 

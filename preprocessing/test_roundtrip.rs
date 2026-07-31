@@ -52,7 +52,7 @@ use jolt_inlines_keccak256 as _;
 use jolt_inlines_secp256k1 as _;
 use jolt_inlines_sha2 as _;
 
-fn main() {
+fn run_all() {
     let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
 
     let sha2_input: &[u8] = b"jolt wasm prover roundtrip test input";
@@ -64,4 +64,16 @@ fn main() {
     roundtrip(&public_dir, "sha2_chain", &inputs);
 
     println!("All roundtrips passed!");
+}
+
+fn main() {
+    // BlindFold verification (and the prover's replay of it) recurses over a
+    // large folded R1CS — run on a dedicated wide stack like jolt's own ZK
+    // e2e suite does.
+    std::thread::Builder::new()
+        .stack_size(128 * 1024 * 1024)
+        .spawn(run_all)
+        .expect("spawn roundtrip thread")
+        .join()
+        .expect("roundtrip thread panicked");
 }

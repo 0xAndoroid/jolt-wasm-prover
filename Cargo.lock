@@ -1362,6 +1362,7 @@ version = "0.1.0"
 source = "git+https://github.com/a16z/jolt?rev=be900fc55de099c4cb50ee79310d624ed9488af8#be900fc55de099c4cb50ee79310d624ed9488af8"
 dependencies = [
  "common",
+ "jolt-blindfold",
  "jolt-claims",
  "jolt-crypto",
  "jolt-field",
@@ -1370,10 +1371,12 @@ dependencies = [
  "jolt-openings",
  "jolt-poly",
  "jolt-program",
+ "jolt-prover-legacy",
  "jolt-sumcheck",
  "jolt-transcript",
  "jolt-verifier",
  "jolt-witness",
+ "rand_core 0.6.4",
  "thiserror 2.0.18",
  "tracing",
 ]
@@ -1399,6 +1402,7 @@ dependencies = [
  "eyre",
  "fixedbitset",
  "itertools 0.15.0",
+ "jolt-blindfold",
  "jolt-claims",
  "jolt-crypto",
  "jolt-dory",

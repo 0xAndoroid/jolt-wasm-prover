@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compiles Jolt's modular prover (`jolt-prover`, backend-optimized path) and verifier to WebAssembly, runs in browser with multithreading via `wasm-bindgen-rayon`.
+WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compiles Jolt's modular prover (`jolt-prover`, backend-optimized path, **BlindFold ZK mode** via the `zk` feature) and verifier to WebAssembly, runs in browser with multithreading via `wasm-bindgen-rayon`. ZK proofs are randomized (fresh Pedersen blinds per run) — no byte oracle; correctness bar is verifier acceptance.
 
 ## Commands
 
@@ -81,8 +81,8 @@ node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js
 ## Serialization
 
 - `{name}_prover.bin` — dory-pcs `ArkworksProverSetup` (SRS), **uncompressed** arkworks serialization for fast deserialization in WASM
-- `{name}_verifier.bin` — `jolt_verifier::JoltVerifierPreprocessing`, bincode2/serde
-- Proofs and `JoltDevice` (program IO) — bincode2
+- `{name}_verifier.bin` — `jolt_verifier::JoltVerifierPreprocessing`, bincode2/serde; under zk it carries `vc_setup: Some(..)` (the BlindFold Pedersen setup) — regenerate whenever the zk feature set changes
+- Proofs and `JoltDevice` (program IO) — bincode2; zk proofs carry `JoltProofClaims::Zk { blindfold_proof }` and are randomized per run
 
 ## Threads
 

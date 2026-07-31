@@ -115,6 +115,14 @@ Validates that preprocessing serialization is deterministic and cross-platform:
 cargo run --release --features native --bin test-roundtrip
 ```
 
+## BlindFold ZK
+
+The modular prover compiles with `jolt-prover/zk`: hiding witness
+commitments, committed sumcheck rounds, and the BlindFold tail (jolt
+PR #1690). Proofs are randomized per run — verify them, don't byte-compare
+them. Verification (and the prover's internal replay of it) recurses over a
+folded R1CS, so the native roundtrip runs on a 128 MB stack.
+
 ## Dependency pins
 
 Jolt crates come from [a16z/jolt](https://github.com/a16z/jolt) at rev
