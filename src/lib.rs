@@ -13,6 +13,7 @@ mod wasm {
     #[wasm_bindgen(start)]
     pub fn wasm_main() {
         console_error_panic_hook::set_once();
+        web_sys::console::log_1(&"jolt-wasm-prover build tag 2".into());
     }
 
     #[wasm_bindgen]

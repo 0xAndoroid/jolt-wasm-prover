@@ -30,6 +30,7 @@ self.onmessage = async (e) => {
                 const name = data.program;
                 provers[name] = new WasmProver(
                     new Uint8Array(data.proverPreprocessing),
+                    new Uint8Array(data.verifierPreprocessing),
                     new Uint8Array(data.elfBytes)
                 );
                 verifiers[name] = new WasmVerifier(
@@ -62,6 +63,12 @@ self.onmessage = async (e) => {
                             data.numIters
                         );
                         break;
+                    case 'sha2-chain':
+                        result = prover.prove_sha2_chain(
+                            new Uint8Array(data.input),
+                            data.numIters
+                        );
+                        break;
                 }
 
                 const elapsed = performance.now() - start;
@@ -75,6 +82,7 @@ self.onmessage = async (e) => {
                     compressedProofSize: result.compressed_proof_size,
                     programIo: result.program_io,
                     numCycles: result.num_cycles,
+                    paddedCycles: result.padded_cycles,
                     peakMemory,
                     elapsed,
                 });
