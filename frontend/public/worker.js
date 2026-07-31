@@ -6,6 +6,7 @@ import init, {
     clear_trace,
     webgpu_configure,
     webgpu_warmup,
+    bench_stream,
     WasmProver,
     WasmVerifier,
 } from '/pkg/jolt_wasm_prover.js';
@@ -53,7 +54,7 @@ self.onmessage = async (e) => {
                 wasmExports = await init({ module_or_path: module });
                 await initThreadPool(data.numThreads);
                 init_inlines();
-                init_tracing();
+                if (data.tracing !== false) init_tracing();
                 let webgpu = null;
                 if (data.webgpu) {
                     try {
@@ -63,6 +64,12 @@ self.onmessage = async (e) => {
                     }
                 }
                 self.postMessage({ type: 'init-done', webgpu });
+                break;
+            }
+
+            case 'bench-stream': {
+                const out = bench_stream(data.kind, data.log2Len, data.passes);
+                self.postMessage({ type: 'bench-done', result: JSON.parse(out) });
                 break;
             }
 

@@ -1,0 +1,9 @@
+{"threads":10,"kind":"copy_u64","log2Len":25,"bytesPerPass":536870912,"medianMs":5.32,"minMs":5.18,"gbPerSec":100.92,"timesMs":[5.5,5.4,5.6,5.2,5.3,5.2,5.2]}
+{"threads":10,"kind":"sum_u64","log2Len":25,"bytesPerPass":268435456,"medianMs":2.48,"minMs":2.44,"gbPerSec":108.46,"timesMs":[2.4,2.6,2.5,2.5,2.5,2.5,2.5]}
+{"threads":10,"kind":"sum_u64","log2Len":26,"bytesPerPass":536870912,"medianMs":5,"minMs":4.83,"gbPerSec":107.48,"timesMs":[4.8,4.9,5.5,5,4.9,5.1,5]}
+{"threads":10,"kind":"scale_u64","log2Len":25,"bytesPerPass":536870912,"medianMs":5.12,"minMs":5.06,"gbPerSec":104.96,"timesMs":[5.2,5.1,5.3,5.1,5.1,5.1,5.1]}
+{"threads":10,"kind":"triad_u64","log2Len":25,"bytesPerPass":805306368,"medianMs":11.03,"minMs":10.92,"gbPerSec":72.98,"timesMs":[11.2,10.9,11,11.5,10.9,11,11.2]}
+{"threads":10,"kind":"fold_fr","log2Len":23,"bytesPerPass":402653184,"medianMs":28.24,"minMs":28.14,"gbPerSec":14.26,"gmulPerSec":0.1485,"timesMs":[28.3,28.4,28.2,28.1,28.2,28.4,28.2]}
+{"threads":10,"kind":"fold_fr","log2Len":24,"bytesPerPass":805306368,"medianMs":56.38,"minMs":56.02,"gbPerSec":14.28,"gmulPerSec":0.1488,"timesMs":[56.2,56.1,56.9,56.4,56,56.5,57]}
+{"threads":10,"kind":"scale_fr","log2Len":23,"bytesPerPass":536870912,"medianMs":49.83,"minMs":47.62,"gbPerSec":10.77,"gmulPerSec":0.1683,"timesMs":[50.8,47.6,48,48.7,49.9,49.8,50.4]}
+{"threads":10,"kind":"mulchain_fr","log2Len":20,"bytesPerPass":67108864,"medianMs":505.03,"minMs":478.64,"gbPerSec":0.13,"gmulPerSec":0.1329,"timesMs":[478.6,492.7,503.6,505,511.8,517.9,524.4]}
