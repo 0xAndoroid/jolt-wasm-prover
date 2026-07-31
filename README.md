@@ -4,13 +4,14 @@ In-browser zero-knowledge proving and verification using [Jolt](https://github.c
 
 ## Programs
 
-Three guest programs are included:
+Four guest programs are included:
 
 | Program | Description | Guest crate |
 |---------|-------------|-------------|
 | **SHA-256** | Hash arbitrary input | `guests/sha2` |
 | **ECDSA** | Secp256k1 signature verification | `guests/secp256k1` |
 | **Keccak Chain** | Iterated Keccak-256 hashing | `guests/sha3-chain` |
+| **SHA-256 Chain** | Iterated SHA-256 (tunable trace length, for scale benchmarks) | `guests/sha2-chain` |
 
 ## Prerequisites
 
@@ -33,7 +34,17 @@ This produces per-program files in `frontend/public/`:
 - `{name}_verifier.bin` — verifier preprocessing (Dory verifier setup + shared preprocessing)
 - `{name}.elf` — compiled guest RISC-V ELF
 
-### 2. Build WASM
+### 2. Set up patched WASM dependencies
+
+```bash
+./setup-wasm-deps.sh
+```
+
+Browser proving currently needs two one-line wasm32 fixes that are not
+upstream yet — see [WASM runtime patches](#wasm-runtime-patches-pending-upstream).
+Native builds (step 1, roundtrip test) work without this step.
+
+### 3. Build WASM
 
 ```bash
 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
@@ -41,7 +52,7 @@ CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target we
 
 Outputs the WASM package to `pkg/`.
 
-### 3. Run (dev)
+### 4. Run (dev)
 
 ```bash
 cd frontend && npm install && npm run dev
@@ -103,3 +114,44 @@ Validates that preprocessing serialization is deterministic and cross-platform:
 ```bash
 cargo run --release --features native --bin test-roundtrip
 ```
+
+## Dependency pins
+
+Jolt crates come from [a16z/jolt](https://github.com/a16z/jolt) at rev
+`70a294ad58629af59ab89f646d6d0079b57174cb` (branch `perf/manycore-scaling`).
+Arkworks comes from [a16z/arkworks-algebra](https://github.com/a16z/arkworks-algebra)
+branch `dev/twist-shout`; the committed `Cargo.lock` pins it to
+`76bb3a4518928f1ff7f15875f940d614bb9845e6`. The `[patch.crates-io]` block in
+`Cargo.toml` redirects the registry `ark-*` crates (pulled in by `dory-pcs`)
+onto the same fork so the whole graph shares one set of arkworks types.
+Build with the committed lockfile; `cargo update` can move the arkworks
+branch resolution.
+
+## WASM runtime patches (pending upstream)
+
+The repo builds everywhere from the pinned upstream revs, and native binaries
+are fully functional. Proving on `wasm32` additionally needs two one-line
+fixes that are not upstream yet, shipped in `patches/`:
+
+1. `0001-jolt-coefflut-u64.patch` — `CoeffLut::saturated()` in
+   `jolt-kernels` computes `len * len` in `usize`; at the 65536-entry table
+   this is 2^32, which wraps to 0 on 32-bit targets and later panics every
+   rayon worker with an index-out-of-bounds. Native 64-bit is unaffected.
+2. `0002-arkworks-wasm-nested-pool.patch` — `msm_bigint_wnaf` in `ark-ec`
+   builds a nested `rayon::ThreadPoolBuilder` per chunk; `build()` panics on
+   `wasm32`, where wasm-bindgen-rayon provides exactly one fixed global pool.
+   The fix runs the inner parallel MSM on the global pool.
+
+What breaks without them, empirically (HeadlessChrome 150, M4, at the pinned
+revs): the default sha2 demo (2^13 trace) **hangs** — proving never completes
+and no error surfaces; sha2-chain at 2^16 **panics** in every rayon worker
+with `index out of bounds: the len is 0` at
+`jolt-kernels/src/optimized/registers_read_write.rs:439` (the CoeffLut fix's
+exact target). With both patches applied, sha2 proves and sha2-chain at 2^16
+proves and verifies in-browser. Native 64-bit builds are unaffected either
+way (the roundtrip test passes without the patches).
+
+`./setup-wasm-deps.sh` clones both upstreams at the pinned revs into
+`.wasm-deps/`, applies the patches, and rewrites the marked override block in
+`Cargo.toml` onto the patched checkouts. `./setup-wasm-deps.sh --revert`
+restores the pinned block.

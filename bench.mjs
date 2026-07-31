@@ -4,7 +4,10 @@ const RUNS = parseInt(process.argv[2] || '3', 10);
 const TIMEOUT = 120_000;
 
 async function run() {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+        headless: true,
+        channel: process.env.PW_CHANNEL || undefined,
+    });
     const context = await browser.newContext();
     const page = await context.newPage();
 
@@ -13,7 +16,7 @@ async function run() {
         if (text.startsWith('[sha2]')) process.stderr.write(text + '\n');
     });
 
-    await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
+    await page.goto(process.env.BENCH_URL || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     await page.waitForFunction(
         () => document.getElementById('status')?.classList.contains('ready'),
@@ -22,23 +25,23 @@ async function run() {
 
     const timings = [];
     for (let i = 0; i < RUNS; i++) {
-        const output = page.locator('#page-sha2 .output');
-        await output.evaluate(el => el.textContent = '');
-
         await page.click('#page-sha2 .prove-btn');
 
-        const result = await output.evaluateHandle(
-            (el) => new Promise((resolve) => {
-                const obs = new MutationObserver(() => {
-                    const m = el.textContent.match(/Proof generated in ([\d.]+)s/);
-                    if (m) { obs.disconnect(); resolve(m[1]); }
-                });
-                obs.observe(el, { childList: true, characterData: true, subtree: true });
-                const m = el.textContent.match(/Proof generated in ([\d.]+)s/);
-                if (m) { obs.disconnect(); resolve(m[1]); }
-            }),
+        // The output element only exists once the first log line lands, so
+        // count completed proofs instead of clearing the log between runs.
+        await page.waitForFunction(
+            (n) => {
+                const el = document.querySelector('#page-sha2 .output');
+                return el && (el.textContent.match(/Proof generated in [\d.]+s/g) || []).length >= n;
+            },
+            i + 1,
+            { timeout: TIMEOUT },
         );
-        const seconds = parseFloat(await result.jsonValue());
+        const seconds = await page.evaluate(() => {
+            const m = document.querySelector('#page-sha2 .output')
+                .textContent.match(/Proof generated in ([\d.]+)s/g);
+            return parseFloat(m[m.length - 1].match(/([\d.]+)s/)[1]);
+        });
         timings.push(seconds);
         process.stderr.write(`  run ${i + 1}: ${seconds.toFixed(2)}s\n`);
 

@@ -1,5 +1,5 @@
 [package]
-name = "sha2-guest"
+name = "sha2-chain-guest"
 version = "0.1.0"
 edition = "2021"
 

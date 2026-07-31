@@ -120,4 +120,5 @@ const server = http.createServer((req, res) => {
   });
 });
 
-server.listen(8080, '127.0.0.1', () => console.log('http://localhost:8080'));
+const PORT = Number(process.env.PORT) || 8080;
+server.listen(PORT, '127.0.0.1', () => console.log(`http://localhost:${PORT}`));
