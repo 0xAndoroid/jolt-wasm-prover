@@ -28,10 +28,15 @@ async function run() {
     });
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'));
-    await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
+    await page.goto(process.env.BENCH_URL || 'http://localhost:8080', {
+        waitUntil: 'domcontentloaded',
+    });
 
     const tracing = process.env.BENCH_TRACING !== '0';
-    await page.evaluate(async ({ tracing }) => {
+    // BENCH_WEBGPU=1 engages the device arm at PRODUCTION thresholds
+    // (worker passes 0s through webgpu_configure -> defaults).
+    const webgpu = process.env.BENCH_WEBGPU === '1' ? {} : null;
+    await page.evaluate(async ({ tracing, webgpu }) => {
         window.__bench = { pending: new Map() };
         const worker = new Worker('/worker.js', { type: 'module' });
         window.__bench.worker = worker;
@@ -53,7 +58,11 @@ async function run() {
         const initDone = window.__bench.wait('init-done');
         worker.postMessage({
             type: 'init',
-            data: { numThreads: Math.min(navigator.hardwareConcurrency || 4, 12), tracing },
+            data: {
+                numThreads: Math.min(navigator.hardwareConcurrency || 4, 12),
+                tracing,
+                webgpu,
+            },
         });
         await initDone;
 
@@ -78,7 +87,7 @@ async function run() {
             [prover, verifier, elf],
         );
         await loaded;
-    }, { tracing });
+    }, { tracing, webgpu });
     process.stderr.write(`worker ready, sha2-chain loaded (tracing=${tracing})\n`);
 
     const results = [];
