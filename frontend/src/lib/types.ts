@@ -4,6 +4,20 @@ export type LoadState = 'idle' | 'loading' | 'ready'
 
 export type AppStatus = 'loading' | 'ready' | 'proving' | 'error'
 
+// 'off' = disabled via ?webgpu=0; 'unavailable' = requested but the device
+// handshake failed (prover fell back to CPU); 'pending' = init in flight.
+export type GpuStatus = 'pending' | 'on' | 'unavailable' | 'off'
+
+// Gate overrides for the WebGPU arm; {} takes the production defaults.
+export interface WebGpuConfig {
+  minTerms?: number
+  handoffLen?: number
+  millerCpuFraction?: number
+  commitPipeline?: boolean
+  bucketXyzz?: boolean
+  minTermsCommit?: number
+}
+
 export interface ProgramState {
   loadState: LoadState
   proofBytes: Uint8Array | null
@@ -19,7 +33,7 @@ export interface ProgramFiles {
 
 // Messages sent to the worker
 export type WorkerRequest =
-  | { type: 'init'; data: { numThreads: number } }
+  | { type: 'init'; data: { numThreads: number; webgpu: WebGpuConfig | null } }
   | {
       type: 'load-program'
       data: {
@@ -47,18 +61,19 @@ export type WorkerRequest =
 
 // Messages received from the worker
 export type WorkerResponse =
-  | { type: 'init-done' }
+  | { type: 'init-done'; webgpu: { readyMs: number; warmupMs: number } | null }
   | { type: 'program-loaded'; program: ProgramName }
   | {
       type: 'prove-done'
       program: ProgramName
       proof: Uint8Array
       proofSize: number
-      compressedProofSize: number
       programIo: Uint8Array
       numCycles: number | null
+      paddedCycles: number | null
       peakMemory: number | null
       elapsed: number
+      millerServed: number
     }
   | {
       type: 'verify-done'

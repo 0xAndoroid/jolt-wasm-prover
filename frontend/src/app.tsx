@@ -11,6 +11,7 @@ export function App() {
     status,
     statusText,
     wasmReady,
+    gpu,
     programStates,
     outputLogs,
     proveSha2,
@@ -63,6 +64,7 @@ export function App() {
               programState={programStates.sha2}
               appStatus={status}
               wasmReady={wasmReady}
+              gpu={gpu}
               output={outputLogs.sha2}
               onProve={() => proveSha2(sha2MessageRef.current)}
               onVerify={() => verify('sha2')}
@@ -81,6 +83,7 @@ export function App() {
               programState={programStates.keccak}
               appStatus={status}
               wasmReady={wasmReady}
+              gpu={gpu}
               output={outputLogs.keccak}
               onProve={() =>
                 proveKeccak(keccakMessageRef.current, keccakItersRef.current)

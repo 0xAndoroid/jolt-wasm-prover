@@ -1,11 +1,13 @@
 import { Button } from '@/components/ui/button'
+import { GpuBadge } from './gpu-badge'
 import { OutputLog } from './output-log'
-import type { ProgramState, AppStatus } from '@/lib/types'
+import type { ProgramState, AppStatus, GpuStatus } from '@/lib/types'
 
 export function ProgramPanel({
   programState,
   appStatus,
   wasmReady,
+  gpu,
   output,
   onProve,
   onVerify,
@@ -15,6 +17,7 @@ export function ProgramPanel({
   programState: ProgramState
   appStatus: AppStatus
   wasmReady: boolean
+  gpu: GpuStatus
   output: string
   onProve: () => void
   onVerify: () => void
@@ -40,6 +43,7 @@ export function ProgramPanel({
         >
           Generate Proof
         </Button>
+        <GpuBadge gpu={gpu} />
         <div className="flex-1" />
         <Button
           size="sm"

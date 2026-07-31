@@ -3,15 +3,22 @@ import type {
   ProgramName,
   ProgramState,
   AppStatus,
+  GpuStatus,
   WorkerResponse,
 } from '@/lib/types'
 import { PROGRAMS, PROGRAM_FILES, CACHE_BUST, SHA2_MAX_BYTES } from '@/lib/constants'
 import { WorkerClient } from '@/lib/worker-client'
 
+// Parsed once at app init; the arm can't be toggled after the thread pool
+// and GPU worker come up, so a reload is the only switch anyway.
+const WEBGPU_REQUESTED =
+  new URLSearchParams(window.location.search).get('webgpu') !== '0'
+
 interface ProverState {
   status: AppStatus
   statusText: string
   wasmReady: boolean
+  gpu: GpuStatus
   programStates: Record<ProgramName, ProgramState>
   outputLogs: Record<ProgramName, string>
 }
@@ -34,6 +41,7 @@ export function useProver() {
     status: 'loading',
     statusText: 'Initializing WASM...',
     wasmReady: false,
+    gpu: WEBGPU_REQUESTED ? 'pending' : 'off',
     programStates: initialProgramStates(),
     outputLogs: { sha2: '', keccak: '' },
   })
@@ -42,6 +50,8 @@ export function useProver() {
   const programLoadResolvers = useRef<Record<string, () => void>>({})
   const programStatesRef = useRef(state.programStates)
   programStatesRef.current = state.programStates
+  const gpuRef = useRef(state.gpu)
+  gpuRef.current = state.gpu
 
   const log = useCallback((program: ProgramName, msg: string) => {
     setState((prev) => ({
@@ -66,11 +76,19 @@ export function useProver() {
       }
 
       if (msg.type === 'init-done') {
+        const gpu: GpuStatus = !WEBGPU_REQUESTED
+          ? 'off'
+          : msg.webgpu
+            ? 'on'
+            : 'unavailable'
+        if (gpu === 'unavailable')
+          console.warn('[app] WebGPU unavailable — proving on CPU')
         setState((prev) => ({
           ...prev,
           wasmReady: true,
           status: 'ready',
           statusText: 'Ready',
+          gpu,
           programStates: initialProgramStates(),
         }))
         return
@@ -118,14 +136,11 @@ export function useProver() {
             },
           },
         }))
-        log(p, `Proof generated in ${(msg.elapsed / 1000).toFixed(2)}s`)
+        const arm = gpuRef.current === 'on' ? 'GPU' : 'CPU'
+        log(p, `Proof generated in ${(msg.elapsed / 1000).toFixed(2)}s (${arm})`)
         if (msg.numCycles != null)
           log(p, `RISC-V cycles: ${msg.numCycles.toLocaleString()}`)
         log(p, `Proof size: ${(msg.proofSize / 1024).toFixed(2)} KB`)
-        log(
-          p,
-          `Proof size (compressed): ${(msg.compressedProofSize / 1024).toFixed(2)} KB`,
-        )
         if (msg.peakMemory != null)
           log(
             p,
@@ -173,8 +188,14 @@ export function useProver() {
     clientRef.current = client
 
     const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
-    setStatus(`Initializing WASM (${numThreads} threads)...`, 'loading')
-    client.send({ type: 'init', data: { numThreads } })
+    setStatus(
+      `Initializing WASM (${numThreads} threads${WEBGPU_REQUESTED ? ' + WebGPU' : ''})...`,
+      'loading',
+    )
+    client.send({
+      type: 'init',
+      data: { numThreads, webgpu: WEBGPU_REQUESTED ? {} : null },
+    })
 
     return () => client.terminate()
   }, [handleMessage, setStatus])
@@ -337,6 +358,7 @@ export function useProver() {
     status: state.status,
     statusText: state.statusText,
     wasmReady: state.wasmReady,
+    gpu: state.gpu,
     programStates: state.programStates,
     outputLogs: state.outputLogs,
     proveSha2,
