@@ -12,7 +12,7 @@ members = [
 ]
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+crate-type = ["cdylib"]
 
 [[bin]]
 name = "generate-preprocessing"
@@ -78,10 +78,22 @@ panic = "abort"
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
 
-# Mirrors the jolt workspace root: swaps every registry ark-* 0.5.0 (including
-# dory-pcs's) for the a16z fork so the whole graph shares one ark world.
-[replace]
-"ark-bn254:0.5.0" = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
-"ark-ff:0.5.0" = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
-"ark-ec:0.5.0" = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
-"ark-serialize:0.5.0" = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+# One ark world for the whole graph (the jolt workspace root does the same
+# with [replace] onto the fork). Both the registry ark-* (dory-pcs's deps) and
+# the a16z git fork (the jolt tree's deps) are redirected to a local worktree
+# of the fork pinned at dev/twist-shout@76bb3a45 plus the minimal wasm32 MSM
+# fix (branch webgpu/wasm-minimal).
+[patch.crates-io]
+ark-bn254 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/bn254" }
+ark-ff = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ff" }
+ark-ec = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ec" }
+ark-serialize = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/serialize" }
+
+[patch.'https://github.com/a16z/arkworks-algebra']
+ark-bn254 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/bn254" }
+ark-ff = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ff" }
+ark-ec = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ec" }
+ark-serialize = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/serialize" }
+ark-poly = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/poly" }
+ark-secp256k1 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/secp256k1" }
+jolt-optimizations = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/jolt-optimizations" }

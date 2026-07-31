@@ -5,7 +5,10 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use jolt_wasm_prover::engine;
+// The lib is cdylib-only (rlib + `-C lto=fat` can't coexist for the wasm
+// build), so the shared engine is included at the source level.
+#[path = "../src/engine.rs"]
+mod engine;
 
 fn load(dir: &PathBuf, name: &str) -> Vec<u8> {
     let path = dir.join(name);

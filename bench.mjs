@@ -4,7 +4,10 @@ const RUNS = parseInt(process.argv[2] || '3', 10);
 const TIMEOUT = 120_000;
 
 async function run() {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+        headless: true,
+        channel: process.env.PW_CHANNEL || undefined,
+    });
     const context = await browser.newContext();
     const page = await context.newPage();
 
