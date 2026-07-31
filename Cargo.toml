@@ -36,21 +36,21 @@ bincode = { version = "2", features = ["serde"] }
 ark-serialize = "0.5.0"
 dory = { package = "dory-pcs", version = "0.4.0", features = ["backends"] }
 
-jolt-prover = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-prover" }
-jolt-kernels = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-kernels", features = ["webgpu"] }
-jolt-verifier = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-verifier" }
-jolt-witness = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-witness" }
-jolt-dory = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-dory" }
-jolt-field = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-field" }
-jolt-crypto = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-crypto" }
-jolt-transcript = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-transcript" }
-jolt-program = { path = "../../../jolt/.worktrees/w3-t1/crates/jolt-program" }
-tracer = { path = "../../../jolt/.worktrees/w3-t1/tracer" }
-common = { path = "../../../jolt/.worktrees/w3-t1/common", features = ["std"] }
+jolt-prover = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-prover" }
+jolt-kernels = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-kernels", features = ["webgpu"] }
+jolt-verifier = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-verifier" }
+jolt-witness = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-witness" }
+jolt-dory = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-dory" }
+jolt-field = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-field" }
+jolt-crypto = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-crypto" }
+jolt-transcript = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-transcript" }
+jolt-program = { path = "../../../jolt/.worktrees/w4-m/crates/jolt-program" }
+tracer = { path = "../../../jolt/.worktrees/w4-m/tracer" }
+common = { path = "../../../jolt/.worktrees/w4-m/common", features = ["std"] }
 
-jolt-inlines-sha2 = { path = "../../../jolt/.worktrees/w3-t1/jolt-inlines/sha2", features = ["host"] }
-jolt-inlines-secp256k1 = { path = "../../../jolt/.worktrees/w3-t1/jolt-inlines/secp256k1", features = ["host"] }
-jolt-inlines-keccak256 = { path = "../../../jolt/.worktrees/w3-t1/jolt-inlines/keccak256", features = ["host"] }
+jolt-inlines-sha2 = { path = "../../../jolt/.worktrees/w4-m/jolt-inlines/sha2", features = ["host"] }
+jolt-inlines-secp256k1 = { path = "../../../jolt/.worktrees/w4-m/jolt-inlines/secp256k1", features = ["host"] }
+jolt-inlines-keccak256 = { path = "../../../jolt/.worktrees/w4-m/jolt-inlines/keccak256", features = ["host"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 rayon = "1"
@@ -65,7 +65,7 @@ tracing-subscriber = { version = "0.3", features = ["std"] }
 serde_json = "1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-jolt = { package = "jolt-sdk", path = "../../../jolt/.worktrees/w3-t1/jolt-sdk", features = ["host"] }
+jolt = { package = "jolt-sdk", path = "../../../jolt/.worktrees/w4-m/jolt-sdk", features = ["host"] }
 sha2-guest = { path = "guests/sha2" }
 secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
 sha3-chain-guest = { path = "guests/sha3-chain" }
@@ -92,7 +92,7 @@ ark-ec = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ec" 
 ark-serialize = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/serialize" }
 # The jolt workspace [replace]s registry dory-pcs with its vendored copy
 # (the pairing-hook seam); a path-dep workspace must mirror that here.
-dory-pcs = { path = "../../../jolt/.worktrees/w3-t1/vendor/dory-pcs" }
+dory-pcs = { path = "../../../jolt/.worktrees/w4-m/vendor/dory-pcs" }
 
 [patch.'https://github.com/a16z/arkworks-algebra']
 ark-bn254 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/bn254" }
