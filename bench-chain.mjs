@@ -28,10 +28,13 @@ async function run() {
     });
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'));
-    await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
+    await page.goto(process.env.BENCH_BASE || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     const tracing = process.env.BENCH_TRACING !== '0';
-    await page.evaluate(async ({ tracing }) => {
+    // BENCH_WEBGPU: unset/'' = CPU arm; JSON (e.g. '{"millerCpuFraction":0.1}'
+    // or '{}') = webgpu arm with production default gates unless overridden.
+    const webgpu = process.env.BENCH_WEBGPU ? JSON.parse(process.env.BENCH_WEBGPU) : null;
+    await page.evaluate(async ({ tracing, webgpu }) => {
         window.__bench = { pending: new Map() };
         const worker = new Worker('/worker.js', { type: 'module' });
         window.__bench.worker = worker;
@@ -53,7 +56,7 @@ async function run() {
         const initDone = window.__bench.wait('init-done');
         worker.postMessage({
             type: 'init',
-            data: { numThreads: Math.min(navigator.hardwareConcurrency || 4, 12), tracing },
+            data: { numThreads: Math.min(navigator.hardwareConcurrency || 4, 12), tracing, webgpu },
         });
         await initDone;
 
@@ -78,8 +81,8 @@ async function run() {
             [prover, verifier, elf],
         );
         await loaded;
-    }, { tracing });
-    process.stderr.write(`worker ready, sha2-chain loaded (tracing=${tracing})\n`);
+    }, { tracing, webgpu });
+    process.stderr.write(`worker ready, sha2-chain loaded (tracing=${tracing}, webgpu=${JSON.stringify(webgpu)})\n`);
 
     const results = [];
     for (const iters of itersList) {
@@ -118,6 +121,7 @@ async function run() {
                         paddedCycles: proveMsg.paddedCycles,
                         proofSize: proveMsg.proofSize,
                         peakMemory: proveMsg.peakMemory,
+                        millerServed: proveMsg.millerServed,
                     };
                 },
                 { iters },
@@ -140,7 +144,7 @@ async function run() {
                 `iters=${iters} run ${i + 1}: prove ${r.proveSeconds.toFixed(2)}s ` +
                 `(2^${Math.log2(r.paddedCycles)} padded, ${rec.mhz.toFixed(3)} MHz), ` +
                 `verify ${r.verifySeconds.toFixed(2)}s, valid=${r.valid}, ` +
-                `peak ${(r.peakMemory / 1024 / 1024).toFixed(0)} MB\n`,
+                `peak ${(r.peakMemory / 1024 / 1024).toFixed(0)} MB, miller ${r.millerServed}\n`,
             );
         }
     }
