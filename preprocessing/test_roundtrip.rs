@@ -61,6 +61,16 @@ use jolt_inlines_secp256k1 as _;
 use jolt_inlines_sha2 as _;
 
 fn main() {
+    // Gate-run visibility: JOLT_TRACE=debug surfaces the webgpu slot
+    // engagement traces (driver built / declined / fallback).
+    if let Ok(filter) = std::env::var("JOLT_TRACE") {
+        use tracing_subscriber::fmt;
+        eprintln!("[trace] subscriber up (filter: {filter})");
+        fmt()
+            .with_env_filter(filter)
+            .with_writer(std::io::stderr)
+            .init();
+    }
     let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
 
     let sha2_input: &[u8] = b"jolt wasm prover roundtrip test input";

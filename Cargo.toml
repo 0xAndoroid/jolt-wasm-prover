@@ -36,21 +36,21 @@ bincode = { version = "2", features = ["serde"] }
 ark-serialize = "0.5.0"
 dory = { package = "dory-pcs", version = "0.4.0", features = ["backends"] }
 
-jolt-prover = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-prover" }
-jolt-kernels = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-kernels", features = ["webgpu"] }
-jolt-verifier = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-verifier" }
-jolt-witness = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-witness" }
-jolt-dory = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-dory" }
-jolt-field = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-field" }
-jolt-crypto = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-crypto" }
-jolt-transcript = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-transcript" }
-jolt-program = { path = "../../../jolt/.worktrees/w2-webgpu-seam/crates/jolt-program" }
-tracer = { path = "../../../jolt/.worktrees/w2-webgpu-seam/tracer" }
-common = { path = "../../../jolt/.worktrees/w2-webgpu-seam/common", features = ["std"] }
+jolt-prover = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-prover" }
+jolt-kernels = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-kernels", features = ["webgpu"] }
+jolt-verifier = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-verifier" }
+jolt-witness = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-witness" }
+jolt-dory = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-dory" }
+jolt-field = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-field" }
+jolt-crypto = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-crypto" }
+jolt-transcript = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-transcript" }
+jolt-program = { path = "../../../jolt/.worktrees/w3-t2a/crates/jolt-program" }
+tracer = { path = "../../../jolt/.worktrees/w3-t2a/tracer" }
+common = { path = "../../../jolt/.worktrees/w3-t2a/common", features = ["std"] }
 
-jolt-inlines-sha2 = { path = "../../../jolt/.worktrees/w2-webgpu-seam/jolt-inlines/sha2", features = ["host"] }
-jolt-inlines-secp256k1 = { path = "../../../jolt/.worktrees/w2-webgpu-seam/jolt-inlines/secp256k1", features = ["host"] }
-jolt-inlines-keccak256 = { path = "../../../jolt/.worktrees/w2-webgpu-seam/jolt-inlines/keccak256", features = ["host"] }
+jolt-inlines-sha2 = { path = "../../../jolt/.worktrees/w3-t2a/jolt-inlines/sha2", features = ["host"] }
+jolt-inlines-secp256k1 = { path = "../../../jolt/.worktrees/w3-t2a/jolt-inlines/secp256k1", features = ["host"] }
+jolt-inlines-keccak256 = { path = "../../../jolt/.worktrees/w3-t2a/jolt-inlines/keccak256", features = ["host"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 rayon = "1"
@@ -61,11 +61,12 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = ["console", "Window", "Performance"] }
 console_error_panic_hook = "0.1"
 getrandom = { version = "0.2.16", features = ["js"] }
-tracing-subscriber = { version = "0.3", features = ["std"] }
+tracing-subscriber = { version = "0.3", features = ["std", "env-filter", "fmt"] }
 serde_json = "1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-jolt = { package = "jolt-sdk", path = "../../../jolt/.worktrees/w2-webgpu-seam/jolt-sdk", features = ["host"] }
+tracing-subscriber = { version = "0.3", features = ["std", "env-filter", "fmt"] }
+jolt = { package = "jolt-sdk", path = "../../../jolt/.worktrees/w3-t2a/jolt-sdk", features = ["host"] }
 sha2-guest = { path = "guests/sha2" }
 secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
 sha3-chain-guest = { path = "guests/sha3-chain" }
