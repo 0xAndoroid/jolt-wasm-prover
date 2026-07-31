@@ -6,6 +6,7 @@ import init, {
     clear_trace,
     webgpu_configure,
     webgpu_warmup,
+    webgpu_miller_served,
     bench_stream,
     WasmProver,
     WasmVerifier,
@@ -32,7 +33,12 @@ async function initWebGpu(module, config) {
     await ready;
     const readyMs = performance.now() - t0;
 
-    webgpu_configure(false, config.minTerms || 0, config.handoffLen || 0);
+    webgpu_configure(
+        false,
+        config.minTerms || 0,
+        config.handoffLen || 0,
+        config.millerCpuFraction ?? -1,
+    );
     const t1 = performance.now();
     webgpu_warmup();
     const warmupMs = performance.now() - t1;
@@ -132,6 +138,7 @@ self.onmessage = async (e) => {
                     paddedCycles: result.padded_cycles,
                     peakMemory,
                     elapsed,
+                    millerServed: webgpu_miller_served(),
                 });
                 break;
             }

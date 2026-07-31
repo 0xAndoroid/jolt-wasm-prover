@@ -13,7 +13,7 @@ import { chromium } from 'playwright';
 const ITERS = parseInt(process.argv[2] || '17', 10);
 const BASE = process.argv[3] || 'http://localhost:8091';
 
-async function proveOnce(browser, { webgpu, label }) {
+async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1 }) {
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) =>
         process.stderr.write(`[${label}] ${msg.text()}\n`),
@@ -21,7 +21,7 @@ async function proveOnce(browser, { webgpu, label }) {
     await page.goto(BASE, { waitUntil: 'domcontentloaded' });
 
     const result = await page.evaluate(
-        async ({ webgpu, iters }) => {
+        async ({ webgpu, iters, millerCpuFraction }) => {
             const pending = new Map();
             const worker = new Worker('/worker.js', { type: 'module' });
             worker.onmessage = (e) => {
@@ -42,7 +42,7 @@ async function proveOnce(browser, { webgpu, label }) {
                 type: 'init',
                 data: {
                     numThreads: Math.min(navigator.hardwareConcurrency || 4, 12),
-                    webgpu: webgpu ? { minTerms: 1 } : null,
+                    webgpu: webgpu ? { minTerms: 1, millerCpuFraction } : null,
                 },
             });
             const init = await initDone;
@@ -101,11 +101,12 @@ async function proveOnce(browser, { webgpu, label }) {
                 proveSeconds: proveMsg.elapsed / 1000,
                 paddedCycles: proveMsg.paddedCycles,
                 proofSize: proveMsg.proofSize,
+                millerServed: proveMsg.millerServed,
                 valid: verifyMsg.valid,
                 proofSha256: hex,
             };
         },
-        { webgpu, iters: ITERS },
+        { webgpu, iters: ITERS, millerCpuFraction },
     );
     await page.context().close();
     return result;
@@ -119,9 +120,14 @@ const browser = await chromium.launch({
 const off1 = await proveOnce(browser, { webgpu: false, label: 'off-1' });
 const off2 = await proveOnce(browser, { webgpu: false, label: 'off-2' });
 const on = await proveOnce(browser, { webgpu: true, label: 'on' });
+// Miller hybrid-fraction sweep: any split serves the identical GT, so both
+// extremes must byte-match too (0 = all-device shard, 1 = all-CPU shard).
+const onF0 = await proveOnce(browser, { webgpu: true, label: 'on-f0', millerCpuFraction: 0 });
+const onF1 = await proveOnce(browser, { webgpu: true, label: 'on-f1', millerCpuFraction: 1 });
 await browser.close();
 
-for (const [label, r] of [['off-1', off1], ['off-2', off2], ['on', on]]) {
+const runs = [['off-1', off1], ['off-2', off2], ['on', on], ['on-f0', onF0], ['on-f1', onF1]];
+for (const [label, r] of runs) {
     if (r.error) {
         console.error(`${label}: ERROR ${r.error}`);
         process.exit(2);
@@ -129,25 +135,32 @@ for (const [label, r] of [['off-1', off1], ['off-2', off2], ['on', on]]) {
     console.error(
         `${label}: padded 2^${Math.log2(r.paddedCycles)}, prove ${r.proveSeconds.toFixed(2)}s, ` +
         `valid=${r.valid}, proof ${r.proofSize}B, sha256 ${r.proofSha256.slice(0, 16)}…` +
-        (r.webgpuInit ? ` (gpu-worker ${r.webgpuInit.readyMs.toFixed(0)}ms, warmup ${r.webgpuInit.warmupMs.toFixed(0)}ms)` : ''),
+        (r.webgpuInit ? ` (gpu-worker ${r.webgpuInit.readyMs.toFixed(0)}ms, warmup ${r.webgpuInit.warmupMs.toFixed(0)}ms, miller ${r.millerServed})` : ''),
     );
 }
 
 const deterministic = off1.proofSha256 === off2.proofSha256;
-const parity = off1.proofSha256 === on.proofSha256;
+const parity = [on, onF0, onF1].every((r) => r.proofSha256 === off1.proofSha256);
 const engaged = !!on.webgpuInit;
+const millerEngaged = on.millerServed > 0 && onF0.millerServed > 0 && onF1.millerServed > 0;
 console.log(JSON.stringify({
     iters: ITERS,
     paddedCycles: off1.paddedCycles,
     deterministic,
     webgpuEngaged: engaged,
+    millerServed: { on: on.millerServed, f0: onF0.millerServed, f1: onF1.millerServed },
     byteParity: parity,
-    proveSeconds: { off: [off1.proveSeconds, off2.proveSeconds], on: on.proveSeconds },
+    proveSeconds: {
+        off: [off1.proveSeconds, off2.proveSeconds],
+        on: on.proveSeconds,
+        onF0: onF0.proveSeconds,
+        onF1: onF1.proveSeconds,
+    },
     webgpuInit: on.webgpuInit,
-    allValid: off1.valid && off2.valid && on.valid,
+    allValid: runs.every(([, r]) => r.valid),
 }));
 if (!deterministic) {
     console.error('NOTE: prover nondeterministic in-browser — byte gate not applicable');
     process.exit(engaged && on.valid ? 0 : 1);
 }
-process.exit(deterministic && parity && engaged && on.valid ? 0 : 1);
+process.exit(deterministic && parity && engaged && millerEngaged && runs.every(([, r]) => r.valid) ? 0 : 1);

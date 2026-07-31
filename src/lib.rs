@@ -46,9 +46,15 @@ mod wasm {
     }
 
     /// Installs the webgpu arm's gates from the JS config. Zero values keep
-    /// the defaults. Call before [`webgpu_warmup`].
+    /// the defaults (negative `miller_cpu_fraction` too). Call before
+    /// [`webgpu_warmup`].
     #[wasm_bindgen]
-    pub fn webgpu_configure(disable: bool, min_terms: u32, handoff_len: u32) {
+    pub fn webgpu_configure(
+        disable: bool,
+        min_terms: u32,
+        handoff_len: u32,
+        miller_cpu_fraction: f64,
+    ) {
         let mut options = jolt_kernels::webgpu::WebGpuOptions {
             disable,
             ..Default::default()
@@ -59,7 +65,18 @@ mod wasm {
         if handoff_len > 0 {
             options.handoff_len = handoff_len as usize;
         }
+        if miller_cpu_fraction >= 0.0 {
+            options.miller_cpu_fraction = miller_cpu_fraction;
+        }
         jolt_kernels::webgpu::configure(options);
+    }
+
+    /// Multi-pairings served by the device Miller hook so far (gate
+    /// observability: a "webgpu on" run whose count stays 0 never engaged
+    /// the pairing lane).
+    #[wasm_bindgen]
+    pub fn webgpu_miller_served() -> u32 {
+        jolt_kernels::webgpu::miller::served_count() as u32
     }
 
     /// Brings the WebGPU engine up (adapter, device, every pipeline),
