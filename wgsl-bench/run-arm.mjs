@@ -1,7 +1,7 @@
-// Runs one benchmark arm end-to-end and writes results/<arm>.json.
+// Runs one benchmark arm end-to-end and writes results/<arm>[-<suite>].json.
 //
 //   node run-arm.mjs <node-default|node-flagged|chrome-default|chrome-flagged>
-//                    [--quick] [--kat-only]
+//                    [--suite bn254|fp128] [--quick] [--kat-only]
 //
 // Timed passes take the campaign mkdir-lock (/tmp/jolt-wasm-bench.lock.d);
 // --kat-only skips the lock since nothing is timed.
@@ -10,7 +10,6 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { buildJobs, verifyAndRate } from './jobs.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOCK = '/tmp/jolt-wasm-bench.lock.d';
@@ -85,10 +84,14 @@ async function runChrome(flagged, jobs) {
 const arm = process.argv[2];
 const quick = process.argv.includes('--quick');
 const katOnly = process.argv.includes('--kat-only');
-if (!['node-default', 'node-flagged', 'chrome-default', 'chrome-flagged'].includes(arm)) {
-  console.error('usage: node run-arm.mjs <node-default|node-flagged|chrome-default|chrome-flagged> [--quick] [--kat-only]');
+const suiteIdx = process.argv.indexOf('--suite');
+const suite = suiteIdx >= 0 ? process.argv[suiteIdx + 1] : 'bn254';
+if (!['node-default', 'node-flagged', 'chrome-default', 'chrome-flagged'].includes(arm) ||
+    !['bn254', 'fp128'].includes(suite)) {
+  console.error('usage: node run-arm.mjs <node-default|node-flagged|chrome-default|chrome-flagged> [--suite bn254|fp128] [--quick] [--kat-only]');
   process.exit(2);
 }
+const { buildJobs, verifyAndRate } = await import(suite === 'fp128' ? './fp128-jobs.mjs' : './jobs.mjs');
 
 let jobs = buildJobs(quick ? 'quick' : 'full');
 if (katOnly) jobs = jobs.filter((j) => j.type === 'kat');
@@ -117,7 +120,7 @@ const software = sw.includes('swiftshader') || sw.includes('llvmpipe') || sw.inc
 const rows = verifyAndRate(jobs, outcome.results);
 
 const report = {
-  arm, quick, katOnly, contendedLock: contended, software,
+  arm, suite, quick, katOnly, contendedLock: contended, software,
   adapterInfo: outcome.adapterInfo, hasTs: outcome.hasTs,
   armWallMs: outcome.armWallMs,
   rows,
@@ -125,7 +128,7 @@ const report = {
   timestamp: new Date().toISOString(),
 };
 fs.mkdirSync(path.join(__dirname, 'results'), { recursive: true });
-const suffix = katOnly ? '-kat' : quick ? '-quick' : '';
+const suffix = (suite === 'fp128' ? '-fp128' : '') + (katOnly ? '-kat' : quick ? '-quick' : '');
 const file = path.join(__dirname, 'results', `${arm}${suffix}.json`);
 fs.writeFileSync(file, JSON.stringify(report, null, 1));
 

@@ -43,7 +43,7 @@ function wgslArray(limbs) {
 // Shared preamble: aliases, params, pcg, derive_fe
 // ---------------------------------------------------------------------------
 
-function preamble(ctx, { bindings }) {
+export function preamble(ctx, { bindings }) {
   let s = `alias Fe = array<u32, ${ctx.L}>;\n\n`;
   s += `struct Params { k: u32, n: u32, flags: u32, _pad: u32 }\n\n`;
   s += bindings;
@@ -63,7 +63,7 @@ fn pcg(v: u32) -> u32 {
   return s;
 }
 
-const CHAIN_BINDINGS = `@group(0) @binding(0) var<storage, read_write> outbuf: array<u32>;
+export const CHAIN_BINDINGS = `@group(0) @binding(0) var<storage, read_write> outbuf: array<u32>;
 @group(0) @binding(1) var<uniform> params: Params;
 @group(0) @binding(2) var<storage, read> inbuf: array<u32>;
 `;
@@ -275,10 +275,12 @@ function lazyModifiedBody(W) {
 // Entry points
 // ---------------------------------------------------------------------------
 
-// Chain shape: per-thread dependent chain x <- mont_mul(x, c), 4 muls per
+// Chain shape: per-thread dependent chain x <- mulFn(x, c), 4 muls per
 // loop iteration (params.k iterations => 4k muls). main_kat reads inputs
-// from inbuf instead of deriving them.
-function chainEntries(ctx, wgSize) {
+// from inbuf instead of deriving them. finalizeFn (optional) canonicalizes
+// the chain result before writeback — used by lazy fields whose per-mul
+// outputs are redundant representatives.
+export function chainEntries(ctx, wgSize, { mulFn = 'fe_mont_mul', finalizeFn = null } = {}) {
   const L = ctx.L;
   let s = '';
   for (const [entry, fromBuf] of [['main_bench', false], ['main_kat', true]]) {
@@ -293,8 +295,9 @@ function chainEntries(ctx, wgSize) {
       s += `    var x = derive_fe(tid * 2u);\n    var cc = derive_fe(tid * 2u + 1u);\n`;
     }
     s += `    for (var k = 0u; k < params.k; k++) {\n`;
-    for (let r = 0; r < 4; r++) s += `        x = fe_mont_mul(x, cc);\n`;
+    for (let r = 0; r < 4; r++) s += `        x = ${mulFn}(x, cc);\n`;
     s += `    }\n`;
+    if (finalizeFn) s += `    x = ${finalizeFn}(x);\n`;
     s += `    for (var j = 0u; j < ${L}u; j++) { outbuf[tid * ${L}u + j] = x[j]; }\n`;
     s += `}\n\n`;
   }
