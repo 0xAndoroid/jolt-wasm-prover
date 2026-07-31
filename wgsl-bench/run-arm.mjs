@@ -61,13 +61,22 @@ async function runChrome(flagged, jobs) {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
   const args = [...CHROME_BASE_ARGS, ...(flagged ? CHROME_FLAGGED_ARGS : [])];
-  // Full Chrome for Testing (probe-verified Metal adapter in headless), not
-  // the headless-shell — and pinning the path sidesteps playwright's
-  // per-version browser revision requirement.
-  const executablePath = '/Users/andoroid/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing';
+  // Full Chrome (probe-verified Metal adapter in headless), never the
+  // headless-shell. Prefer a complete playwright Chrome-for-Testing install,
+  // else fall back to system Chrome — other campaigns prune/reinstall the
+  // playwright cache under us mid-run.
+  const pwCache = '/Users/andoroid/Library/Caches/ms-playwright';
+  const candidates = fs.readdirSync(pwCache)
+    .filter((d) => /^chromium-\d+$/.test(d)).sort().reverse()
+    .map((d) => `${pwCache}/${d}/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing`)
+    .filter((p) => fs.existsSync(p) && fs.existsSync(path.join(p, '../../Frameworks')));
+  const executablePath = candidates[0] ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
   const browser = await chromium.launch({ headless: true, executablePath, args });
   try {
     const page = await browser.newPage();
+    page.on('console', (msg) => {
+      if (msg.type() === 'error' || msg.type() === 'warning') console.error(`[chrome] ${msg.text()}`);
+    });
     await page.goto(`http://127.0.0.1:${port}/`);
     const execSrc = fs.readFileSync(path.join(__dirname, 'executor.mjs'), 'utf8');
     page.setDefaultTimeout(1_200_000);
@@ -87,13 +96,16 @@ const katOnly = process.argv.includes('--kat-only');
 const suiteIdx = process.argv.indexOf('--suite');
 const suite = suiteIdx >= 0 ? process.argv[suiteIdx + 1] : 'bn254';
 if (!['node-default', 'node-flagged', 'chrome-default', 'chrome-flagged'].includes(arm) ||
-    !['bn254', 'fp128'].includes(suite)) {
-  console.error('usage: node run-arm.mjs <node-default|node-flagged|chrome-default|chrome-flagged> [--suite bn254|fp128] [--quick] [--kat-only]');
+    !['bn254', 'fp128', 'ec'].includes(suite)) {
+  console.error('usage: node run-arm.mjs <node-default|node-flagged|chrome-default|chrome-flagged> [--suite bn254|fp128|ec] [--quick] [--kat-only]');
   process.exit(2);
 }
-const { buildJobs, verifyAndRate } = await import(suite === 'fp128' ? './fp128-jobs.mjs' : './jobs.mjs');
+const suiteModules = { bn254: './jobs.mjs', fp128: './fp128-jobs.mjs', ec: './ec-jobs.mjs' };
+const { buildJobs, verifyAndRate } = await import(suiteModules[suite]);
 
-let jobs = buildJobs(quick ? 'quick' : 'full');
+const profIdx = process.argv.indexOf('--profile');
+const profile = profIdx >= 0 ? process.argv[profIdx + 1] : quick ? 'quick' : 'full';
+let jobs = buildJobs(profile);
 if (katOnly) jobs = jobs.filter((j) => j.type === 'kat');
 
 const flagged = arm.endsWith('flagged');
@@ -120,7 +132,7 @@ const software = sw.includes('swiftshader') || sw.includes('llvmpipe') || sw.inc
 const rows = verifyAndRate(jobs, outcome.results);
 
 const report = {
-  arm, suite, quick, katOnly, contendedLock: contended, software,
+  arm, suite, profile, quick, katOnly, contendedLock: contended, software,
   adapterInfo: outcome.adapterInfo, hasTs: outcome.hasTs,
   armWallMs: outcome.armWallMs,
   rows,
@@ -128,7 +140,7 @@ const report = {
   timestamp: new Date().toISOString(),
 };
 fs.mkdirSync(path.join(__dirname, 'results'), { recursive: true });
-const suffix = (suite === 'fp128' ? '-fp128' : '') + (katOnly ? '-kat' : quick ? '-quick' : '');
+const suffix = (suite === 'bn254' ? '' : `-${suite}`) + (katOnly ? '-kat' : profile !== 'full' ? `-${profile}` : '');
 const file = path.join(__dirname, 'results', `${arm}${suffix}.json`);
 fs.writeFileSync(file, JSON.stringify(report, null, 1));
 
@@ -139,6 +151,7 @@ for (const r of rows) {
   const bits = [
     r.ok === false ? `FAIL ${r.fails.slice(0, 2).join('; ')}` : 'ok',
     rate !== undefined ? `${rate.toFixed(3)} Gmul/s${r.gmulGpu ? ' (gpu)' : ' (wall)'}` : '',
+    r.mops !== undefined && r.mops !== null ? `${r.mops.toFixed(2)} Mops/s` : '',
     r.gbps ? `${r.gbps.toFixed(1)} GB/s` : '',
     r.pipelineMs !== undefined ? `pipe ${r.pipelineMs?.toFixed(0)}ms` : '',
     r.k ? `k=${r.k} d=${r.d}` : '',

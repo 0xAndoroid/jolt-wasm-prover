@@ -21,7 +21,13 @@ export async function runJobs(gpu, jobs) {
   };
   const hasTs = adapter.features.has('timestamp-query');
   const requiredFeatures = hasTs ? ['timestamp-query'] : [];
-  const device = await adapter.requestDevice({ requiredFeatures });
+  // Default maxStorageBufferBindingSize is 128MiB — the ec bucket suite binds
+  // a 256MiB points buffer, so lift storage limits to what the adapter offers.
+  const requiredLimits = {
+    maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+    maxBufferSize: adapter.limits.maxBufferSize,
+  };
+  const device = await adapter.requestDevice({ requiredFeatures, requiredLimits });
   let lost = null;
   device.lost.then((l) => { lost = `${l.reason}: ${l.message}`; });
 
@@ -31,12 +37,15 @@ export async function runJobs(gpu, jobs) {
   const tickTimer = tick ? setInterval(tick, 1) : null;
 
   const results = [];
-  for (const job of jobs) {
+  for (let ji = 0; ji < jobs.length; ji++) {
+    const job = jobs[ji];
+    const jt0 = now();
     try {
       results.push(await runJob(device, job, hasTs));
     } catch (e) {
       results.push({ label: job.label, error: String(e && e.message || e) });
     }
+    console.error(`[${ji + 1}/${jobs.length}] ${job.label} ${(now() - jt0).toFixed(0)}ms`);
     if (lost) {
       results.push({ label: 'device-lost', error: lost });
       break;
@@ -187,6 +196,7 @@ async function readTsMs(tsCtx) {
 async function runJob(device, job, hasTs) {
   if (job.type === 'kat') return runKat(device, job);
   if (job.type === 'chain_timed') return runChainTimed(device, job, hasTs);
+  if (job.type === 'ec_timed') return runEcTimed(device, job, hasTs);
   if (job.type === 'stream_timed') return runStreamTimed(device, job, hasTs);
   if (job.type === 'overhead') return runOverhead(device, job, hasTs);
   throw new Error(`unknown job type ${job.type}`);
@@ -220,7 +230,7 @@ async function runChainTimed(device, job, hasTs) {
 
   const targetDispatchMs = job.targetDispatchMs || 30;
   let k = Math.round(kCal * targetDispatchMs / Math.max(calMs, 0.5));
-  k = Math.max(64, Math.min(4096, k));
+  k = Math.max(job.kMin ?? 64, Math.min(job.kMax ?? 4096, k));
   const dispatchMsEst = calMs * k / kCal;
   const d = Math.max(2, Math.min(16, Math.round((job.targetPassMs || 120) / dispatchMsEst)));
   writeParams(device, bufs, k, job.nThreads, 0);
@@ -243,6 +253,59 @@ async function runChainTimed(device, job, hasTs) {
   return {
     label: job.label, moduleMs, pipelineMs, calMs, k, d,
     mulsPerDispatch: job.nThreads * 4 * k,
+    wallMs, gpuMs: tsCtx ? gpuMs : null, checksum, samples,
+  };
+}
+
+// ec_timed: chain-style calibrated timed passes over a kernel that streams a
+// device-filled points buffer (binding 3). main_fill (wg 256, one thread per
+// point) populates it once; the fill derivation is mirrored by the reference.
+async function runEcTimed(device, job, hasTs) {
+  const { pipeline, moduleMs, pipelineMs } = await makePipeline(device, job.shader, 'main_bench');
+  const bufs = makeBuffers(device, job);
+  bufs.points = device.createBuffer({
+    size: job.pointsWords * 4,
+    usage: GPUBufferUsage.STORAGE,
+  });
+  {
+    const fill = await makePipeline(device, job.shader, 'main_fill');
+    writeParams(device, bufs, 0, job.nPoints, 0);
+    const fbg = bindGroupFor(device, fill.pipeline, bufs, [[1, 'params'], [3, 'points']]);
+    await submitAndWait(device, [encodePass(device, fill.pipeline, fbg, Math.ceil(job.nPoints / 256), 1, null)]);
+  }
+  const bg = bindGroupFor(device, pipeline, bufs, [[0, 'outbuf'], [1, 'params'], [3, 'points']]);
+  const workgroups = Math.ceil(job.nThreads / job.wgSize);
+
+  const kCal = job.kCal || 64;
+  writeParams(device, bufs, kCal, job.nThreads, 0);
+  await submitAndWait(device, [encodePass(device, pipeline, bg, workgroups, 1, null)]);
+  const calMs = await submitAndWait(device, [encodePass(device, pipeline, bg, workgroups, 1, null)]);
+
+  const targetDispatchMs = job.targetDispatchMs || 30;
+  let k = Math.round(kCal * targetDispatchMs / Math.max(calMs, 0.5));
+  k = Math.max(job.kMin ?? 64, Math.min(job.kMax ?? 4096, k));
+  const dispatchMsEst = calMs * k / kCal;
+  const d = Math.max(2, Math.min(16, Math.round((job.targetPassMs || 120) / dispatchMsEst)));
+  writeParams(device, bufs, k, job.nThreads, 0);
+
+  const tsCtx = hasTs ? makeTsCtx(device) : null;
+  const wallMs = [], gpuMs = [];
+  for (let rep = 0; rep < (job.reps || 3); rep++) {
+    const cmd = encodePass(device, pipeline, bg, workgroups, d, tsCtx);
+    wallMs.push(await submitAndWait(device, [cmd]));
+    if (tsCtx) gpuMs.push(await readTsMs(tsCtx));
+  }
+
+  const data = await readBack(device, bufs.outbuf, job.outWords);
+  const samples = {};
+  for (const tid of job.sampleTids || []) {
+    samples[tid] = Array.from(data.subarray(tid * job.wordsPerElem, (tid + 1) * job.wordsPerElem));
+  }
+  const checksum = checksumOf(data);
+  for (const b of Object.values(bufs)) b.destroy();
+  return {
+    label: job.label, moduleMs, pipelineMs, calMs, k, d,
+    mulsPerDispatch: job.nThreads * k,
     wallMs, gpuMs: tsCtx ? gpuMs : null, checksum, samples,
   };
 }
