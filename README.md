@@ -142,6 +142,15 @@ fixes that are not upstream yet, shipped in `patches/`:
    `wasm32`, where wasm-bindgen-rayon provides exactly one fixed global pool.
    The fix runs the inner parallel MSM on the global pool.
 
+What breaks without them, empirically (HeadlessChrome 150, M4, at the pinned
+revs): the default sha2 demo (2^13 trace) **hangs** — proving never completes
+and no error surfaces; sha2-chain at 2^16 **panics** in every rayon worker
+with `index out of bounds: the len is 0` at
+`jolt-kernels/src/optimized/registers_read_write.rs:439` (the CoeffLut fix's
+exact target). With both patches applied, sha2 proves and sha2-chain at 2^16
+proves and verifies in-browser. Native 64-bit builds are unaffected either
+way (the roundtrip test passes without the patches).
+
 `./setup-wasm-deps.sh` clones both upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in
 `Cargo.toml` onto the patched checkouts. `./setup-wasm-deps.sh --revert`

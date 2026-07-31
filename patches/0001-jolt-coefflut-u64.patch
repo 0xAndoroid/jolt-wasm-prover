@@ -8,7 +8,7 @@ targets: the Indexed->Direct switch never fires, the next bind()'s
 (0..n*n) range is empty, both LUTs become zero-length, and every
 sparse_quadratic worker panics with index-out-of-bounds. Compute the
 squared length in u64. Found running the modular prover in-browser
-(wasm32) for the WebGPU campaign; native 64-bit is unaffected.
+(wasm32); native 64-bit is unaffected.
 ---
  crates/jolt-kernels/src/optimized/registers_read_write.rs | 5 ++++-
  1 file changed, 4 insertions(+), 1 deletion(-)

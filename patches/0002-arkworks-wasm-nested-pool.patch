@@ -6,8 +6,8 @@ Subject: [PATCH] fix(ec): don't build nested rayon pools in MSM on wasm32
 wasm-bindgen-rayon provides exactly one fixed global pool;
 ThreadPoolBuilder::build() cannot spawn OS threads on wasm32 and
 panics at runtime. Run the inner parallel MSM on the global pool.
-Minimal wasm enablement for the Jolt WebGPU campaign, based on
-dev/twist-shout @76bb3a45 (the jolt perf/manycore-scaling pin).
+Minimal wasm enablement based on dev/twist-shout @76bb3a45 (the
+jolt perf/manycore-scaling pin).
 ---
  ec/src/scalar_mul/variable_base/mod.rs | 9 ++++++++-
  1 file changed, 8 insertions(+), 1 deletion(-)
