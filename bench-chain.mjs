@@ -120,7 +120,6 @@ async function run() {
                     };
                 },
                 { iters },
-                { timeout: TIMEOUT },
             );
             if (r.error) {
                 console.log(JSON.stringify({ iters, run: i + 1, error: r.error }));
