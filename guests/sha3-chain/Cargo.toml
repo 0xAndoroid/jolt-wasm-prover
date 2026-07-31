@@ -5,7 +5,8 @@ edition = "2021"
 
 [features]
 guest = []
+field-inline = ["jolt/field-inline"]
 
 [dependencies]
-jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt", rev = "1d02e4fbf648" }
-jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "1d02e4fbf648" }
+jolt = { package = "jolt-sdk", path = "../../../../../jolt/.worktrees/webgpu-jolt-base/jolt-sdk" }
+jolt-inlines-keccak256 = { path = "../../../../../jolt/.worktrees/webgpu-jolt-base/jolt-inlines/keccak256" }

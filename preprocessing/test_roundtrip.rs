@@ -1,211 +1,64 @@
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use jolt_core::curve::Bn254Curve;
-use jolt_core::poly::commitment::dory::{
-    ArkworksProverSetup, ArkworksVerifierSetup, DoryCommitmentScheme,
-};
-use jolt_core::zkvm::prover::JoltProverPreprocessing;
-use jolt_core::zkvm::verifier::{
-    BlindfoldSetup, JoltSharedPreprocessing, JoltVerifierPreprocessing,
-};
-use std::io::Cursor;
-use std::path::Path;
+//! Validates the exact browser path natively: loads the artifacts written by
+//! `generate-preprocessing` from `frontend/public/`, then runs the modular
+//! prover (`JoltBackend::optimized()`) and verifier from those bytes.
 
-type ProverPrep = JoltProverPreprocessing<ark_bn254::Fr, Bn254Curve, DoryCommitmentScheme>;
-type VerifierPrep = JoltVerifierPreprocessing<ark_bn254::Fr, Bn254Curve, DoryCommitmentScheme>;
+use std::path::PathBuf;
+use std::time::Instant;
 
-fn test_prover_roundtrip(bytes: &[u8]) -> Result<(), String> {
-    let total = bytes.len();
-    println!("\nTesting Prover Preprocessing Roundtrip");
-    println!("Total bytes: {total}");
+use jolt_wasm_prover::engine;
 
-    let mut cursor = Cursor::new(bytes);
-
-    println!("Deserializing ArkworksProverSetup with Compress::No...");
-    let _generators = ArkworksProverSetup::deserialize_with_mode(
-        &mut cursor,
-        ark_serialize::Compress::No,
-        ark_serialize::Validate::No,
-    )
-    .map_err(|e| format!("ProverSetup failed: {e}"))?;
-    let pos_after_generators = cursor.position() as usize;
-    println!("  OK - consumed {pos_after_generators} bytes");
-
-    println!("Deserializing JoltSharedPreprocessing with Compress::No...");
-    let _shared = JoltSharedPreprocessing::deserialize_with_mode(
-        &mut cursor,
-        ark_serialize::Compress::No,
-        ark_serialize::Validate::No,
-    )
-    .map_err(|e| {
-        let pos = cursor.position();
-        format!("SharedPreprocessing failed at pos {pos}: {e}")
-    })?;
-    let pos_after_shared = cursor.position() as usize;
-    let shared_bytes = pos_after_shared - pos_after_generators;
-    println!("  OK - consumed {shared_bytes} bytes (total: {pos_after_shared})");
-
-    if pos_after_shared != bytes.len() {
-        let total = bytes.len();
-        let extra = total - pos_after_shared;
-        return Err(format!(
-            "Prover: consumed {pos_after_shared} bytes but file has {total} bytes ({extra} extra)"
-        ));
-    }
-
-    println!("Testing full ProverPreprocessing::deserialize_uncompressed...");
-    let prep = ProverPrep::deserialize_uncompressed(Cursor::new(bytes))
-        .map_err(|e| format!("Full deserialize failed: {e}"))?;
-    println!("  OK");
-
-    println!("Testing serialize -> deserialize roundtrip...");
-    let mut reserialized = Vec::new();
-    prep.serialize_uncompressed(&mut reserialized)
-        .map_err(|e| format!("Reserialize failed: {e}"))?;
-
-    if reserialized.len() != bytes.len() {
-        let orig = bytes.len();
-        let reser = reserialized.len();
-        return Err(format!(
-            "Prover roundtrip size mismatch: original {orig} vs reserialized {reser}"
-        ));
-    }
-
-    if reserialized != bytes {
-        for (i, (a, b)) in bytes.iter().zip(reserialized.iter()).enumerate() {
-            if a != b {
-                return Err(format!(
-                    "Prover roundtrip byte mismatch at position {i}: original {a:02x} vs reserialized {b:02x}"
-                ));
-            }
-        }
-    }
-    println!("  OK - bytes match exactly");
-
-    Ok(())
+fn load(dir: &PathBuf, name: &str) -> Vec<u8> {
+    let path = dir.join(name);
+    std::fs::read(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"))
 }
 
-fn test_verifier_roundtrip(bytes: &[u8]) -> Result<(), String> {
-    let total = bytes.len();
-    println!("\nTesting Verifier Preprocessing Roundtrip");
-    println!("Total bytes: {total}");
+fn roundtrip(dir: &PathBuf, name: &str, inputs: &[u8]) {
+    println!("[{name}] loading artifacts...");
+    let srs = load(dir, &format!("{name}_prover.bin"));
+    let verifier_bytes = load(dir, &format!("{name}_verifier.bin"));
+    let elf = load(dir, &format!("{name}.elf"));
 
-    let mut cursor = Cursor::new(bytes);
-
-    println!("Deserializing ArkworksVerifierSetup with Compress::No...");
-    let _generators = ArkworksVerifierSetup::deserialize_with_mode(
-        &mut cursor,
-        ark_serialize::Compress::No,
-        ark_serialize::Validate::No,
-    )
-    .map_err(|e| format!("VerifierSetup failed: {e}"))?;
-    let pos_after_generators = cursor.position() as usize;
-    println!("  OK - consumed {pos_after_generators} bytes");
-
-    println!("Deserializing JoltSharedPreprocessing with Compress::No...");
-    let _shared = JoltSharedPreprocessing::deserialize_with_mode(
-        &mut cursor,
-        ark_serialize::Compress::No,
-        ark_serialize::Validate::No,
-    )
-    .map_err(|e| {
-        let pos = cursor.position();
-        format!("SharedPreprocessing failed at pos {pos}: {e}")
-    })?;
-    let pos_after_shared = cursor.position() as usize;
-    let shared_bytes = pos_after_shared - pos_after_generators;
-    println!("  OK - consumed {shared_bytes} bytes (total: {pos_after_shared})");
-
-    println!("Deserializing blindfold_setup with Compress::No...");
-    let _blindfold_setup = Option::<BlindfoldSetup<Bn254Curve>>::deserialize_with_mode(
-        &mut cursor,
-        ark_serialize::Compress::No,
-        ark_serialize::Validate::No,
-    )
-    .map_err(|e| {
-        let pos = cursor.position();
-        format!("blindfold_setup failed at pos {pos}: {e}")
-    })?;
-    let pos_after_blindfold = cursor.position() as usize;
-    let blindfold_bytes = pos_after_blindfold - pos_after_shared;
+    let start = Instant::now();
+    let prep = engine::build_prover_preprocessing(&srs, &verifier_bytes).expect("prover prep");
     println!(
-        "  OK - present={}, consumed {blindfold_bytes} bytes (total: {pos_after_blindfold})",
-        _blindfold_setup.is_some()
+        "[{name}] prover preprocessing deserialized in {:.2}s",
+        start.elapsed().as_secs_f64()
     );
 
-    if pos_after_blindfold != bytes.len() {
-        let total = bytes.len();
-        let extra = total - pos_after_blindfold;
-        return Err(format!(
-            "Verifier: consumed {pos_after_blindfold} bytes but file has {total} bytes ({extra} extra)"
-        ));
-    }
+    let start = Instant::now();
+    let out = engine::prove(&prep, &elf, inputs).expect("prove");
+    let prove_secs = start.elapsed().as_secs_f64();
+    println!(
+        "[{name}] proved in {prove_secs:.2}s ({} cycles, padded {}, {:.1} kHz padded, proof {} bytes)",
+        out.unpadded_cycles,
+        out.padded_cycles,
+        out.padded_cycles as f64 / prove_secs / 1000.0,
+        out.proof_bytes.len(),
+    );
 
-    println!("Testing full VerifierPreprocessing::deserialize_uncompressed...");
-    let prep = VerifierPrep::deserialize_uncompressed(Cursor::new(bytes))
-        .map_err(|e| format!("Full deserialize failed: {e}"))?;
-    println!("  OK");
-
-    println!("Testing serialize -> deserialize roundtrip...");
-    let mut reserialized = Vec::new();
-    prep.serialize_uncompressed(&mut reserialized)
-        .map_err(|e| format!("Reserialize failed: {e}"))?;
-
-    if reserialized.len() != bytes.len() {
-        let orig = bytes.len();
-        let reser = reserialized.len();
-        return Err(format!(
-            "Verifier roundtrip size mismatch: original {orig} vs reserialized {reser}"
-        ));
-    }
-
-    if reserialized != bytes {
-        for (i, (a, b)) in bytes.iter().zip(reserialized.iter()).enumerate() {
-            if a != b {
-                return Err(format!(
-                    "Verifier roundtrip byte mismatch at position {i}: original {a:02x} vs reserialized {b:02x}"
-                ));
-            }
-        }
-    }
-    println!("  OK - bytes match exactly");
-
-    Ok(())
+    let verifier_prep =
+        engine::decode_verifier_preprocessing(&verifier_bytes).expect("verifier prep");
+    let start = Instant::now();
+    engine::verify(&verifier_prep, &out.proof_bytes, &out.io_bytes).expect("verify");
+    println!("[{name}] verified in {:.3}s", start.elapsed().as_secs_f64());
 }
 
+// Inline registration is inventory-based (link-time); keeping the crates
+// linked is all the tracer needs.
+use jolt_inlines_keccak256 as _;
+use jolt_inlines_secp256k1 as _;
+use jolt_inlines_sha2 as _;
+
 fn main() {
-    let public_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
+    let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
 
-    let programs = [
-        ("sha2", "sha2_prover.bin", "sha2_verifier.bin"),
-        ("ecdsa", "ecdsa_prover.bin", "ecdsa_verifier.bin"),
-        ("keccak", "keccak_prover.bin", "keccak_verifier.bin"),
-    ];
+    let sha2_input: &[u8] = b"jolt wasm prover roundtrip test input";
+    let inputs = postcard::to_allocvec(&sha2_input).expect("serialize");
+    roundtrip(&public_dir, "sha2", &inputs);
 
-    for (name, prover_file, verifier_file) in &programs {
-        let prover_path = public_dir.join(prover_file);
-        println!("\n[{name}] Reading prover preprocessing from {prover_path:?}");
-        let prover_bytes = std::fs::read(&prover_path).expect("Failed to read prover file");
+    let mut inputs = postcard::to_allocvec(&[5u8; 32]).expect("serialize");
+    inputs.extend_from_slice(&postcard::to_allocvec(&100u32).expect("serialize"));
+    roundtrip(&public_dir, "sha2_chain", &inputs);
 
-        match test_prover_roundtrip(&prover_bytes) {
-            Ok(()) => println!("[{name}] Prover preprocessing: PASS"),
-            Err(e) => {
-                println!("[{name}] Prover preprocessing: FAIL - {e}");
-                std::process::exit(1);
-            }
-        }
-
-        let verifier_path = public_dir.join(verifier_file);
-        println!("[{name}] Reading verifier preprocessing from {verifier_path:?}");
-        let verifier_bytes = std::fs::read(&verifier_path).expect("Failed to read verifier file");
-
-        match test_verifier_roundtrip(&verifier_bytes) {
-            Ok(()) => println!("[{name}] Verifier preprocessing: PASS"),
-            Err(e) => {
-                println!("[{name}] Verifier preprocessing: FAIL - {e}");
-                std::process::exit(1);
-            }
-        }
-    }
-
-    println!("\nAll tests passed!");
+    println!("All roundtrips passed!");
 }

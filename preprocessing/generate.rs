@@ -1,129 +1,105 @@
-use ark_serialize::CanonicalSerialize;
-use jolt_core::curve::Bn254Curve;
-use jolt_core::host::JoltProgramSource;
-use jolt_core::poly::commitment::dory::DoryCommitmentScheme;
-use jolt_core::zkvm::bytecode::PreprocessingError;
-use jolt_core::zkvm::prover::JoltProverPreprocessing;
-use jolt_core::zkvm::verifier::{JoltSharedPreprocessing, JoltVerifierPreprocessing};
+//! Compiles the guests and writes browser-served preprocessing artifacts:
+//! `{name}_prover.bin` — the Dory SRS (`ArkworksProverSetup`, arkworks
+//! uncompressed for fast wasm deserialization), `{name}_verifier.bin` — the
+//! modular `JoltVerifierPreprocessing` (bincode/serde), and `{name}.elf`.
+//! Prover- and verifier-side generators come from the same legacy
+//! `JoltProverPreprocessing`, so the SRS pair is consistent by construction.
+
 use std::path::{Path, PathBuf};
 
-type ProverPrep = JoltProverPreprocessing<ark_bn254::Fr, Bn254Curve, DoryCommitmentScheme>;
-type VerifierPrep = JoltVerifierPreprocessing<ark_bn254::Fr, Bn254Curve, DoryCommitmentScheme>;
+type LegacyProverPrep = jolt::JoltProverPreprocessing<jolt::F, jolt::Curve, jolt::PCS>;
 
-struct ProgramSpec {
-    name: &'static str,
-    prover_file: &'static str,
-    verifier_file: &'static str,
-    elf_file: &'static str,
-    compile: fn(&str) -> jolt_core::host::Program,
-    preprocess_shared:
-        fn(&mut dyn JoltProgramSource) -> Result<JoltSharedPreprocessing, PreprocessingError>,
-    preprocess_prover: fn(JoltSharedPreprocessing) -> ProverPrep,
-    verifier_from_prover: fn(&ProverPrep) -> VerifierPrep,
-}
+fn emit(
+    name: &str,
+    mut program: jolt::host::Program,
+    shared: jolt::JoltSharedPreprocessing,
+    public_dir: &Path,
+) {
+    println!("[{name}] Generating prover preprocessing (SRS)...");
+    let prover_prep = LegacyProverPrep::new(shared);
 
-fn generate_program(www_dir: &Path, spec: &ProgramSpec) {
-    let name = spec.name;
-    let target_dir = format!("/tmp/jolt-wasm-{name}-guest");
-    std::fs::create_dir_all(&target_dir).expect("Failed to create target dir");
+    println!("[{name}] Deriving modular verifier preprocessing...");
+    let verifier_prep: jolt::JoltVerifierPreprocessing =
+        jolt::jolt_prover_legacy::zkvm::proof::verifier_preprocessing_from_prover(&prover_prep);
 
-    println!("[{name}] Compiling guest program...");
-    let mut program = (spec.compile)(&target_dir);
-
-    println!("[{name}] Generating shared preprocessing...");
-    let shared = (spec.preprocess_shared)(&mut program).expect("Shared preprocessing failed");
-
-    let elf_contents = program
-        .get_elf_contents()
-        .expect("Failed to get ELF contents");
-
-    println!("[{name}] Generating prover preprocessing...");
-    let prover_preprocessing = (spec.preprocess_prover)(shared);
-
-    println!("[{name}] Generating verifier preprocessing...");
-    let verifier_preprocessing = (spec.verifier_from_prover)(&prover_preprocessing);
-
+    let srs_bytes = serialize_uncompressed(&prover_prep.generators);
     write_file(
-        www_dir,
-        spec.prover_file,
+        public_dir,
+        &format!("{name}_prover.bin"),
         name,
-        "Prover",
-        &serialize_uncompressed(&prover_preprocessing),
+        "SRS",
+        &srs_bytes,
     );
 
+    let verifier_bytes = bincode::serde::encode_to_vec(&verifier_prep, bincode::config::standard())
+        .expect("verifier preprocessing encode");
     write_file(
-        www_dir,
-        spec.verifier_file,
+        public_dir,
+        &format!("{name}_verifier.bin"),
         name,
         "Verifier",
-        &serialize_uncompressed(&verifier_preprocessing),
+        &verifier_bytes,
     );
 
-    let elf_path = www_dir.join(spec.elf_file);
-    std::fs::write(&elf_path, &elf_contents).expect("Failed to write ELF");
+    let elf_contents = program.get_elf_contents().expect("ELF contents");
+    let elf_path = public_dir.join(format!("{name}.elf"));
+    std::fs::write(&elf_path, &elf_contents).expect("write ELF");
     println!("[{name}] ELF: {} bytes -> {elf_path:?}", elf_contents.len());
 }
 
-fn serialize_uncompressed<T: CanonicalSerialize>(value: &T) -> Vec<u8> {
+fn serialize_uncompressed<T: ark_serialize::CanonicalSerialize>(value: &T) -> Vec<u8> {
     let mut buf = Vec::with_capacity(value.serialized_size(ark_serialize::Compress::No));
-    value
-        .serialize_uncompressed(&mut buf)
-        .expect("Failed to serialize");
+    value.serialize_uncompressed(&mut buf).expect("serialize");
     buf
 }
 
-fn write_file(www_dir: &Path, filename: &str, program: &str, kind: &str, bytes: &[u8]) {
-    let path = www_dir.join(filename);
-    std::fs::write(&path, bytes).expect("Failed to write file");
-    println!(
-        "[{program}] {kind} preprocessing: {} bytes -> {path:?}",
-        bytes.len()
-    );
+fn write_file(public_dir: &Path, filename: &str, program: &str, kind: &str, bytes: &[u8]) {
+    let path = public_dir.join(filename);
+    std::fs::write(&path, bytes).expect("write file");
+    println!("[{program}] {kind}: {} bytes -> {path:?}", bytes.len());
 }
+
+// Inline registration is inventory-based (link-time); keeping the crates
+// linked is all the tracer needs.
+use jolt_inlines_keccak256 as _;
+use jolt_inlines_secp256k1 as _;
+use jolt_inlines_sha2 as _;
 
 fn main() {
     let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
-    std::fs::create_dir_all(&public_dir).expect("Failed to create frontend/public dir");
+    std::fs::create_dir_all(&public_dir).expect("create frontend/public");
 
-    let specs = [
-        ProgramSpec {
-            name: "sha2",
-            prover_file: "sha2_prover.bin",
-            verifier_file: "sha2_verifier.bin",
-            elf_file: "sha2.elf",
-            compile: sha2_guest::compile_sha2,
-            preprocess_shared: sha2_guest::preprocess_shared_sha2,
-            preprocess_prover: sha2_guest::preprocess_prover_sha2,
-            verifier_from_prover: sha2_guest::verifier_preprocessing_from_prover_sha2,
-        },
-        ProgramSpec {
-            name: "ecdsa",
-            prover_file: "ecdsa_prover.bin",
-            verifier_file: "ecdsa_verifier.bin",
-            elf_file: "ecdsa.elf",
-            compile: secp256k1_ecdsa_verify_guest::compile_secp256k1_ecdsa_verify,
-            preprocess_shared:
-                secp256k1_ecdsa_verify_guest::preprocess_shared_secp256k1_ecdsa_verify,
-            preprocess_prover:
-                secp256k1_ecdsa_verify_guest::preprocess_prover_secp256k1_ecdsa_verify,
-            verifier_from_prover:
-                secp256k1_ecdsa_verify_guest::verifier_preprocessing_from_prover_secp256k1_ecdsa_verify,
-        },
-        ProgramSpec {
-            name: "keccak",
-            prover_file: "keccak_prover.bin",
-            verifier_file: "keccak_verifier.bin",
-            elf_file: "keccak.elf",
-            compile: sha3_chain_guest::compile_sha3_chain,
-            preprocess_shared: sha3_chain_guest::preprocess_shared_sha3_chain,
-            preprocess_prover: sha3_chain_guest::preprocess_prover_sha3_chain,
-            verifier_from_prover:
-                sha3_chain_guest::verifier_preprocessing_from_prover_sha3_chain,
-        },
-    ];
-
-    for spec in &specs {
-        generate_program(&public_dir, spec);
+    {
+        let target_dir = "/tmp/jolt-wasm-sha2-guest";
+        println!("[sha2] Compiling guest...");
+        let mut program = sha2_guest::compile_sha2(target_dir);
+        let shared = sha2_guest::preprocess_shared_sha2(&mut program).expect("preprocess");
+        emit("sha2", program, shared, &public_dir);
+    }
+    {
+        let target_dir = "/tmp/jolt-wasm-ecdsa-guest";
+        println!("[ecdsa] Compiling guest...");
+        let mut program = secp256k1_ecdsa_verify_guest::compile_secp256k1_ecdsa_verify(target_dir);
+        let shared =
+            secp256k1_ecdsa_verify_guest::preprocess_shared_secp256k1_ecdsa_verify(&mut program)
+                .expect("preprocess");
+        emit("ecdsa", program, shared, &public_dir);
+    }
+    {
+        let target_dir = "/tmp/jolt-wasm-keccak-guest";
+        println!("[keccak] Compiling guest...");
+        let mut program = sha3_chain_guest::compile_sha3_chain(target_dir);
+        let shared =
+            sha3_chain_guest::preprocess_shared_sha3_chain(&mut program).expect("preprocess");
+        emit("keccak", program, shared, &public_dir);
+    }
+    {
+        let target_dir = "/tmp/jolt-wasm-sha2-chain-guest";
+        println!("[sha2_chain] Compiling guest...");
+        let mut program = sha2_chain_guest::compile_sha2_chain(target_dir);
+        let shared =
+            sha2_chain_guest::preprocess_shared_sha2_chain(&mut program).expect("preprocess");
+        emit("sha2_chain", program, shared, &public_dir);
     }
 
     println!("Done!");

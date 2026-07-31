@@ -1,285 +1,212 @@
-// Force-link inline crates so inventory registrations survive WASM dead-code elimination
-extern crate jolt_inlines_keccak256;
-extern crate jolt_inlines_secp256k1;
-extern crate jolt_inlines_sha2;
+pub mod engine;
 
-use ark_bn254::Fr;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use common::jolt_device::{JoltDevice, MemoryConfig};
-use jolt_core::{
-    curve::Bn254Curve,
-    poly::commitment::dory::DoryCommitmentScheme,
-    transcripts::Blake2bTranscript,
-    zkvm::{prover::JoltProverPreprocessing, verifier::JoltVerifierPreprocessing, Serializable},
-};
-use wasm_bindgen::prelude::*;
-
-pub use wasm_bindgen_rayon::init_thread_pool;
-
+#[cfg(target_arch = "wasm32")]
 mod wasm_tracing;
 
-#[no_mangle]
-#[cfg(not(target_arch = "wasm32"))]
-pub static mut _HEAP_PTR: u8 = 0;
+#[cfg(target_arch = "wasm32")]
+mod wasm {
+    use crate::engine;
+    use wasm_bindgen::prelude::*;
 
-type ProverPreprocessing = JoltProverPreprocessing<Fr, Bn254Curve, DoryCommitmentScheme>;
-type VerifierPreprocessing = JoltVerifierPreprocessing<Fr, Bn254Curve, DoryCommitmentScheme>;
+    pub use wasm_bindgen_rayon::init_thread_pool;
 
-#[wasm_bindgen(start)]
-pub fn wasm_main() {
-    console_error_panic_hook::set_once();
-}
-
-#[wasm_bindgen]
-pub fn init_tracing() {
-    wasm_tracing::init();
-}
-
-#[wasm_bindgen]
-pub fn get_trace_json() -> String {
-    wasm_tracing::get_trace_json()
-}
-
-#[wasm_bindgen]
-pub fn clear_trace() {
-    wasm_tracing::clear();
-}
-
-#[wasm_bindgen]
-pub struct WasmProver {
-    preprocessing: ProverPreprocessing,
-    elf_bytes: Vec<u8>,
-}
-
-#[wasm_bindgen]
-impl WasmProver {
-    #[wasm_bindgen(constructor)]
-    pub fn new(preprocessing_bytes: &[u8], elf_bytes: &[u8]) -> Result<WasmProver, JsValue> {
-        let preprocessing = ProverPreprocessing::deserialize_with_mode(
-            &mut std::io::Cursor::new(preprocessing_bytes),
-            ark_serialize::Compress::No,
-            ark_serialize::Validate::No,
-        )
-        .map_err(|e| JsValue::from_str(&format!("ProverPreprocessing deserialize error: {e}")))?;
-
-        Ok(Self {
-            preprocessing,
-            elf_bytes: elf_bytes.to_vec(),
-        })
+    #[wasm_bindgen(start)]
+    pub fn wasm_main() {
+        console_error_panic_hook::set_once();
     }
 
-    fn prove_with_inputs(&self, inputs: &[u8]) -> Result<ProveResult, JsValue> {
-        use jolt_core::zkvm::prover::JoltCpuProver;
+    #[wasm_bindgen]
+    pub fn init_tracing() {
+        crate::wasm_tracing::init();
+    }
 
-        let layout = &self.preprocessing.shared.memory_layout;
-        let memory_config = MemoryConfig {
-            max_untrusted_advice_size: layout.max_untrusted_advice_size,
-            max_trusted_advice_size: layout.max_trusted_advice_size,
-            max_input_size: layout.max_input_size,
-            max_output_size: layout.max_output_size,
-            stack_size: layout.stack_size,
-            heap_size: layout.heap_size,
-            program_size: Some(layout.program_size),
-        };
+    #[wasm_bindgen]
+    pub fn get_trace_json() -> String {
+        crate::wasm_tracing::get_trace_json()
+    }
 
-        let (lazy_trace, trace, final_memory, program_io, _advice_tape) =
-            jolt_core::guest::program::trace(
-                &self.elf_bytes,
-                None,
-                inputs,
-                &[],
-                &[],
-                &memory_config,
-                None,
+    #[wasm_bindgen]
+    pub fn clear_trace() {
+        crate::wasm_tracing::clear();
+    }
+
+    /// Inline registration is inventory-based (link-time ctors, run by
+    /// `__wasm_call_ctors` at instantiation). Kept as a no-op so worker.js
+    /// doesn't change.
+    #[wasm_bindgen]
+    pub fn init_inlines() -> Result<(), JsValue> {
+        use jolt_inlines_keccak256 as _;
+        use jolt_inlines_secp256k1 as _;
+        use jolt_inlines_sha2 as _;
+        Ok(())
+    }
+
+    #[wasm_bindgen]
+    pub struct WasmProver {
+        preprocessing: engine::ProverPrep,
+        elf_bytes: Vec<u8>,
+    }
+
+    #[wasm_bindgen]
+    impl WasmProver {
+        #[wasm_bindgen(constructor)]
+        pub fn new(
+            srs_bytes: &[u8],
+            verifier_preprocessing_bytes: &[u8],
+            elf_bytes: &[u8],
+        ) -> Result<WasmProver, JsValue> {
+            let preprocessing =
+                engine::build_prover_preprocessing(srs_bytes, verifier_preprocessing_bytes)
+                    .map_err(|e| JsValue::from_str(&e))?;
+            Ok(Self {
+                preprocessing,
+                elf_bytes: elf_bytes.to_vec(),
+            })
+        }
+
+        fn prove_with_inputs(&self, inputs: &[u8]) -> Result<ProveResult, JsValue> {
+            let out = engine::prove(&self.preprocessing, &self.elf_bytes, inputs)
+                .map_err(|e| JsValue::from_str(&e))?;
+            Ok(ProveResult { out })
+        }
+
+        pub fn prove_sha2(&self, input: &[u8]) -> Result<ProveResult, JsValue> {
+            let inputs = postcard::to_allocvec(&input)
+                .map_err(|e| JsValue::from_str(&format!("input serialization error: {e}")))?;
+            self.prove_with_inputs(&inputs)
+        }
+
+        pub fn prove_ecdsa(
+            &self,
+            z: &[u64],
+            r: &[u64],
+            s: &[u64],
+            q: &[u64],
+        ) -> Result<ProveResult, JsValue> {
+            let z: [u64; 4] = z
+                .try_into()
+                .map_err(|_| JsValue::from_str("z must be 4 u64s"))?;
+            let r: [u64; 4] = r
+                .try_into()
+                .map_err(|_| JsValue::from_str("r must be 4 u64s"))?;
+            let s: [u64; 4] = s
+                .try_into()
+                .map_err(|_| JsValue::from_str("s must be 4 u64s"))?;
+            let q: [u64; 8] = q
+                .try_into()
+                .map_err(|_| JsValue::from_str("q must be 8 u64s"))?;
+
+            let mut inputs = Vec::new();
+            for part in [
+                postcard::to_allocvec(&z),
+                postcard::to_allocvec(&r),
+                postcard::to_allocvec(&s),
+            ] {
+                inputs.extend_from_slice(
+                    &part.map_err(|e| JsValue::from_str(&format!("serialization error: {e}")))?,
+                );
+            }
+            inputs.extend_from_slice(
+                &postcard::to_allocvec(&q)
+                    .map_err(|e| JsValue::from_str(&format!("serialization error: {e}")))?,
             );
+            self.prove_with_inputs(&inputs)
+        }
 
-        let num_cycles = trace.len();
+        pub fn prove_keccak_chain(
+            &self,
+            input: &[u8],
+            num_iters: u32,
+        ) -> Result<ProveResult, JsValue> {
+            self.prove_hash_chain(input, num_iters)
+        }
 
-        let prover: JoltCpuProver<'_, Fr, Bn254Curve, DoryCommitmentScheme, Blake2bTranscript> =
-            JoltCpuProver::gen_from_trace(
-                &self.preprocessing,
-                lazy_trace,
-                trace,
-                program_io.clone(),
-                None,
-                None,
-                final_memory,
+        pub fn prove_sha2_chain(
+            &self,
+            input: &[u8],
+            num_iters: u32,
+        ) -> Result<ProveResult, JsValue> {
+            self.prove_hash_chain(input, num_iters)
+        }
+
+        fn prove_hash_chain(&self, input: &[u8], num_iters: u32) -> Result<ProveResult, JsValue> {
+            let input: [u8; 32] = input
+                .try_into()
+                .map_err(|_| JsValue::from_str("input must be 32 bytes"))?;
+
+            let mut inputs = Vec::new();
+            inputs.extend_from_slice(
+                &postcard::to_allocvec(&input)
+                    .map_err(|e| JsValue::from_str(&format!("input serialization error: {e}")))?,
             );
-
-        let (proof, _) = prover.prove();
-
-        let proof_size = proof.serialized_size(ark_serialize::Compress::Yes);
-
-        let stage8_compressed = proof
-            .joint_opening_proof
-            .serialized_size(ark_serialize::Compress::Yes);
-        let stage8_uncompressed = proof
-            .joint_opening_proof
-            .serialized_size(ark_serialize::Compress::No);
-        let commitments_compressed = proof
-            .commitments
-            .serialized_size(ark_serialize::Compress::Yes);
-        let commitments_uncompressed = proof
-            .commitments
-            .serialized_size(ark_serialize::Compress::No);
-
-        let compressed_proof_size = proof_size - stage8_compressed + (stage8_uncompressed / 3)
-            - commitments_compressed
-            + (commitments_uncompressed / 3);
-
-        let proof_bytes = proof
-            .serialize_to_bytes()
-            .map_err(|e| JsValue::from_str(&format!("Proof serialization error: {e}")))?;
-
-        let program_io_bytes = program_io
-            .serialize_to_bytes()
-            .map_err(|e| JsValue::from_str(&format!("Program IO serialization error: {e}")))?;
-
-        Ok(ProveResult {
-            proof_bytes,
-            proof_size,
-            compressed_proof_size,
-            program_io_bytes,
-            num_cycles,
-        })
+            inputs.extend_from_slice(
+                &postcard::to_allocvec(&num_iters).map_err(|e| {
+                    JsValue::from_str(&format!("num_iters serialization error: {e}"))
+                })?,
+            );
+            self.prove_with_inputs(&inputs)
+        }
     }
 
-    pub fn prove_sha2(&self, input: &[u8]) -> Result<ProveResult, JsValue> {
-        let inputs = postcard::to_allocvec(&input)
-            .map_err(|e| JsValue::from_str(&format!("Input serialization error: {e}")))?;
-        self.prove_with_inputs(&inputs)
+    #[wasm_bindgen]
+    pub struct ProveResult {
+        out: engine::ProveOutput,
     }
 
-    pub fn prove_ecdsa(
-        &self,
-        z: &[u64],
-        r: &[u64],
-        s: &[u64],
-        q: &[u64],
-    ) -> Result<ProveResult, JsValue> {
-        let z: [u64; 4] = z
-            .try_into()
-            .map_err(|_| JsValue::from_str("z must be 4 u64s"))?;
-        let r: [u64; 4] = r
-            .try_into()
-            .map_err(|_| JsValue::from_str("r must be 4 u64s"))?;
-        let s: [u64; 4] = s
-            .try_into()
-            .map_err(|_| JsValue::from_str("s must be 4 u64s"))?;
-        let q: [u64; 8] = q
-            .try_into()
-            .map_err(|_| JsValue::from_str("q must be 8 u64s"))?;
+    #[wasm_bindgen]
+    impl ProveResult {
+        #[wasm_bindgen(getter)]
+        pub fn proof(&self) -> Vec<u8> {
+            self.out.proof_bytes.clone()
+        }
 
-        let mut inputs = Vec::new();
-        inputs.extend_from_slice(
-            &postcard::to_allocvec(&z)
-                .map_err(|e| JsValue::from_str(&format!("z serialization error: {e}")))?,
-        );
-        inputs.extend_from_slice(
-            &postcard::to_allocvec(&r)
-                .map_err(|e| JsValue::from_str(&format!("r serialization error: {e}")))?,
-        );
-        inputs.extend_from_slice(
-            &postcard::to_allocvec(&s)
-                .map_err(|e| JsValue::from_str(&format!("s serialization error: {e}")))?,
-        );
-        inputs.extend_from_slice(
-            &postcard::to_allocvec(&q)
-                .map_err(|e| JsValue::from_str(&format!("q serialization error: {e}")))?,
-        );
-        self.prove_with_inputs(&inputs)
+        #[wasm_bindgen(getter)]
+        pub fn proof_size(&self) -> usize {
+            self.out.proof_bytes.len()
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn compressed_proof_size(&self) -> usize {
+            self.out.proof_bytes.len()
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn program_io(&self) -> Vec<u8> {
+            self.out.io_bytes.clone()
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn num_cycles(&self) -> usize {
+            self.out.unpadded_cycles
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn padded_cycles(&self) -> usize {
+            self.out.padded_cycles
+        }
     }
 
-    pub fn prove_keccak_chain(&self, input: &[u8], num_iters: u32) -> Result<ProveResult, JsValue> {
-        let input: [u8; 32] = input
-            .try_into()
-            .map_err(|_| JsValue::from_str("input must be 32 bytes"))?;
+    #[wasm_bindgen]
+    pub struct WasmVerifier {
+        preprocessing: engine::VerifierPrep,
+    }
 
-        let mut inputs = Vec::new();
-        inputs.extend_from_slice(
-            &postcard::to_allocvec(&input)
-                .map_err(|e| JsValue::from_str(&format!("input serialization error: {e}")))?,
-        );
-        inputs.extend_from_slice(
-            &postcard::to_allocvec(&num_iters)
-                .map_err(|e| JsValue::from_str(&format!("num_iters serialization error: {e}")))?,
-        );
-        self.prove_with_inputs(&inputs)
+    #[wasm_bindgen]
+    impl WasmVerifier {
+        #[wasm_bindgen(constructor)]
+        pub fn new(preprocessing_bytes: &[u8]) -> Result<WasmVerifier, JsValue> {
+            let preprocessing = engine::decode_verifier_preprocessing(preprocessing_bytes)
+                .map_err(|e| JsValue::from_str(&e))?;
+            Ok(Self { preprocessing })
+        }
+
+        pub fn verify(&self, proof_bytes: &[u8], program_io_bytes: &[u8]) -> Result<bool, JsValue> {
+            engine::verify(&self.preprocessing, proof_bytes, program_io_bytes)
+                .map(|_| true)
+                .map_err(|e| JsValue::from_str(&e))
+        }
     }
 }
 
-#[wasm_bindgen]
-pub struct ProveResult {
-    proof_bytes: Vec<u8>,
-    proof_size: usize,
-    compressed_proof_size: usize,
-    program_io_bytes: Vec<u8>,
-    num_cycles: usize,
-}
-
-#[wasm_bindgen]
-impl ProveResult {
-    #[wasm_bindgen(getter)]
-    pub fn proof(&self) -> Vec<u8> {
-        self.proof_bytes.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn proof_size(&self) -> usize {
-        self.proof_size
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn compressed_proof_size(&self) -> usize {
-        self.compressed_proof_size
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn program_io(&self) -> Vec<u8> {
-        self.program_io_bytes.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn num_cycles(&self) -> usize {
-        self.num_cycles
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmVerifier {
-    preprocessing: VerifierPreprocessing,
-}
-
-#[wasm_bindgen]
-impl WasmVerifier {
-    #[wasm_bindgen(constructor)]
-    pub fn new(preprocessing_bytes: &[u8]) -> Result<WasmVerifier, JsValue> {
-        let preprocessing = VerifierPreprocessing::deserialize_with_mode(
-            &mut std::io::Cursor::new(preprocessing_bytes),
-            ark_serialize::Compress::No,
-            ark_serialize::Validate::Yes,
-        )
-        .map_err(|e| JsValue::from_str(&format!("VerifierPreprocessing deserialize error: {e}")))?;
-
-        Ok(Self { preprocessing })
-    }
-
-    pub fn verify(&self, proof_bytes: &[u8], program_io_bytes: &[u8]) -> Result<bool, JsValue> {
-        use jolt_core::zkvm::{proof_serialization::JoltProof, RV64IMACVerifier};
-
-        let proof: JoltProof<Fr, Bn254Curve, DoryCommitmentScheme, Blake2bTranscript> =
-            JoltProof::deserialize_from_bytes(proof_bytes)
-                .map_err(|e| JsValue::from_str(&format!("Proof deserialize error: {e}")))?;
-
-        let program_io: JoltDevice = JoltDevice::deserialize_from_bytes(program_io_bytes)
-            .map_err(|e| JsValue::from_str(&format!("Program IO deserialize error: {e}")))?;
-
-        let verifier = RV64IMACVerifier::new(&self.preprocessing, proof, program_io, None, None)
-            .map_err(|e| JsValue::from_str(&format!("Verifier init error: {e}")))?;
-
-        verifier
-            .verify()
-            .map(|_| true)
-            .map_err(|e| JsValue::from_str(&format!("Verification failed: {e}")))
-    }
-}
+#[cfg(target_arch = "wasm32")]
+pub use wasm::*;
