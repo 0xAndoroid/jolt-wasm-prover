@@ -10,6 +10,9 @@ members = [
     "guests/sha3-chain",
     "guests/sha2-chain",
 ]
+# Keep the setup-wasm-deps.sh checkouts out of this workspace so their crates
+# resolve workspace inheritance against their own roots.
+exclude = [".wasm-deps"]
 
 [lib]
 crate-type = ["cdylib"]

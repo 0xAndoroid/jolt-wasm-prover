@@ -28,7 +28,7 @@ async function run() {
     });
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'));
-    await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
+    await page.goto(process.env.BENCH_URL || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     await page.evaluate(async () => {
         window.__bench = { pending: new Map() };

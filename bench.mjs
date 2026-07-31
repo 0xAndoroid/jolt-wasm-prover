@@ -16,7 +16,7 @@ async function run() {
         if (text.startsWith('[sha2]')) process.stderr.write(text + '\n');
     });
 
-    await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
+    await page.goto(process.env.BENCH_URL || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     await page.waitForFunction(
         () => document.getElementById('status')?.classList.contains('ready'),
