@@ -8,5 +8,5 @@ guest = []
 field-inline = ["jolt/field-inline"]
 
 [dependencies]
-jolt = { package = "jolt-sdk", path = "../../../../../jolt/.worktrees/w2-webgpu-seam/jolt-sdk" }
-jolt-inlines-sha2 = { path = "../../../../../jolt/.worktrees/w2-webgpu-seam/jolt-inlines/sha2" }
+jolt = { package = "jolt-sdk", path = "../../../../../jolt/.worktrees/w4-r/jolt-sdk" }
+jolt-inlines-sha2 = { path = "../../../../../jolt/.worktrees/w4-r/jolt-inlines/sha2" }

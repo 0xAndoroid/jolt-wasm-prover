@@ -25,7 +25,16 @@ async function initWebGpu(module, config) {
     const ready = new Promise((resolve, reject) => {
         gpuWorker.onmessage = (ev) => {
             if (ev.data.type === 'gpu-ready') resolve();
-            if (ev.data.type === 'gpu-error') reject(new Error(ev.data.error));
+            if (ev.data.type === 'gpu-error') {
+                // After ready this reject is a no-op — keep the record loud:
+                // a post-ready gpu-error is a drain trap (engine-side panic).
+                console.error('[worker] gpu-worker error:', ev.data.error);
+                reject(new Error(ev.data.error));
+            }
+        };
+        gpuWorker.onerror = (ev) => {
+            console.error('[worker] gpu-worker crashed:', ev.message || ev);
+            reject(new Error('gpu-worker crashed'));
         };
     });
     const t0 = performance.now();
