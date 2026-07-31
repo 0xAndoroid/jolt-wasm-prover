@@ -23,7 +23,7 @@ async function run() {
     });
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'));
-    await page.goto((process.env.BENCH_BASE || 'http://localhost:8080') + '/bench.html', { waitUntil: 'domcontentloaded' });
+    await page.goto((process.env.BENCH_BASE || process.env.BENCH_URL || 'http://localhost:8080') + '/bench.html', { waitUntil: 'domcontentloaded' });
 
     const webgpu = process.env.BENCH_WEBGPU ? JSON.parse(process.env.BENCH_WEBGPU) : null;
     await page.evaluate(async ({ webgpu }) => {

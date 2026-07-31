@@ -28,12 +28,17 @@ async function run() {
     });
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'));
-    await page.goto(process.env.BENCH_BASE || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
+    await page.goto(process.env.BENCH_BASE || process.env.BENCH_URL || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     const tracing = process.env.BENCH_TRACING !== '0';
-    // BENCH_WEBGPU: unset/'' = CPU arm; JSON (e.g. '{"millerCpuFraction":0.1}'
-    // or '{}') = webgpu arm with production default gates unless overridden.
-    const webgpu = process.env.BENCH_WEBGPU ? JSON.parse(process.env.BENCH_WEBGPU) : null;
+    // BENCH_WEBGPU: unset/'' = CPU arm; '1' = webgpu arm with optional
+    // BENCH_MIN_TERMS/BENCH_HANDOFF gates; any other value = JSON config
+    // (e.g. '{"millerCpuFraction":0.1}' or '{}') = webgpu arm with
+    // production default gates unless overridden.
+    const webgpu = !process.env.BENCH_WEBGPU ? null
+        : process.env.BENCH_WEBGPU === '1'
+            ? { minTerms: +(process.env.BENCH_MIN_TERMS || 0), handoffLen: +(process.env.BENCH_HANDOFF || 0) }
+            : JSON.parse(process.env.BENCH_WEBGPU);
     await page.evaluate(async ({ tracing, webgpu }) => {
         window.__bench = { pending: new Map() };
         const worker = new Worker('/worker.js', { type: 'module' });
