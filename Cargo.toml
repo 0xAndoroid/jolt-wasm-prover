@@ -57,7 +57,7 @@ jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "70a294ad
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
-wasm-bindgen-rayon = "1.3"
+wasm-bindgen-rayon = { version = "1.3", features = ["no-bundler"] }
 js-sys = "0.3"
 web-sys = { version = "0.3", features = ["console", "Window", "Performance"] }
 console_error_panic_hook = "0.1"

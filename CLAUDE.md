@@ -47,7 +47,7 @@ node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js
 
 ## Architecture
 
-- `src/lib.rs` — `#[wasm_bindgen]` exports: `WasmProver`, `WasmVerifier`, `init_inlines` (no-op, kept for worker.js compat; inline registration is inventory-based link-time ctors), tracing
+- `src/lib.rs` — `#[wasm_bindgen]` exports: `WasmProver`, `WasmVerifier`, tracing (`init_inlines` export kept as a no-op — inline registration is inventory-based link-time ctors and worker.js no longer calls it)
 - `src/engine.rs` — the prove/verify pipeline shared by wasm and native: deserialize SRS (`ark-serialize` uncompressed) + verifier preprocessing (bincode2), assemble `JoltProverPreprocessing`, trace via `TracerBackend`, prove via `jolt_prover::prove` over `JoltBackend::optimized()`
 - `src/wasm_tracing.rs` — Chrome Trace Format layer for `tracing`, outputs Perfetto-compatible JSON (per-thread tids)
 - `preprocessing/generate.rs` — native binary: compiles guests, generates Dory SRS, serializes prover/verifier preprocessing to `frontend/public/`
@@ -72,6 +72,7 @@ node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js
 ## WASM Build Requirements
 
 - Nightly Rust (for `build-std` with atomics; tree needs ≥1.95 nightly)
+- After switching nightly versions, run `cargo clean --target wasm32-unknown-unknown` — stale `std` artifacts cause `condvar wait not supported` panics
 - `.cargo/config.toml` sets `+atomics,+bulk-memory,+mutable-globals`, 4 GB max memory, and `--export=__heap_base` (required by wasm-bindgen's threads transform)
 - `wasm-pack` for building the WASM package
 - `wasm-opt = false` — the wasm-opt pass was neutral-to-harmful here
