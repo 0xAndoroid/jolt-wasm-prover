@@ -61,10 +61,11 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = ["console", "Window", "Performance"] }
 console_error_panic_hook = "0.1"
 getrandom = { version = "0.2.16", features = ["js"] }
-tracing-subscriber = { version = "0.3", features = ["std"] }
+tracing-subscriber = { version = "0.3", features = ["std", "env-filter", "fmt"] }
 serde_json = "1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tracing-subscriber = { version = "0.3", features = ["std", "env-filter", "fmt"] }
 jolt = { package = "jolt-sdk", path = "../../../jolt/.worktrees/w4-m/jolt-sdk", features = ["host"] }
 sha2-guest = { path = "guests/sha2" }
 secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
