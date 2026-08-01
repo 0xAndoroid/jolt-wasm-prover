@@ -15,6 +15,9 @@ const handoffLen = parseInt(process.argv[5] || '0', 10);
 const traceOut = process.argv[6] || '';
 const port = parseInt(process.argv[7] || '8080', 10);
 const runs = parseInt(process.argv[8] || '1', 10);
+// W5-U4: optional JSON merged into the on-arm webgpu config (e.g.
+// '{"minTermsBytecode":1073741824}' = bytecode twin off, all else default).
+const webgpuExtra = process.argv[9] ? JSON.parse(process.argv[9]) : {};
 if (!iters) {
     console.error('usage: node t2a-trace.mjs <iters> <off|on> [minTerms] [handoff] [traceOut] [port] [runs]');
     process.exit(1);
@@ -29,7 +32,7 @@ page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'))
 await page.goto(`http://localhost:${port}/bench.html`, { waitUntil: 'domcontentloaded' });
 
 await page.evaluate(
-    async ({ arm, minTerms, handoffLen, tracing }) => {
+    async ({ arm, minTerms, handoffLen, tracing, webgpuExtra }) => {
         window.__b = { pending: new Map() };
         const worker = new Worker('/worker.js', { type: 'module' });
         window.__b.worker = worker;
@@ -50,7 +53,7 @@ await page.evaluate(
                 numThreads: Math.min(navigator.hardwareConcurrency || 4, 12),
                 tracing,
                 webgpu: arm === 'on'
-                    ? { minTerms: minTerms || 0, handoffLen: handoffLen || 0 }
+                    ? { minTerms: minTerms || 0, handoffLen: handoffLen || 0, ...webgpuExtra }
                     : null,
             },
         });
@@ -76,7 +79,7 @@ await page.evaluate(
         }, [prover, verifier, elf]);
         await loaded;
     },
-    { arm, minTerms, handoffLen, tracing: !!traceOut },
+    { arm, minTerms, handoffLen, tracing: !!traceOut, webgpuExtra },
 );
 
 for (let i = 0; i < runs; i++) {
