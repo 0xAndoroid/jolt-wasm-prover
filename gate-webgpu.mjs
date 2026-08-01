@@ -133,9 +133,10 @@ const onC0 = await proveOnce(browser, { webgpu: true, label: 'on-coalesce0', mil
 // W6-V2: RAM read-write slot OFF (per-slot min_terms pushed above any real
 // trace), everything else on — the slot must be byte-invariant.
 const onRw0 = await proveOnce(browser, { webgpu: true, label: 'on-rw0', minTermsRamRw: 1 << 30 });
-// W6-V2: registers read-write slot OFF — byte-invariance of the second
-// sparse-family slot.
-const onRegs0 = await proveOnce(browser, { webgpu: true, label: 'on-regs0', minTermsRegsRw: 1 << 30 });
+// W6-V2: the registers read-write slot is DEFAULT-OFF (net-neutral in
+// browser); this arm ENGAGES it explicitly — byte-invariance of the
+// opt-in path.
+const onRegs0 = await proveOnce(browser, { webgpu: true, label: 'on-regs', minTermsRegsRw: 1 });
 await browser.close();
 
 const runs = [['off-1', off1], ['off-2', off2], ['on', on], ['on-f0', onF0], ['on-f1', onF1], ['on-bc0', onBc0], ['on-coalesce0', onC0], ['on-rw0', onRw0], ['on-regs0', onRegs0]];
