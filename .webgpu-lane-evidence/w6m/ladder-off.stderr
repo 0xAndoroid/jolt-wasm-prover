@@ -1,0 +1,13 @@
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 6ms, device+pipelines 852ms
+worker ready, sha2-chain loaded (tracing=false, webgpu=null)
+iters=17 run 1: prove 8.19s (2^16 padded, 0.008 MHz), verify 0.26s, valid=true, peak 506 MB, miller 0
+iters=17 run 2: prove 5.54s (2^16 padded, 0.012 MHz), verify 0.26s, valid=true, peak 509 MB, miller 0
+iters=17 run 3: prove 5.62s (2^16 padded, 0.012 MHz), verify 0.26s, valid=true, peak 511 MB, miller 0
+iters=69 run 1: prove 12.03s (2^18 padded, 0.022 MHz), verify 0.29s, valid=true, peak 578 MB, miller 0
+iters=69 run 2: prove 11.94s (2^18 padded, 0.022 MHz), verify 0.29s, valid=true, peak 578 MB, miller 0
+iters=69 run 3: prove 11.90s (2^18 padded, 0.022 MHz), verify 0.29s, valid=true, peak 578 MB, miller 0
+iters=556 run 1: prove 46.90s (2^21 padded, 0.045 MHz), verify 0.33s, valid=true, peak 1515 MB, miller 0
+iters=556 run 2: prove 47.15s (2^21 padded, 0.044 MHz), verify 0.35s, valid=true, peak 1515 MB, miller 0
+iters=556 run 3: prove 47.07s (2^21 padded, 0.045 MHz), verify 0.35s, valid=true, peak 1515 MB, miller 0
