@@ -19,6 +19,10 @@ const BATCH = parseInt(process.argv[4] || '5', 10);
 const BASE = process.argv[5] || 'http://localhost:8094';
 const OUT = process.argv[6] || 'soak-results.jsonl';
 const RUN_TIMEOUT_MS = ITERS >= 1000 ? 300_000 : 150_000;
+// SOAK_RECYCLE=1: recycle the worker between runs WITHIN a batch — the
+// same-page-sequential reliability mode the wave-3 worker-recycle fix
+// ships (batch > 1 without it reproduces the run-4-6 device_lost).
+const RECYCLE = process.env.SOAK_RECYCLE === '1';
 
 const log = (s) => process.stderr.write(s + '\n');
 
@@ -54,54 +58,69 @@ async function runBatch(browser, batchIndex, runsInBatch, results) {
         };
 
         const pending = new Map();
-        const worker = new Worker('/worker.js', { type: 'module' });
-        window.__soak = { worker, pending };
-        worker.onmessage = (e) => {
-            const resolver = pending.get(e.data.type);
-            if (resolver) {
-                pending.delete(e.data.type);
-                resolver(e.data);
-            }
-            if (e.data.type === 'error') {
-                for (const [, r] of pending) r({ type: 'error', error: e.data.error });
-                pending.clear();
-            }
-        };
-        const wait = (type) => new Promise((resolve) => pending.set(type, resolve));
+        window.__soak = { pending };
+        window.__soak.boot = async () => {
+            const s = window.__soak;
+            s.pending.clear();
+            const worker = new Worker('/worker.js', { type: 'module' });
+            s.worker = worker;
+            worker.onmessage = (e) => {
+                const resolver = s.pending.get(e.data.type);
+                if (resolver) {
+                    s.pending.delete(e.data.type);
+                    resolver(e.data);
+                }
+                if (e.data.type === 'error') {
+                    for (const [, r] of s.pending) r({ type: 'error', error: e.data.error });
+                    s.pending.clear();
+                }
+            };
+            const wait = (type) => new Promise((resolve) => s.pending.set(type, resolve));
 
-        const initDone = wait('init-done');
-        worker.postMessage({
-            type: 'init',
-            data: {
-                numThreads: Math.min(navigator.hardwareConcurrency || 4, 12),
-                tracing: false,
-                webgpu: {},
-            },
-        });
-        const init = await initDone;
-        if (init.type === 'error') return { error: init.error };
-        if (!init.webgpu) return { error: 'webgpu did not initialize (CPU-only)' };
-
-        const files = ['sha2_chain_prover.bin', 'sha2_chain_verifier.bin', 'sha2_chain.elf'];
-        const [prover, verifier, elf] = await Promise.all(
-            files.map((f) => fetch(`/${f}?soak`).then((r) => r.arrayBuffer())),
-        );
-        const loaded = wait('program-loaded');
-        worker.postMessage(
-            {
-                type: 'load-program',
+            const initDone = wait('init-done');
+            worker.postMessage({
+                type: 'init',
                 data: {
-                    program: 'sha2-chain',
-                    proverPreprocessing: prover,
-                    verifierPreprocessing: verifier,
-                    elfBytes: elf,
+                    numThreads: Math.min(navigator.hardwareConcurrency || 4, 12),
+                    tracing: false,
+                    webgpu: {},
                 },
-            },
-            [prover, verifier, elf],
-        );
-        const l = await loaded;
-        if (l.type === 'error') return { error: l.error };
-        return { ok: true };
+            });
+            const init = await initDone;
+            if (init.type === 'error') return { error: init.error };
+            if (!init.webgpu) return { error: 'webgpu did not initialize (CPU-only)' };
+
+            const files = ['sha2_chain_prover.bin', 'sha2_chain_verifier.bin', 'sha2_chain.elf'];
+            const [prover, verifier, elf] = await Promise.all(
+                files.map((f) => fetch(`/${f}?soak`).then((r) => r.arrayBuffer())),
+            );
+            const loaded = wait('program-loaded');
+            worker.postMessage(
+                {
+                    type: 'load-program',
+                    data: {
+                        program: 'sha2-chain',
+                        proverPreprocessing: prover,
+                        verifierPreprocessing: verifier,
+                        elfBytes: elf,
+                    },
+                },
+                [prover, verifier, elf],
+            );
+            const l = await loaded;
+            if (l.type === 'error') return { error: l.error };
+            return { ok: true };
+        };
+        // Same-PAGE worker recycle (wave-3 fix): terminates the worker
+        // (its gpu-worker dies with it) and boots a fresh one; the wedge
+        // relay is page-scoped and survives.
+        window.__soak.recycle = async () => {
+            const t0 = performance.now();
+            window.__soak.worker.terminate();
+            const r = await window.__soak.boot();
+            return { ...r, ms: Math.round(performance.now() - t0) };
+        };
+        return window.__soak.boot();
     });
     if (initOk.error) {
         results.push({ batch: batchIndex, run: -1, outcome: 'init-failed', error: initOk.error });
@@ -121,11 +140,14 @@ async function runBatch(browser, batchIndex, runsInBatch, results) {
                         new Promise((resolve) => pending.set(type, resolve));
                     const input = new Uint8Array(32).fill(7);
 
+                    // Padded-target hint: the tracer reserves its rows vec
+                    // once (W5-U3b) — matters at 2^23.
+                    const expectedRows = 2 ** Math.ceil(Math.log2(iters * 3396));
                     const proveDone = wait('prove-done');
                     const t0 = performance.now();
                     worker.postMessage({
                         type: 'prove',
-                        data: { program: 'sha2-chain', input: Array.from(input), numIters: iters },
+                        data: { program: 'sha2-chain', input: Array.from(input), numIters: iters, expectedRows },
                     });
                     const timeout = new Promise((resolve) =>
                         setTimeout(() => resolve({ type: 'timeout' }), timeoutMs),
@@ -192,6 +214,15 @@ async function runBatch(browser, batchIndex, runsInBatch, results) {
             // remaining runs start on a fresh worker.
             await context.close();
             return false;
+        }
+        if (RECYCLE && r < runsInBatch - 1) {
+            const rr = await page.evaluate(() => window.__soak.recycle());
+            if (rr.error) {
+                log(`  recycle failed: ${rr.error}`);
+                await context.close();
+                return false;
+            }
+            log(`  recycled worker in ${rr.ms} ms`);
         }
     }
     await context.close();

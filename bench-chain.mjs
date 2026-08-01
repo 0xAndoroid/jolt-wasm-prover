@@ -21,6 +21,12 @@ const itersList = process.argv[2]
 const RUNS = parseInt(process.argv[3] || '3', 10);
 const TIMEOUT = 1_800_000;
 
+// BENCH_RECYCLE: '0' = never (pre-wave-3 keep-warm behavior), '1' = after
+// every run, unset = auto (GPU arm on && padded >= 2^22 — the scale where
+// same-worker reruns device_lost on the wave-3 lineage).
+const RECYCLE_MODE = process.env.BENCH_RECYCLE ?? 'auto';
+const RECYCLE_MIN_PADDED = 2 ** 22;
+
 async function run() {
     const browser = await chromium.launch({
         headless: true,
@@ -41,51 +47,70 @@ async function run() {
             : JSON.parse(process.env.BENCH_WEBGPU);
     await page.evaluate(async ({ tracing, webgpu }) => {
         window.__bench = { pending: new Map() };
-        const worker = new Worker('/worker.js', { type: 'module' });
-        window.__bench.worker = worker;
-        worker.onmessage = (e) => {
-            const { type } = e.data;
-            const resolver = window.__bench.pending.get(type);
-            if (resolver) {
-                window.__bench.pending.delete(type);
-                resolver(e.data);
-            }
-            if (type === 'error') {
-                for (const [k, r] of window.__bench.pending) r({ type: 'error', error: e.data.error });
-                window.__bench.pending.clear();
-            }
-        };
         window.__bench.wait = (type) =>
             new Promise((resolve) => window.__bench.pending.set(type, resolve));
 
-        const initDone = window.__bench.wait('init-done');
-        worker.postMessage({
-            type: 'init',
-            data: { numThreads: Math.min(navigator.hardwareConcurrency || 4, 12), tracing, webgpu },
-        });
-        await initDone;
+        window.__bench.boot = async () => {
+            const b = window.__bench;
+            b.pending.clear();
+            const worker = new Worker('/worker.js', { type: 'module' });
+            b.worker = worker;
+            worker.onmessage = (e) => {
+                const { type } = e.data;
+                const resolver = b.pending.get(type);
+                if (resolver) {
+                    b.pending.delete(type);
+                    resolver(e.data);
+                }
+                if (type === 'error') {
+                    for (const [k, r] of b.pending) r({ type: 'error', error: e.data.error });
+                    b.pending.clear();
+                }
+            };
 
-        const files = ['sha2_chain_prover.bin', 'sha2_chain_verifier.bin', 'sha2_chain.elf'];
-        const [prover, verifier, elf] = await Promise.all(
-            files.map((f) => fetch(`/${f}?bench`).then((r) => {
-                if (!r.ok) throw new Error(`fetch ${f}: ${r.status}`);
-                return r.arrayBuffer();
-            })),
-        );
-        const loaded = window.__bench.wait('program-loaded');
-        worker.postMessage(
-            {
-                type: 'load-program',
-                data: {
-                    program: 'sha2-chain',
-                    proverPreprocessing: prover,
-                    verifierPreprocessing: verifier,
-                    elfBytes: elf,
+            const initDone = b.wait('init-done');
+            worker.postMessage({
+                type: 'init',
+                data: { numThreads: Math.min(navigator.hardwareConcurrency || 4, 12), tracing, webgpu },
+            });
+            const init = await initDone;
+            b.gpuOn = !!init.webgpu;
+
+            const files = ['sha2_chain_prover.bin', 'sha2_chain_verifier.bin', 'sha2_chain.elf'];
+            const [prover, verifier, elf] = await Promise.all(
+                files.map((f) => fetch(`/${f}?bench`).then((r) => {
+                    if (!r.ok) throw new Error(`fetch ${f}: ${r.status}`);
+                    return r.arrayBuffer();
+                })),
+            );
+            const loaded = b.wait('program-loaded');
+            worker.postMessage(
+                {
+                    type: 'load-program',
+                    data: {
+                        program: 'sha2-chain',
+                        proverPreprocessing: prover,
+                        verifierPreprocessing: verifier,
+                        elfBytes: elf,
+                    },
                 },
-            },
-            [prover, verifier, elf],
-        );
-        await loaded;
+                [prover, verifier, elf],
+            );
+            await loaded;
+        };
+
+        // Same-page worker recycle (wave-3 reliability fix): warm reruns in
+        // one worker accumulate allocator/device state until device_lost at
+        // run 4-6 @2^22 on this lineage; a fresh worker per large prove is
+        // immune. Preprocessing re-fetches ride the HTTP cache.
+        window.__bench.recycle = async () => {
+            const t0 = performance.now();
+            window.__bench.worker.terminate();
+            await window.__bench.boot();
+            return Math.round(performance.now() - t0);
+        };
+
+        await window.__bench.boot();
     }, { tracing, webgpu });
     process.stderr.write(`worker ready, sha2-chain loaded (tracing=${tracing}, webgpu=${JSON.stringify(webgpu)})\n`);
 
@@ -164,6 +189,18 @@ async function run() {
                 `verify ${r.verifySeconds.toFixed(2)}s, valid=${r.valid}, ` +
                 `peak ${(r.peakMemory / 1024 / 1024).toFixed(0)} MB, miller ${r.millerServed}\n`,
             );
+
+            const lastRun =
+                iters === itersList[itersList.length - 1] && i === RUNS - 1;
+            const wantRecycle =
+                RECYCLE_MODE === '1' ||
+                (RECYCLE_MODE !== '0' &&
+                    webgpu != null &&
+                    r.paddedCycles >= RECYCLE_MIN_PADDED);
+            if (wantRecycle && !lastRun) {
+                const ms = await page.evaluate(() => window.__bench.recycle());
+                process.stderr.write(`recycled worker in ${ms} ms\n`);
+            }
         }
     }
 

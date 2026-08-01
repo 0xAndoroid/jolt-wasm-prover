@@ -14,6 +14,16 @@ import { WorkerClient } from '@/lib/worker-client'
 const WEBGPU_REQUESTED =
   new URLSearchParams(window.location.search).get('webgpu') !== '0'
 
+// Recycle the prover worker after any GPU-arm prove this large: warm
+// reruns in one worker accumulate wasm-allocator churn and device state
+// until they slow down (+66% @2^23) or lose the device outright (@2^22,
+// run 4-6 on the wave-3 lineage). Fresh workers are immune; below this
+// scale the accumulation has never been observed. `?recycle=0` keeps the
+// old keep-warm behavior for A/B.
+const RECYCLE_MIN_PADDED = 4_194_304
+const RECYCLE_ENABLED =
+  new URLSearchParams(window.location.search).get('recycle') !== '0'
+
 interface ProverState {
   status: AppStatus
   statusText: string
@@ -52,6 +62,8 @@ export function useProver() {
   programStatesRef.current = state.programStates
   const gpuRef = useRef(state.gpu)
   gpuRef.current = state.gpu
+  // Breaks the handleMessage → recycle → boot → handleMessage cycle.
+  const recycleRef = useRef<() => void>(() => {})
 
   const log = useCallback((program: ProgramName, msg: string) => {
     setState((prev) => ({
@@ -83,14 +95,22 @@ export function useProver() {
             : 'unavailable'
         if (gpu === 'unavailable')
           console.warn('[app] WebGPU unavailable — proving on CPU')
-        setState((prev) => ({
-          ...prev,
-          wasmReady: true,
-          status: 'ready',
-          statusText: 'Ready',
-          gpu,
-          programStates: initialProgramStates(),
-        }))
+        setState((prev) => {
+          // A recycled worker has no programs loaded, but proofs and verify
+          // results live page-side — keep them.
+          const programStates = {} as Record<ProgramName, ProgramState>
+          for (const p of PROGRAMS) {
+            programStates[p] = { ...prev.programStates[p], loadState: 'idle' }
+          }
+          return {
+            ...prev,
+            wasmReady: true,
+            status: 'ready',
+            statusText: 'Ready',
+            gpu,
+            programStates,
+          }
+        })
         return
       }
 
@@ -146,6 +166,13 @@ export function useProver() {
             p,
             `Peak WASM memory: ${(msg.peakMemory / 1024 / 1024).toFixed(0)} MB`,
           )
+        if (
+          RECYCLE_ENABLED &&
+          gpuRef.current === 'on' &&
+          (msg.paddedCycles ?? 0) >= RECYCLE_MIN_PADDED
+        ) {
+          recycleRef.current()
+        }
         return
       }
 
@@ -171,6 +198,33 @@ export function useProver() {
     [log, setStatus],
   )
 
+  const bootWorker = useCallback(
+    (statusText: string) => {
+      const client = new WorkerClient(handleMessage, (e) => {
+        const msg = e.message || 'Failed to load WASM module. Run: wasm-pack build --release --target web'
+        setStatus(msg, 'error')
+        console.error(e)
+      })
+      clientRef.current = client
+
+      const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
+      setStatus(statusText, 'loading')
+      client.send({
+        type: 'init',
+        data: { numThreads, webgpu: WEBGPU_REQUESTED ? {} : null },
+      })
+    },
+    [handleMessage, setStatus],
+  )
+
+  const recycleWorker = useCallback(() => {
+    console.log('[app] recycling prover worker after large prove')
+    clientRef.current?.terminate()
+    setState((prev) => ({ ...prev, wasmReady: false }))
+    bootWorker('Recycling prover worker...')
+  }, [bootWorker])
+  recycleRef.current = recycleWorker
+
   useEffect(() => {
     if (!crossOriginIsolated) {
       setStatus(
@@ -180,25 +234,15 @@ export function useProver() {
       return
     }
 
-    const client = new WorkerClient(handleMessage, (e) => {
-      const msg = e.message || 'Failed to load WASM module. Run: wasm-pack build --release --target web'
-      setStatus(msg, 'error')
-      console.error(e)
-    })
-    clientRef.current = client
-
     const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
-    setStatus(
+    bootWorker(
       `Initializing WASM (${numThreads} threads${WEBGPU_REQUESTED ? ' + WebGPU' : ''})...`,
-      'loading',
     )
-    client.send({
-      type: 'init',
-      data: { numThreads, webgpu: WEBGPU_REQUESTED ? {} : null },
-    })
 
-    return () => client.terminate()
-  }, [handleMessage, setStatus])
+    // clientRef, not a captured client: a recycle may have swapped the
+    // worker since mount.
+    return () => clientRef.current?.terminate()
+  }, [bootWorker, setStatus])
 
   const loadProgram = useCallback(
     async (name: ProgramName) => {
@@ -330,12 +374,15 @@ export function useProver() {
   )
 
   const verify = useCallback(
-    (program: ProgramName) => {
+    async (program: ProgramName) => {
       const ps = state.programStates[program]
       if (!ps?.proofBytes || !ps?.programIoBytes) {
         log(program, 'No proof to verify. Generate a proof first.')
         return
       }
+      // A post-prove recycle leaves the fresh worker with no verifier;
+      // re-load (HTTP-cached) before posting.
+      if (!(await ensureProgramLoaded(program))) return
       setStatus('Verifying...', 'proving')
       log(program, '\nStarting verification...')
       clientRef.current?.send({
@@ -347,7 +394,7 @@ export function useProver() {
         },
       })
     },
-    [state.programStates, log, setStatus],
+    [state.programStates, ensureProgramLoaded, log, setStatus],
   )
 
   const downloadTrace = useCallback(() => {
