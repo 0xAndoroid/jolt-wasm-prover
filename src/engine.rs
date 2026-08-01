@@ -218,7 +218,8 @@ fn pad_trace(
     tracing::info!(
         target: "memprobe",
         site = "pad_in_place",
-        capacity = rows.capacity() as u64,
+        len = rows.len() as u64,
+        cap = rows.capacity() as u64,
         target = trace_length as u64,
     );
     rows.resize(trace_length.max(rows.len()), TraceRow::default());
