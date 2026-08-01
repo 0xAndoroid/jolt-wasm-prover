@@ -4,6 +4,13 @@ pub mod engine;
 pub mod bench_stream;
 
 #[cfg(target_arch = "wasm32")]
+pub mod mem_probe;
+
+#[cfg(target_arch = "wasm32")]
+#[global_allocator]
+static COUNTING_ALLOC: mem_probe::CountingAlloc = mem_probe::CountingAlloc;
+
+#[cfg(target_arch = "wasm32")]
 mod wasm_tracing;
 
 #[cfg(target_arch = "wasm32")]
@@ -32,6 +39,14 @@ mod wasm {
     #[wasm_bindgen]
     pub fn clear_trace() {
         crate::wasm_tracing::clear();
+    }
+
+    /// Linear-memory offset of the live/peak allocation counters
+    /// ([`crate::mem_probe::COUNTERS`]) — the harness reads them from the
+    /// shared memory buffer while the worker is blocked inside `prove`.
+    #[wasm_bindgen]
+    pub fn mem_counters_ptr() -> u32 {
+        crate::mem_probe::counters_ptr()
     }
 
     /// Inline registration is inventory-based (link-time ctors, run by

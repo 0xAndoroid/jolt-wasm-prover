@@ -95,6 +95,12 @@ pub fn prove(prep: &ProverPrep, elf: &[u8], inputs: &[u8]) -> Result<ProveOutput
         )
         .map_err(|e| format!("trace error: {e:?}"))?;
     let unpadded_cycles = trace_output.trace.rows().len();
+    tracing::info!(
+        target: "memprobe",
+        site = "trace_done",
+        rows = unpadded_cycles as u64,
+        row_bytes = std::mem::size_of::<TraceRow>() as u64,
+    );
 
     let config = ProverConfig::derive::<Fr>(
         trace_output.trace.rows(),
@@ -107,6 +113,7 @@ pub fn prove(prep: &ProverPrep, elf: &[u8], inputs: &[u8]) -> Result<ProveOutput
 
     let public_io = trace_output.device.clone();
     let padded = pad_trace(trace_output, config.trace_length);
+    tracing::info!(target: "memprobe", site = "pad_done", padded = config.trace_length as u64);
 
     let witness = TraceBackend::new(
         JoltVmWitnessConfig::new(
@@ -116,12 +123,14 @@ pub fn prove(prep: &ProverPrep, elf: &[u8], inputs: &[u8]) -> Result<ProveOutput
         ),
         JoltVmWitnessInputs::new(&program, program_preprocessing, padded),
     );
+    tracing::info!(target: "memprobe", site = "witness_backend_ready");
 
     let backend = build_backend();
     let proof = jolt_prover::prove::<Fr, Pcs, Vc, Transcript, _>(
         &backend, prep, &config, None, &witness, &public_io,
     )
     .map_err(|e| format!("prove error: {e}"))?;
+    tracing::info!(target: "memprobe", site = "prove_done");
 
     let proof_bytes = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
         .map_err(|e| format!("proof encode error: {e}"))?;
@@ -188,6 +197,11 @@ fn pad_trace(
     trace_length: usize,
 ) -> TraceOutput<OwnedTrace> {
     let source = trace_output.trace.rows();
+    tracing::info!(
+        target: "memprobe",
+        site = "pad_alloc",
+        new_bytes = (trace_length.max(source.len()) * std::mem::size_of::<TraceRow>()) as u64,
+    );
     let mut rows = Vec::with_capacity(trace_length.max(source.len()));
     rows.extend_from_slice(source);
     rows.resize(trace_length, TraceRow::default());
