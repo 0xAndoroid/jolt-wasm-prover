@@ -22,10 +22,17 @@ pub fn counters_ptr() -> u32 {
     COUNTERS.as_ptr() as u32
 }
 
+/// Log threshold for single-allocation attribution: big requests are rare
+/// (~dozens per prove) and their exact sizes identify the owning Vec.
+const BIG_ALLOC: usize = 256 * 1024 * 1024;
+
 #[inline]
 fn on_alloc(size: usize) {
     let live = COUNTERS[0].fetch_add(size, Ordering::Relaxed) + size;
     let _ = COUNTERS[1].fetch_max(live, Ordering::Relaxed);
+    if size >= BIG_ALLOC {
+        scream("bigalloc", size);
+    }
 }
 
 #[inline]
@@ -73,9 +80,22 @@ unsafe impl GlobalAlloc for CountingAlloc {
     }
 }
 
-/// No-heap OOM report: stack-buffer formatting, and `JsValue::from_str`
-/// hands the wasm ptr/len to `__wbindgen_string_new` which copies on the
-/// JS side — nothing here allocates from the exhausted wasm heap.
+/// No-heap report: stack-buffer formatting, and `JsValue::from_str` hands
+/// the wasm ptr/len to `__wbindgen_string_new` which copies on the JS
+/// side — nothing here allocates from the (possibly exhausted) wasm heap.
+#[cold]
+fn scream(kind: &str, size: usize) {
+    use core::fmt::Write;
+    let mut buf = StackStr::<160>::new();
+    let pages = core::arch::wasm32::memory_size::<0>();
+    let _ = write!(
+        buf,
+        "[memprobe] {kind} size={size} live={} wm_pages={pages}",
+        live_bytes(),
+    );
+    web_sys::console::error_1(&wasm_bindgen::JsValue::from_str(buf.as_str()));
+}
+
 #[cold]
 fn scream_oom(kind: &str, size: usize) {
     use core::fmt::Write;

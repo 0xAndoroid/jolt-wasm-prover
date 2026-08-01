@@ -21,6 +21,7 @@ import fs from 'fs';
 const iters = parseInt(process.argv[2] || '2223', 10);
 const RUNS = parseInt(process.argv[3] || '1', 10);
 const POLL_MS = parseInt(process.env.PROBE_POLL_MS || '100', 10);
+const TIMEOUT_S = parseInt(process.env.PROBE_TIMEOUT_S || '900', 10);
 const OUT = process.env.PROBE_OUT ||
     `.webgpu-lane-evidence/u3-probe-${iters}it-${Date.now()}.json`;
 const MB = 1024 * 1024;
@@ -28,6 +29,21 @@ const MB = 1024 * 1024;
 const samples = [];   // [dateNowMs, watermarkBytes, liveBytes, peakLiveBytes]
 const events = [];    // parsed [memprobe] lines: {t, kind, name, live_mb, wm_mb, raw}
 const consoleLines = [];
+
+function flush(extra) {
+    try {
+        fs.mkdirSync(OUT.substring(0, OUT.lastIndexOf('/')) || '.', { recursive: true });
+        fs.writeFileSync(OUT, JSON.stringify(
+            { meta: { iters, ...extra }, events, samples }, null, 0));
+    } catch { /* evidence write is best-effort on the failure path */ }
+}
+
+// A wedged prove must not hold the bench lock: dump evidence and die.
+setTimeout(() => {
+    process.stderr.write(`PROBE TIMEOUT after ${TIMEOUT_S}s — flushing evidence\n`);
+    flush({ timeout: true });
+    process.exit(2);
+}, TIMEOUT_S * 1000).unref();
 
 function parseMemprobe(text) {
     const m = text.match(
@@ -39,9 +55,8 @@ function parseMemprobe(text) {
         });
         return;
     }
-    if (text.startsWith('[memprobe] OOM')) {
-        events.push({ t: Date.now(), kind: 'OOM', name: 'OOM', raw: text });
-    }
+    // bigalloc / OOM screams (and anything else raw from the allocator).
+    events.push({ t: Date.now(), kind: 'raw', name: text.split(' ')[1] || 'raw', raw: text });
 }
 
 async function run() {
@@ -239,7 +254,7 @@ async function run() {
     const opens = new Map();
     for (const ev of events) {
         if (ev.kind === 'B') opens.set(ev.name + '@' + ev.t, ev);
-        if (ev.kind === 'i' || ev.kind === 'OOM') {
+        if (ev.kind === 'i' || ev.kind === 'raw') {
             process.stderr.write(`  [site] ${ev.name} live=${ev.live_mb}MB ` +
                 `wm=${ev.wm_mb}MB ${ev.extra || ev.raw || ''}\n`);
         }
