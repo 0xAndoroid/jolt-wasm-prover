@@ -65,6 +65,7 @@ mod wasm {
         min_terms_bytecode: u32,
         miller_coalesce_pairs: i32,
         min_terms_ram_rw: u32,
+        min_terms_regs_rw: u32,
     ) {
         let mut options = jolt_kernels::webgpu::WebGpuOptions {
             disable,
@@ -90,6 +91,12 @@ mod wasm {
             let _ = options
                 .min_terms_per_slot
                 .insert("ram_read_write".to_owned(), min_terms_ram_rw as usize);
+        }
+        if min_terms_regs_rw > 0 {
+            let _ = options.min_terms_per_slot.insert(
+                "registers_read_write".to_owned(),
+                min_terms_regs_rw as usize,
+            );
         }
         if handoff_len > 0 {
             options.handoff_len = handoff_len as usize;
