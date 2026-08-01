@@ -180,7 +180,8 @@ async function run() {
     for (let i = 0; i < RUNS; i++) {
         let r;
         try {
-            r = await page.evaluate(async ({ iters }) => {
+            const expectedRows = 2 ** Math.ceil(Math.log2(iters * 3396));
+            r = await page.evaluate(async ({ iters, expectedRows }) => {
                 const done = window.__bench.wait('prove-done');
                 window.__bench.worker.postMessage({
                     type: 'prove',
@@ -188,6 +189,7 @@ async function run() {
                         program: 'sha2-chain',
                         input: Array.from(new Uint8Array(32).fill(5)),
                         numIters: iters,
+                        expectedRows,
                     },
                 });
                 const proveMsg = await done;
@@ -214,7 +216,7 @@ async function run() {
                     peakMemory: proveMsg.peakMemory,
                     millerServed: proveMsg.millerServed,
                 };
-            }, { iters });
+            }, { iters, expectedRows });
         } catch (e) {
             r = { error: `page/renderer: ${e.message}` };
         }
