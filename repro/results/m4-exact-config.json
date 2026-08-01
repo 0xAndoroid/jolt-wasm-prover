@@ -1,0 +1,227 @@
+{
+ "page": "jolt-webgpu-bucket-repro v2",
+ "time": "2026-08-01T01:17:28.299Z",
+ "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/150.0.0.0 Safari/537.36",
+ "adapter": {
+  "vendor": "apple",
+  "architecture": "metal-3",
+  "device": "",
+  "description": ""
+ },
+ "limits": {
+  "maxStorageBufferBindingSize": 4294967292,
+  "maxBufferSize": 4294967292,
+  "maxComputeWorkgroupsPerDimension": 65535,
+  "maxComputeInvocationsPerWorkgroup": 1024
+ },
+ "config": {
+  "ROW_WIDTH": 8192,
+  "K": 16,
+  "SEGS": 16,
+  "NOHOT_1_IN": 64,
+  "SEED": 1,
+  "STAGE": "madd+reduce",
+  "sampledBucketsPerCell": 16,
+  "dist": "uniform",
+  "chain": 1,
+  "churn": false,
+  "cpuload": 0
+ },
+ "wallMs": 23986,
+ "cells": [
+  {
+   "kernel": "jacobian",
+   "brows": 2560,
+   "maddThreads": 655360,
+   "reduceThreads": 40960,
+   "workgroups": 10240,
+   "label": "XL",
+   "dist": "uniform",
+   "chain": 1,
+   "churn": false,
+   "cpuload": 0,
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 646,
+     "errors": [],
+     "digest": "b85a5192d2a292b12aaec7ab2144614e1b4e082b839539312dd8d268d07684fa",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 759,
+     "errors": [],
+     "digest": "b85a5192d2a292b12aaec7ab2144614e1b4e082b839539312dd8d268d07684fa",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 854,
+     "errors": [],
+     "digest": "b85a5192d2a292b12aaec7ab2144614e1b4e082b839539312dd8d268d07684fa",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 307,
+     "errors": [],
+     "digest": "b85a5192d2a292b12aaec7ab2144614e1b4e082b839539312dd8d268d07684fa",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "jacobian",
+   "brows": 10240,
+   "maddThreads": 2621440,
+   "reduceThreads": 163840,
+   "workgroups": 40960,
+   "label": "XL",
+   "dist": "uniform",
+   "chain": 1,
+   "churn": false,
+   "cpuload": 0,
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 1328,
+     "errors": [],
+     "digest": "945ae36ee6549d2b1d78b7394a7d8273604ca9e319dffd19ba062643f57c1cbc",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 1211,
+     "errors": [],
+     "digest": "945ae36ee6549d2b1d78b7394a7d8273604ca9e319dffd19ba062643f57c1cbc",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 1201,
+     "errors": [],
+     "digest": "945ae36ee6549d2b1d78b7394a7d8273604ca9e319dffd19ba062643f57c1cbc",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 1241,
+     "errors": [],
+     "digest": "945ae36ee6549d2b1d78b7394a7d8273604ca9e319dffd19ba062643f57c1cbc",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "xyzz",
+   "brows": 2560,
+   "maddThreads": 655360,
+   "reduceThreads": 40960,
+   "workgroups": 10240,
+   "label": "XL",
+   "dist": "uniform",
+   "chain": 1,
+   "churn": false,
+   "cpuload": 0,
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 419,
+     "errors": [],
+     "digest": "dcb1b770bf807e271b5d97847461f0eb5b904315dfa1dedd3037458ce62a913d",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 461,
+     "errors": [],
+     "digest": "dcb1b770bf807e271b5d97847461f0eb5b904315dfa1dedd3037458ce62a913d",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 491,
+     "errors": [],
+     "digest": "dcb1b770bf807e271b5d97847461f0eb5b904315dfa1dedd3037458ce62a913d",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 387,
+     "errors": [],
+     "digest": "dcb1b770bf807e271b5d97847461f0eb5b904315dfa1dedd3037458ce62a913d",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "xyzz",
+   "brows": 10240,
+   "maddThreads": 2621440,
+   "reduceThreads": 163840,
+   "workgroups": 40960,
+   "label": "XL",
+   "dist": "uniform",
+   "chain": 1,
+   "churn": false,
+   "cpuload": 0,
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 1925,
+     "errors": [],
+     "digest": "2338668559dec90b5b38be778cd030a41f81dde222f4dc772ea641c9132e6388",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 1476,
+     "errors": [],
+     "digest": "2338668559dec90b5b38be778cd030a41f81dde222f4dc772ea641c9132e6388",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 1381,
+     "errors": [],
+     "digest": "2338668559dec90b5b38be778cd030a41f81dde222f4dc772ea641c9132e6388",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 1756,
+     "errors": [],
+     "digest": "2338668559dec90b5b38be778cd030a41f81dde222f4dc772ea641c9132e6388",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  }
+ ],
+ "notes": [],
+ "verdict": "PASS"
+}

@@ -1,0 +1,411 @@
+{
+ "page": "jolt-webgpu-bucket-repro v1",
+ "time": "2026-08-01T00:50:40.743Z",
+ "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.0.0 Safari/537.36",
+ "adapter": {
+  "vendor": "apple",
+  "architecture": "metal-3",
+  "device": "",
+  "description": ""
+ },
+ "limits": {
+  "maxStorageBufferBindingSize": 4294967292,
+  "maxBufferSize": 4294967296,
+  "maxComputeWorkgroupsPerDimension": 65535,
+  "maxComputeInvocationsPerWorkgroup": 1024
+ },
+ "config": {
+  "ROW_WIDTH": 8192,
+  "K": 16,
+  "SEGS": 16,
+  "NOHOT_1_IN": 64,
+  "SEED": 1,
+  "STAGE": "madd+reduce",
+  "sampledBucketsPerCell": 16
+ },
+ "wallMs": 2606,
+ "cells": [
+  {
+   "kernel": "jacobian",
+   "brows": 1,
+   "maddThreads": 256,
+   "reduceThreads": 16,
+   "workgroups": 4,
+   "label": "KAT scale",
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 6,
+     "errors": [],
+     "digest": "77264dacf1799f33d4f6b3ebce0d8a1fe262452c52c37148653109f07662d3da",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 5,
+     "errors": [],
+     "digest": "77264dacf1799f33d4f6b3ebce0d8a1fe262452c52c37148653109f07662d3da",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 4,
+     "errors": [],
+     "digest": "77264dacf1799f33d4f6b3ebce0d8a1fe262452c52c37148653109f07662d3da",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "jacobian",
+   "brows": 16,
+   "maddThreads": 4096,
+   "reduceThreads": 256,
+   "workgroups": 64,
+   "label": "mid",
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 7,
+     "errors": [],
+     "digest": "824d1809489fb89733b282322d216adfcbaf3fc59c63dbf10086c2e820489f5a",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 5,
+     "errors": [],
+     "digest": "824d1809489fb89733b282322d216adfcbaf3fc59c63dbf10086c2e820489f5a",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 8,
+     "errors": [],
+     "digest": "824d1809489fb89733b282322d216adfcbaf3fc59c63dbf10086c2e820489f5a",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "jacobian",
+   "brows": 160,
+   "maddThreads": 40960,
+   "reduceThreads": 2560,
+   "workgroups": 640,
+   "label": "2^18 shape",
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 27,
+     "errors": [],
+     "digest": "75595d6231369aaba08da944a9993a35335ca4afc9fbcbf4bb848177f7de4b66",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 20,
+     "errors": [],
+     "digest": "75595d6231369aaba08da944a9993a35335ca4afc9fbcbf4bb848177f7de4b66",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 19,
+     "errors": [],
+     "digest": "75595d6231369aaba08da944a9993a35335ca4afc9fbcbf4bb848177f7de4b66",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 19,
+     "errors": [],
+     "digest": "75595d6231369aaba08da944a9993a35335ca4afc9fbcbf4bb848177f7de4b66",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 19,
+     "errors": [],
+     "digest": "75595d6231369aaba08da944a9993a35335ca4afc9fbcbf4bb848177f7de4b66",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 19,
+     "errors": [],
+     "digest": "75595d6231369aaba08da944a9993a35335ca4afc9fbcbf4bb848177f7de4b66",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "jacobian",
+   "brows": 640,
+   "maddThreads": 163840,
+   "reduceThreads": 10240,
+   "workgroups": 2560,
+   "label": "2^20 shape",
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 72,
+     "errors": [],
+     "digest": "fd9f22ffa193a4cfab46ec38e0ca22fc4d6a11bb64bd3752fbd8b4b5ab5df3c9",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 70,
+     "errors": [],
+     "digest": "fd9f22ffa193a4cfab46ec38e0ca22fc4d6a11bb64bd3752fbd8b4b5ab5df3c9",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 70,
+     "errors": [],
+     "digest": "fd9f22ffa193a4cfab46ec38e0ca22fc4d6a11bb64bd3752fbd8b4b5ab5df3c9",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 70,
+     "errors": [],
+     "digest": "fd9f22ffa193a4cfab46ec38e0ca22fc4d6a11bb64bd3752fbd8b4b5ab5df3c9",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 70,
+     "errors": [],
+     "digest": "fd9f22ffa193a4cfab46ec38e0ca22fc4d6a11bb64bd3752fbd8b4b5ab5df3c9",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 70,
+     "errors": [],
+     "digest": "fd9f22ffa193a4cfab46ec38e0ca22fc4d6a11bb64bd3752fbd8b4b5ab5df3c9",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "xyzz",
+   "brows": 1,
+   "maddThreads": 256,
+   "reduceThreads": 16,
+   "workgroups": 4,
+   "label": "KAT scale",
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 2,
+     "errors": [],
+     "digest": "d63e8da6a0a3bb88350f838b8cca192cc920f1250141d0620cffd5921fd0252c",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 2,
+     "errors": [],
+     "digest": "d63e8da6a0a3bb88350f838b8cca192cc920f1250141d0620cffd5921fd0252c",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 2,
+     "errors": [],
+     "digest": "d63e8da6a0a3bb88350f838b8cca192cc920f1250141d0620cffd5921fd0252c",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "xyzz",
+   "brows": 16,
+   "maddThreads": 4096,
+   "reduceThreads": 256,
+   "workgroups": 64,
+   "label": "mid",
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 3,
+     "errors": [],
+     "digest": "d59b55438f68061b624cf3fd7754f5cac558c7a0b0126291ad2806d1dc001df0",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 3,
+     "errors": [],
+     "digest": "d59b55438f68061b624cf3fd7754f5cac558c7a0b0126291ad2806d1dc001df0",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 3,
+     "errors": [],
+     "digest": "d59b55438f68061b624cf3fd7754f5cac558c7a0b0126291ad2806d1dc001df0",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "xyzz",
+   "brows": 160,
+   "maddThreads": 40960,
+   "reduceThreads": 2560,
+   "workgroups": 640,
+   "label": "2^18 shape",
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 17,
+     "errors": [],
+     "digest": "3f3a6673e971a2150662e5ca566dfcbd8afc3f0f5f40393e860ccd9105075d95",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 16,
+     "errors": [],
+     "digest": "3f3a6673e971a2150662e5ca566dfcbd8afc3f0f5f40393e860ccd9105075d95",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 16,
+     "errors": [],
+     "digest": "3f3a6673e971a2150662e5ca566dfcbd8afc3f0f5f40393e860ccd9105075d95",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 16,
+     "errors": [],
+     "digest": "3f3a6673e971a2150662e5ca566dfcbd8afc3f0f5f40393e860ccd9105075d95",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 16,
+     "errors": [],
+     "digest": "3f3a6673e971a2150662e5ca566dfcbd8afc3f0f5f40393e860ccd9105075d95",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 16,
+     "errors": [],
+     "digest": "3f3a6673e971a2150662e5ca566dfcbd8afc3f0f5f40393e860ccd9105075d95",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "xyzz",
+   "brows": 640,
+   "maddThreads": 163840,
+   "reduceThreads": 10240,
+   "workgroups": 2560,
+   "label": "2^20 shape",
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 63,
+     "errors": [],
+     "digest": "fc8bbd04a53a506a4f69cb60c8747ca2edda742a5445a1cf7a029d26a06601d0",
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 63,
+     "errors": [],
+     "digest": "fc8bbd04a53a506a4f69cb60c8747ca2edda742a5445a1cf7a029d26a06601d0",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 63,
+     "errors": [],
+     "digest": "fc8bbd04a53a506a4f69cb60c8747ca2edda742a5445a1cf7a029d26a06601d0",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 62,
+     "errors": [],
+     "digest": "fc8bbd04a53a506a4f69cb60c8747ca2edda742a5445a1cf7a029d26a06601d0",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 62,
+     "errors": [],
+     "digest": "fc8bbd04a53a506a4f69cb60c8747ca2edda742a5445a1cf7a029d26a06601d0",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 62,
+     "errors": [],
+     "digest": "fc8bbd04a53a506a4f69cb60c8747ca2edda742a5445a1cf7a029d26a06601d0",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  }
+ ],
+ "notes": [],
+ "verdict": "PASS"
+}

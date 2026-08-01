@@ -1,0 +1,223 @@
+{
+ "page": "jolt-webgpu-bucket-repro v2",
+ "time": "2026-08-01T01:19:31.797Z",
+ "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.0.0 Safari/537.36",
+ "adapter": {
+  "vendor": "apple",
+  "architecture": "metal-3",
+  "device": "",
+  "description": ""
+ },
+ "limits": {
+  "maxStorageBufferBindingSize": 4294967292,
+  "maxBufferSize": 4294967296,
+  "maxComputeWorkgroupsPerDimension": 65535,
+  "maxComputeInvocationsPerWorkgroup": 1024
+ },
+ "config": {
+  "ROW_WIDTH": 8192,
+  "K": 16,
+  "SEGS": 16,
+  "NOHOT_1_IN": 64,
+  "SEED": 1,
+  "STAGE": "madd+reduce",
+  "sampledBucketsPerCell": 16,
+  "dist": "uniform",
+  "chain": 1,
+  "churn": false,
+  "cpuload": 0
+ },
+ "wallMs": 1094,
+ "cells": [
+  {
+   "kernel": "jacobian",
+   "brows": 2560,
+   "maddThreads": 655360,
+   "reduceThreads": 40960,
+   "workgroups": 10240,
+   "label": "XL",
+   "dist": "uniform",
+   "chain": 1,
+   "churn": false,
+   "cpuload": 0,
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 91,
+     "errors": [],
+     "digest": "55756669549e68eb8be898bbaf41eb9e1c9c75202b3cb5e33909d6545e7eef92",
+     "nondetWords": 0,
+     "offCurve": 96,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": [
+      {
+       "kind": "off-curve",
+       "out": 11364,
+       "wg": 177,
+       "brow": 710,
+       "bucket": 4,
+       "x": "1a06f30ec4afaea372f5dde685da4adbd3b9cd21c1746ff41c78c8bc719be1b9",
+       "y": "2fd7e13b00004d22f342ace446c5bf33f3556900601fe701f567f57cb666a805",
+       "z": "5da65b53e9e3915eeeff5fb9e3c6f40575117542ad5ce510ec95a4b06812aeb"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11365,
+       "wg": 177,
+       "brow": 710,
+       "bucket": 5,
+       "x": "5b3c5076d62d6a891b08583f4a1256354cc710bee1c80b9e62ef79e9bebafed",
+       "y": "3d256570000fe2d6674fccb7f86eeef7852978b236d007950c691966ce0594f",
+       "z": "42aa0fa1e4825bda80b991382e34bf0dc41745be356483b237cf22a78abeb98"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11366,
+       "wg": 177,
+       "brow": 710,
+       "bucket": 6,
+       "x": "2405c7c25d29cd7f7a68812985162201edd29074aa6ca378611d723ca22f8dcd",
+       "y": "db068220000c7eb2369457df95f9e0df185a63012685f66e20c9b781b638510",
+       "z": "f0d6bcec3849cc71c1b1abb39aa08161fcf1e7b6d52f29a78ce19fd7f7912a6"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11367,
+       "wg": 177,
+       "brow": 710,
+       "bucket": 7,
+       "x": "5c090e79702860a376bd4409e0d40ecb46fe2a0e484dee090d51ed07263c855",
+       "y": "1058c57900002080e2009235d207cf6f2ca252de43703d4160fdba0e950ad0c2",
+       "z": "149eead61c9ffce577b2050ac59cca8d08b792fb127323244cf633a952b14a0c"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11372,
+       "wg": 177,
+       "brow": 710,
+       "bucket": 12,
+       "x": "2842ef1f491f79e464b9bd6a3fcaac90be42c7ca128490e645b2d0b0ae71b1a6",
+       "y": "9b6129c0000355c3ad12c2ea37eefefa3514a073e341af4ccd12b9b23017c1c",
+       "z": "1c8a6db8e6990868a7fb5b0f7deb6fac9f35ce9ccc2b70271eed5233c0f2df5"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11373,
+       "wg": 177,
+       "brow": 710,
+       "bucket": 13,
+       "x": "aee39d082a486f9a3ecbfcced07142395bbc84d46ee4c5dcbd148eff2f6af0c",
+       "y": "2f240a670000b0ee052b6333eed0af3fa26d5c043671afeaeedc633414df6f1c",
+       "z": "2359b05d3e40ecd46d674813ecb9e40fff7ddb5d036d66c46587750055216dbb"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11374,
+       "wg": 177,
+       "brow": 710,
+       "bucket": 14,
+       "x": "2612869a4bfcb592d033b925e4f6569a08c9d0f60e42e7650ac545919c9b78b4",
+       "y": "102bc655000047647651d0d9356f1399077d6681cc3937ac13987b7cc837a383",
+       "z": "249ae6c4054087739abc119793c0e72d665711338729ff695917d413dc9bd3ea"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11375,
+       "wg": 177,
+       "brow": 710,
+       "bucket": 15,
+       "x": "fa6b4bf54779541d10f663c45a8ff8108c90a3098e3232a872a2d3d27b4ff0b",
+       "y": "2552e3760000b6c16aadae40400e15d1d001698da86f783089739bc4691a27e9",
+       "z": "1e994e74be794082d295a3a4e00c1eb3d9bd4905e52461ea8fb65509a1895568"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11380,
+       "wg": 177,
+       "brow": 711,
+       "bucket": 4,
+       "x": "2c0bb5e9119669addd60b780e7a36bc79f2cbcd60060dc8282b1a193e4c5962d",
+       "y": "163c0b460000b8ecbb13ccc9ec8bffaa31a3c016607efff38fc5ba03dfb32d47",
+       "z": "1681f34b56a8fcd1de148ffb5c29037f0e6dc0906f41119b55d09483f18431f1"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11381,
+       "wg": 177,
+       "brow": 711,
+       "bucket": 5,
+       "x": "12b9fb3b0d62d4cf8c90e98d7b2eb4a4743353238c02e2ef1735b4992cf3a5c2",
+       "y": "12597f8b0000ecc65333264da81e71807a11272dfb48b651a73224cd043c6828",
+       "z": "1858f5c1800bec5e954fdd8bc3c077a5ed9868e537da36dcc50ae5a61d8c626"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11382,
+       "wg": 177,
+       "brow": 711,
+       "bucket": 6,
+       "x": "15ae628e86f251724eb60f877291ecf2c33665e9213b233e850a4cb0c1b6148b",
+       "y": "834f0e10000ab93a45665e493d47130c849b7fe9d89262079f75e1c3a736e54",
+       "z": "21fdde04c60ea874df5345040be8a2bc412518b1f965fedf82d6ff1a5a86e5d1"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11383,
+       "wg": 177,
+       "brow": 711,
+       "bucket": 7,
+       "x": "1c562ea22c56f616f8b174792684e79cbf93f16b5b51dbff8070c8edb77722ce",
+       "y": "1871cb16000043c539366b73638b99f5680360752008bcde832f56d4e824a67a",
+       "z": "ae61db54500c6badad692be39db10ca8ae45a01136b3faccb3b742c261aabff"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11388,
+       "wg": 177,
+       "brow": 711,
+       "bucket": 12,
+       "x": "1e538aba8433a94968ee38f2b341a69c24fa743b2267e06010cebb9ddab8a5ed",
+       "y": "1af43cb0000bb9732333a6cc7ad2d64b8f2bcfd194799ecac8d10502189dded",
+       "z": "c29aed5e4f6e0d63ebe94e7a71e147a11fcfe04bdd077dff437997d52a31c7e"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11389,
+       "wg": 177,
+       "brow": 711,
+       "bucket": 13,
+       "x": "249b2547ef82215579132df55ad74565bd4c910bbf13fcb9adc688d1d5f892f5",
+       "y": "236e89100000bd8e6ec87084a885b824244a81eadb50af04ff4881ad6131d08d",
+       "z": "c1e860de46f37250739ddffbb2948298eefd2cac02527f7914c467a63282e7"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11390,
+       "wg": 177,
+       "brow": 711,
+       "bucket": 14,
+       "x": "2de69efb0de4f614c6dc8287a61f5be5fdaafaa1fe01062cd27a0a096cc4f30d",
+       "y": "2560e6250000697ba7d1526983cb762ab55ebb6ea46424754c5d2a6d6cd4b2e0",
+       "z": "245bf553da9c5ffc8e28aa81abe200e48a2e50d7838fae86548c2d76c0f42a1d"
+      },
+      {
+       "kind": "off-curve",
+       "out": 11391,
+       "wg": 177,
+       "brow": 711,
+       "bucket": 15,
+       "x": "2e852d081f00c85b7f8483a6bbfdb56fc97400c4efdab6b9212954214fc603a7",
+       "y": "1ee80a6b0000e4e849144e5184ceef8d662cf8de01f53150c049405c235f4f6d",
+       "z": "1474ed04d004d3a18f0e0c9ea47a8eaaac8aa30a00af17049efbafd7bd2c8d02"
+      }
+     ]
+    }
+   ],
+   "verdict": "CORRUPT"
+  }
+ ],
+ "notes": [],
+ "verdict": "CORRUPT"
+}

@@ -1,0 +1,82 @@
+{
+ "page": "jolt-webgpu-bucket-repro v2",
+ "time": "2026-08-01T01:19:23.516Z",
+ "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.0.0 Safari/537.36",
+ "adapter": {
+  "vendor": "apple",
+  "architecture": "metal-3",
+  "device": "",
+  "description": ""
+ },
+ "limits": {
+  "maxStorageBufferBindingSize": 4294967292,
+  "maxBufferSize": 4294967296,
+  "maxComputeWorkgroupsPerDimension": 65535,
+  "maxComputeInvocationsPerWorkgroup": 1024
+ },
+ "config": {
+  "ROW_WIDTH": 8192,
+  "K": 16,
+  "SEGS": 16,
+  "NOHOT_1_IN": 64,
+  "SEED": 1,
+  "STAGE": "madd",
+  "sampledBucketsPerCell": 16,
+  "dist": "uniform",
+  "chain": 1,
+  "churn": false,
+  "cpuload": 0
+ },
+ "wallMs": 3017,
+ "cells": [
+  {
+   "kernel": "jacobian",
+   "brows": 2560,
+   "maddThreads": 655360,
+   "reduceThreads": 40960,
+   "workgroups": 10240,
+   "label": "XL",
+   "dist": "uniform",
+   "chain": 1,
+   "churn": false,
+   "cpuload": 0,
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 99,
+     "errors": [],
+     "digest": "12e23f910cbc5ceaabf0e3fca0238ea9883c449b1e20ce0c2f643807cccda2ae",
+     "nondetWords": 0,
+     "invalid": 0,
+     "nonCanonical": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 84,
+     "errors": [],
+     "digest": "12e23f910cbc5ceaabf0e3fca0238ea9883c449b1e20ce0c2f643807cccda2ae",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 82,
+     "errors": [],
+     "digest": "12e23f910cbc5ceaabf0e3fca0238ea9883c449b1e20ce0c2f643807cccda2ae",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    },
+    {
+     "ms": 81,
+     "errors": [],
+     "digest": "12e23f910cbc5ceaabf0e3fca0238ea9883c449b1e20ce0c2f643807cccda2ae",
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  }
+ ],
+ "notes": [],
+ "verdict": "PASS"
+}

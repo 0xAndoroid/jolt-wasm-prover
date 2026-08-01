@@ -1,0 +1,107 @@
+{
+ "page": "jolt-webgpu-bucket-repro v2",
+ "time": "2026-08-01T01:10:33.436Z",
+ "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/150.0.0.0 Safari/537.36",
+ "adapter": {
+  "vendor": "apple",
+  "architecture": "metal-3",
+  "device": "",
+  "description": ""
+ },
+ "limits": {
+  "maxStorageBufferBindingSize": 4294967292,
+  "maxBufferSize": 4294967292,
+  "maxComputeWorkgroupsPerDimension": 65535,
+  "maxComputeInvocationsPerWorkgroup": 1024
+ },
+ "config": {
+  "ROW_WIDTH": 8192,
+  "K": 16,
+  "SEGS": 16,
+  "NOHOT_1_IN": 64,
+  "SEED": 1,
+  "STAGE": "madd+reduce",
+  "sampledBucketsPerCell": 16,
+  "dist": "skew",
+  "chain": 4,
+  "churn": true,
+  "cpuload": 2
+ },
+ "wallMs": 816,
+ "cells": [
+  {
+   "kernel": "jacobian",
+   "brows": 160,
+   "maddThreads": 40960,
+   "reduceThreads": 2560,
+   "workgroups": 640,
+   "label": "2^18 shape",
+   "dist": "skew",
+   "chain": 4,
+   "churn": true,
+   "cpuload": 2,
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 142,
+     "errors": [],
+     "digest": "506ed7d32ab24bc6b5e2deb89a46ae8f00d656126dc409c7815bdbe4020e679e",
+     "chainDiffWords": 0,
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 139,
+     "errors": [],
+     "digest": "506ed7d32ab24bc6b5e2deb89a46ae8f00d656126dc409c7815bdbe4020e679e",
+     "chainDiffWords": 0,
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  },
+  {
+   "kernel": "xyzz",
+   "brows": 160,
+   "maddThreads": 40960,
+   "reduceThreads": 2560,
+   "workgroups": 640,
+   "label": "2^18 shape",
+   "dist": "skew",
+   "chain": 4,
+   "churn": true,
+   "cpuload": 2,
+   "sampledBuckets": 16,
+   "repeats": [
+    {
+     "ms": 134,
+     "errors": [],
+     "digest": "4b0a98ed1a33cee3c2c0379a30fe0c15dad44492d841cd3cfa2726d045915c61",
+     "chainDiffWords": 0,
+     "nondetWords": 0,
+     "offCurve": 0,
+     "nonCanonical": 0,
+     "infMismatch": 0,
+     "valueMismatch": 0,
+     "detail": []
+    },
+    {
+     "ms": 132,
+     "errors": [],
+     "digest": "4b0a98ed1a33cee3c2c0379a30fe0c15dad44492d841cd3cfa2726d045915c61",
+     "chainDiffWords": 0,
+     "nondetWords": 0,
+     "sameAsBaseline": true
+    }
+   ],
+   "verdict": "PASS"
+  }
+ ],
+ "notes": [],
+ "verdict": "PASS"
+}
