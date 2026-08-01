@@ -55,6 +55,7 @@ async function initWebGpu(module, config) {
         config.minTermsBytecode || 0,
         // 0 is meaningful (one shard per pass); absent keeps the default.
         config.millerCoalesce ?? -1,
+        config.minTermsRamRw || 0,
     );
     const t1 = performance.now();
     webgpu_warmup();
