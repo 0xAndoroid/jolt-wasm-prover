@@ -13,7 +13,7 @@ import { chromium } from 'playwright';
 const ITERS = parseInt(process.argv[2] || '17', 10);
 const BASE = process.argv[3] || 'http://localhost:8091';
 
-async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1 }) {
+async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1, minTermsBytecode = 0 }) {
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) =>
         process.stderr.write(`[${label}] ${msg.text()}\n`),
@@ -21,7 +21,7 @@ async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1 }) {
     await page.goto(BASE, { waitUntil: 'domcontentloaded' });
 
     const result = await page.evaluate(
-        async ({ webgpu, iters, millerCpuFraction }) => {
+        async ({ webgpu, iters, millerCpuFraction, minTermsBytecode }) => {
             const pending = new Map();
             const worker = new Worker('/worker.js', { type: 'module' });
             worker.onmessage = (e) => {
@@ -42,7 +42,7 @@ async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1 }) {
                 type: 'init',
                 data: {
                     numThreads: Math.min(navigator.hardwareConcurrency || 4, 12),
-                    webgpu: webgpu ? { minTerms: 1, millerCpuFraction } : null,
+                    webgpu: webgpu ? { minTerms: 1, millerCpuFraction, minTermsBytecode } : null,
                 },
             });
             const init = await initDone;
@@ -106,7 +106,7 @@ async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1 }) {
                 proofSha256: hex,
             };
         },
-        { webgpu, iters: ITERS, millerCpuFraction },
+        { webgpu, iters: ITERS, millerCpuFraction, minTermsBytecode },
     );
     await page.context().close();
     return result;
@@ -124,9 +124,12 @@ const on = await proveOnce(browser, { webgpu: true, label: 'on' });
 // extremes must byte-match too (0 = all-device shard, 1 = all-CPU shard).
 const onF0 = await proveOnce(browser, { webgpu: true, label: 'on-f0', millerCpuFraction: 0 });
 const onF1 = await proveOnce(browser, { webgpu: true, label: 'on-f1', millerCpuFraction: 1 });
+// W5-U4: bytecode twin OFF (per-slot min_terms pushed above any real trace),
+// everything else on — the twin must be byte-invariant.
+const onBc0 = await proveOnce(browser, { webgpu: true, label: 'on-bc0', minTermsBytecode: 1 << 30 });
 await browser.close();
 
-const runs = [['off-1', off1], ['off-2', off2], ['on', on], ['on-f0', onF0], ['on-f1', onF1]];
+const runs = [['off-1', off1], ['off-2', off2], ['on', on], ['on-f0', onF0], ['on-f1', onF1], ['on-bc0', onBc0]];
 for (const [label, r] of runs) {
     if (r.error) {
         console.error(`${label}: ERROR ${r.error}`);
@@ -140,7 +143,7 @@ for (const [label, r] of runs) {
 }
 
 const deterministic = off1.proofSha256 === off2.proofSha256;
-const parity = [on, onF0, onF1].every((r) => r.proofSha256 === off1.proofSha256);
+const parity = [on, onF0, onF1, onBc0].every((r) => r.proofSha256 === off1.proofSha256);
 const engaged = !!on.webgpuInit;
 const millerEngaged = on.millerServed > 0 && onF0.millerServed > 0 && onF1.millerServed > 0;
 console.log(JSON.stringify({
