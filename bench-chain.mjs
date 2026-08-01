@@ -92,8 +92,11 @@ async function run() {
     const results = [];
     for (const iters of itersList) {
         for (let i = 0; i < RUNS; i++) {
+            // Padded-target hint: the tracer reserves its rows vec once
+            // instead of doubling into a 671 MB transient at 2^23 (W5-U3b).
+            const expectedRows = 2 ** Math.ceil(Math.log2(iters * CYCLES_PER_SHA256));
             const r = await page.evaluate(
-                async ({ iters }) => {
+                async ({ iters, expectedRows }) => {
                     const done = window.__bench.wait('prove-done');
                     window.__bench.worker.postMessage({
                         type: 'prove',
@@ -101,6 +104,7 @@ async function run() {
                             program: 'sha2-chain',
                             input: Array.from(new Uint8Array(32).fill(5)),
                             numIters: iters,
+                            expectedRows,
                         },
                     });
                     const proveMsg = await done;
@@ -129,7 +133,7 @@ async function run() {
                         millerServed: proveMsg.millerServed,
                     };
                 },
-                { iters },
+                { iters, expectedRows },
             );
             if (r.error) {
                 console.log(JSON.stringify({ iters, run: i + 1, error: r.error }));

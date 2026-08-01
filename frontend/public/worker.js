@@ -130,13 +130,15 @@ self.onmessage = async (e) => {
                     case 'keccak':
                         result = prover.prove_keccak_chain(
                             new Uint8Array(data.input),
-                            data.numIters
+                            data.numIters,
+                            data.expectedRows
                         );
                         break;
                     case 'sha2-chain':
                         result = prover.prove_sha2_chain(
                             new Uint8Array(data.input),
-                            data.numIters
+                            data.numIters,
+                            data.expectedRows
                         );
                         break;
                 }

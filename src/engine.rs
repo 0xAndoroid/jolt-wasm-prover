@@ -64,8 +64,22 @@ pub struct ProveOutput {
     pub padded_cycles: usize,
 }
 
-#[tracing::instrument(skip_all, name = "engine::prove")]
 pub fn prove(prep: &ProverPrep, elf: &[u8], inputs: &[u8]) -> Result<ProveOutput, String> {
+    prove_with_row_hint(prep, elf, inputs, None)
+}
+
+/// [`prove`] with a tracer row-capacity hint: callers that know their padded
+/// trace target (the bench pages compute it) pass it so the tracer reserves
+/// once instead of doubling — the last doubling's 671 MB transient at 2^23
+/// is the difference between fitting wasm32's 4 GiB heap cleanly and
+/// fragmenting it (W5-U3b). `None` or a low hint keeps today's growth.
+#[tracing::instrument(skip_all, name = "engine::prove")]
+pub fn prove_with_row_hint(
+    prep: &ProverPrep,
+    elf: &[u8],
+    inputs: &[u8],
+    row_capacity_hint: Option<usize>,
+) -> Result<ProveOutput, String> {
     let program = JoltProgram::from_elf_bytes(elf.to_vec());
     let program_preprocessing = prep
         .verifier
@@ -84,6 +98,7 @@ pub fn prove(prep: &ProverPrep, elf: &[u8], inputs: &[u8]) -> Result<ProveOutput
     };
 
     let trace_output = TracerBackend::new()
+        .with_row_capacity_hint(row_capacity_hint)
         .trace(
             &program,
             TraceInputs {

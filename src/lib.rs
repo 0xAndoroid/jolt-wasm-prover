@@ -139,8 +139,21 @@ mod wasm {
         }
 
         fn prove_with_inputs(&self, inputs: &[u8]) -> Result<ProveResult, JsValue> {
-            let out = engine::prove(&self.preprocessing, &self.elf_bytes, inputs)
-                .map_err(|e| JsValue::from_str(&e))?;
+            self.prove_with_inputs_hinted(inputs, None)
+        }
+
+        fn prove_with_inputs_hinted(
+            &self,
+            inputs: &[u8],
+            row_capacity_hint: Option<usize>,
+        ) -> Result<ProveResult, JsValue> {
+            let out = engine::prove_with_row_hint(
+                &self.preprocessing,
+                &self.elf_bytes,
+                inputs,
+                row_capacity_hint,
+            )
+            .map_err(|e| JsValue::from_str(&e))?;
             Ok(ProveResult { out })
         }
 
@@ -191,19 +204,30 @@ mod wasm {
             &self,
             input: &[u8],
             num_iters: u32,
+            expected_padded_rows: Option<u32>,
         ) -> Result<ProveResult, JsValue> {
-            self.prove_hash_chain(input, num_iters)
+            self.prove_hash_chain(input, num_iters, expected_padded_rows)
         }
 
         pub fn prove_sha2_chain(
             &self,
             input: &[u8],
             num_iters: u32,
+            expected_padded_rows: Option<u32>,
         ) -> Result<ProveResult, JsValue> {
-            self.prove_hash_chain(input, num_iters)
+            self.prove_hash_chain(input, num_iters, expected_padded_rows)
         }
 
-        fn prove_hash_chain(&self, input: &[u8], num_iters: u32) -> Result<ProveResult, JsValue> {
+        /// `expected_padded_rows` is the caller's padded-trace target (bench
+        /// pages already compute it from their cycles model): the tracer
+        /// reserves it upfront, avoiding the doubling-realloc transient that
+        /// matters at 2^23 rows (W5-U3b). Omitted or wrong = plain growth.
+        fn prove_hash_chain(
+            &self,
+            input: &[u8],
+            num_iters: u32,
+            expected_padded_rows: Option<u32>,
+        ) -> Result<ProveResult, JsValue> {
             let input: [u8; 32] = input
                 .try_into()
                 .map_err(|_| JsValue::from_str("input must be 32 bytes"))?;
@@ -218,7 +242,7 @@ mod wasm {
                     JsValue::from_str(&format!("num_iters serialization error: {e}"))
                 })?,
             );
-            self.prove_with_inputs(&inputs)
+            self.prove_with_inputs_hinted(&inputs, expected_padded_rows.map(|rows| rows as usize))
         }
     }
 
