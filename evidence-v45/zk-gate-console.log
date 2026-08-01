@@ -1,0 +1,11 @@
+[zk-off-1] Failed to load resource: the server responded with a status of 404 (Not Found)
+[zk-off-1] jolt-wasm-prover build tag 2
+[zk-off-2] jolt-wasm-prover build tag 2
+[zk-on-1] jolt-wasm-prover build tag 2
+[zk-on-1] [worker] webgpu up: gpu-worker 7ms, device+pipelines 904ms
+[zk-on-2] jolt-wasm-prover build tag 2
+[zk-on-2] [worker] webgpu up: gpu-worker 3ms, device+pipelines 617ms
+zk-off-1: padded 2^16, prove 8.93s, valid=true, proof 77169B, sha256 b1f9c56acf25ebe9…
+zk-off-2: padded 2^16, prove 18.17s, valid=true, proof 77169B, sha256 d630f5c98e5e32ec…
+zk-on-1: padded 2^16, prove 9.63s, valid=true, proof 77169B, sha256 38ec04f86a41d1da… (gpu-worker 7ms, warmup 904ms, miller 101)
+zk-on-2: padded 2^16, prove 9.22s, valid=true, proof 77169B, sha256 b65bf1a1f47e9696… (gpu-worker 3ms, warmup 617ms, miller 101)

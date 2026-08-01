@@ -1,0 +1,20 @@
+[off-1] Failed to load resource: the server responded with a status of 404 (Not Found)
+[off-1] jolt-wasm-prover build tag 2
+[off-2] jolt-wasm-prover build tag 2
+[on] jolt-wasm-prover build tag 2
+[on] [worker] webgpu up: gpu-worker 5ms, device+pipelines 683ms
+[on-f0] jolt-wasm-prover build tag 2
+[on-f0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 638ms
+[on-f1] jolt-wasm-prover build tag 2
+[on-f1] [worker] webgpu up: gpu-worker 3ms, device+pipelines 631ms
+[on-bc0] jolt-wasm-prover build tag 2
+[on-bc0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 655ms
+[on-coalesce0] jolt-wasm-prover build tag 2
+[on-coalesce0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 653ms
+off-1: padded 2^16, prove 10.62s, valid=true, proof 78023B, sha256 3cc194fe018e64c1…
+off-2: padded 2^16, prove 9.51s, valid=true, proof 78023B, sha256 3cc194fe018e64c1…
+on: padded 2^16, prove 9.40s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 5ms, warmup 683ms, miller 100)
+on-f0: padded 2^16, prove 8.78s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 4ms, warmup 638ms, miller 100)
+on-f1: padded 2^16, prove 6.69s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 631ms, miller 100)
+on-bc0: padded 2^16, prove 8.50s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 4ms, warmup 655ms, miller 100)
+on-coalesce0: padded 2^16, prove 8.57s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 4ms, warmup 653ms, miller 100)

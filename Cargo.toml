@@ -27,6 +27,12 @@ required-features = ["native"]
 [features]
 default = []
 native = []
+# Compile-time ZK proof mode (hiding commitments + BlindFold tail). The
+# prover is randomized under zk — proof bytes differ per run BY DESIGN, so
+# byte-parity gates do not apply to zk builds (validity + engagement do).
+# `jolt/zk` reaches jolt-prover-legacy through the sdk so the native
+# generator embeds the BlindFold vc_setup in verifier preprocessing.
+zk = ["jolt-prover/zk", "jolt/zk"]
 
 [dependencies]
 tracing = "0.1"
