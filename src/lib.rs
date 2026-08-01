@@ -46,8 +46,9 @@ mod wasm {
     }
 
     /// Installs the webgpu arm's gates from the JS config. Zero values keep
-    /// the defaults (negative `miller_cpu_fraction` too). Call before
-    /// [`webgpu_warmup`].
+    /// the defaults (negative `miller_cpu_fraction` and
+    /// `miller_coalesce_pairs` too — 0 is a meaningful coalesce setting:
+    /// one shard per pass). Call before [`webgpu_warmup`].
     #[wasm_bindgen]
     pub fn webgpu_configure(
         disable: bool,
@@ -57,6 +58,7 @@ mod wasm {
         commit_pipeline: bool,
         bucket_xyzz: bool,
         min_terms_commit: u32,
+        miller_coalesce_pairs: i32,
     ) {
         let mut options = jolt_kernels::webgpu::WebGpuOptions {
             disable,
@@ -77,6 +79,9 @@ mod wasm {
         }
         if miller_cpu_fraction >= 0.0 {
             options.miller_cpu_fraction = miller_cpu_fraction;
+        }
+        if miller_coalesce_pairs >= 0 {
+            options.miller_coalesce_pairs = miller_coalesce_pairs as usize;
         }
         jolt_kernels::webgpu::configure(options);
     }
