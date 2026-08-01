@@ -122,7 +122,16 @@ async function run() {
                     const verifyMsg = await verified;
                     if (verifyMsg.type === 'error') return { error: verifyMsg.error };
 
+                    const digest = await crypto.subtle.digest(
+                        'SHA-256',
+                        new Uint8Array(proveMsg.proof),
+                    );
+                    const proofSha256 = [...new Uint8Array(digest)]
+                        .map((b) => b.toString(16).padStart(2, '0'))
+                        .join('');
+
                     return {
+                        proofSha256,
                         proveSeconds: proveMsg.elapsed / 1000,
                         verifySeconds: verifyMsg.elapsed / 1000,
                         valid: verifyMsg.valid,
