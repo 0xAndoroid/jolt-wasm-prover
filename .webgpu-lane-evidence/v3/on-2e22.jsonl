@@ -1,0 +1,20 @@
+{"iters":1112,"run":1,"log2Padded":22,"proveSeconds":30.09802499985695,"verifySeconds":0.33401500010490415,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2643263488,"millerServed":50,"mhz":0.1393547915525997}
+{"iters":1112,"run":2,"log2Padded":22,"proveSeconds":28.88016000008583,"verifySeconds":0.3156500000953674,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2996109312,"millerServed":100,"mhz":0.14523132835786004}
+{"iters":1112,"run":3,"log2Padded":22,"proveSeconds":27.767300000190733,"verifySeconds":0.33849500012397765,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2996109312,"millerServed":150,"mhz":0.15105192078348234}
+{
+ "summary": [
+  {
+   "iters": 1112,
+   "log2Padded": 22,
+   "runs": [
+    30.1,
+    28.88,
+    27.77
+   ],
+   "median": 28.88,
+   "medianMhz": 0.145,
+   "verifySeconds": 0.33401500010490415,
+   "proofSize": 91019
+  }
+ ]
+}

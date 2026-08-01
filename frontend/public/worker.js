@@ -57,6 +57,7 @@ async function initWebGpu(module, config) {
         config.millerCoalesce ?? -1,
         config.minTermsRamRw || 0,
         config.minTermsRegsRw || 0,
+        config.minTermsDoryFold || 0,
     );
     const t1 = performance.now();
     webgpu_warmup();

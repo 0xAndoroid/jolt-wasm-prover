@@ -1,0 +1,27 @@
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 8ms, device+pipelines 715ms
+worker ready, sha2-chain loaded (tracing=false, webgpu=null)
+{"iters":278,"run":1,"log2Padded":20,"proveSeconds":31.067139999866484,"verifySeconds":0.31466499996185304,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":1034289152,"millerServed":0,"mhz":0.03375193210590052}
+iters=278 run 1: prove 31.07s (2^20 padded, 0.034 MHz), verify 0.31s, valid=true, peak 986 MB, miller 0
+{"iters":278,"run":2,"log2Padded":20,"proveSeconds":28.611460000038146,"verifySeconds":0.30300999999046324,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":1034289152,"millerServed":0,"mhz":0.036648811350368064}
+iters=278 run 2: prove 28.61s (2^20 padded, 0.037 MHz), verify 0.30s, valid=true, peak 986 MB, miller 0
+{"iters":278,"run":3,"log2Padded":20,"proveSeconds":28.561539999961852,"verifySeconds":0.30716499996185304,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":1034289152,"millerServed":0,"mhz":0.03671286632308344}
+iters=278 run 3: prove 28.56s (2^20 padded, 0.037 MHz), verify 0.31s, valid=true, peak 986 MB, miller 0
+{
+ "summary": [
+  {
+   "iters": 278,
+   "log2Padded": 20,
+   "runs": [
+    31.07,
+    28.61,
+    28.56
+   ],
+   "median": 28.61,
+   "medianMhz": 0.037,
+   "verifySeconds": 0.31466499996185304,
+   "proofSize": 86687
+  }
+ ]
+}
