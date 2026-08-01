@@ -52,6 +52,7 @@ async function initWebGpu(module, config) {
         // GPU stacks at scale; explicit false selects it for A/B only.
         config.bucketXyzz !== false,
         config.minTermsCommit || 0,
+        config.minTermsBytecode || 0,
         // 0 is meaningful (one shard per pass); absent keeps the default.
         config.millerCoalesce ?? -1,
     );

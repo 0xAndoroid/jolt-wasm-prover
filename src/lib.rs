@@ -50,6 +50,10 @@ mod wasm {
     /// `miller_coalesce_pairs` too — 0 is a meaningful coalesce setting:
     /// one shard per pass). Call before [`webgpu_warmup`].
     #[wasm_bindgen]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "flat wasm-bindgen config surface"
+    )]
     pub fn webgpu_configure(
         disable: bool,
         min_terms: u32,
@@ -58,6 +62,7 @@ mod wasm {
         commit_pipeline: bool,
         bucket_xyzz: bool,
         min_terms_commit: u32,
+        min_terms_bytecode: u32,
         miller_coalesce_pairs: i32,
     ) {
         let mut options = jolt_kernels::webgpu::WebGpuOptions {
@@ -73,6 +78,12 @@ mod wasm {
             let _ = options
                 .min_terms_per_slot
                 .insert("commit".to_owned(), min_terms_commit as usize);
+        }
+        if min_terms_bytecode > 0 {
+            let _ = options.min_terms_per_slot.insert(
+                "bytecode_read_raf_cycle".to_owned(),
+                min_terms_bytecode as usize,
+            );
         }
         if handoff_len > 0 {
             options.handoff_len = handoff_len as usize;

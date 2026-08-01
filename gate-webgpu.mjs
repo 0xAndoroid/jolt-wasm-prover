@@ -13,7 +13,7 @@ import { chromium } from 'playwright';
 const ITERS = parseInt(process.argv[2] || '17', 10);
 const BASE = process.argv[3] || 'http://localhost:8091';
 
-async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1, millerCoalesce = -1 }) {
+async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1, minTermsBytecode = 0, millerCoalesce = -1 }) {
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) =>
         process.stderr.write(`[${label}] ${msg.text()}\n`),
@@ -21,7 +21,7 @@ async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1, mille
     await page.goto(BASE, { waitUntil: 'domcontentloaded' });
 
     const result = await page.evaluate(
-        async ({ webgpu, iters, millerCpuFraction, millerCoalesce }) => {
+        async ({ webgpu, iters, millerCpuFraction, minTermsBytecode, millerCoalesce }) => {
             const pending = new Map();
             const worker = new Worker('/worker.js', { type: 'module' });
             worker.onmessage = (e) => {
@@ -42,7 +42,7 @@ async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1, mille
                 type: 'init',
                 data: {
                     numThreads: Math.min(navigator.hardwareConcurrency || 4, 12),
-                    webgpu: webgpu ? { minTerms: 1, millerCpuFraction, millerCoalesce } : null,
+                    webgpu: webgpu ? { minTerms: 1, millerCpuFraction, minTermsBytecode, millerCoalesce } : null,
                 },
             });
             const init = await initDone;
@@ -106,7 +106,7 @@ async function proveOnce(browser, { webgpu, label, millerCpuFraction = -1, mille
                 proofSha256: hex,
             };
         },
-        { webgpu, iters: ITERS, millerCpuFraction, millerCoalesce },
+        { webgpu, iters: ITERS, millerCpuFraction, minTermsBytecode, millerCoalesce },
     );
     await page.context().close();
     return result;
@@ -124,12 +124,15 @@ const on = await proveOnce(browser, { webgpu: true, label: 'on' });
 // extremes must byte-match too (0 = all-device shard, 1 = all-CPU shard).
 const onF0 = await proveOnce(browser, { webgpu: true, label: 'on-f0', millerCpuFraction: 0 });
 const onF1 = await proveOnce(browser, { webgpu: true, label: 'on-f1', millerCpuFraction: 1 });
+// W5-U4: bytecode twin OFF (per-slot min_terms pushed above any real trace),
+// everything else on — the twin must be byte-invariant.
+const onBc0 = await proveOnce(browser, { webgpu: true, label: 'on-bc0', minTermsBytecode: 1 << 30 });
 // Coalescing A/B (U1): one shard per pass must byte-match the default
 // merged passes — each caller receives its own GT either way.
 const onC0 = await proveOnce(browser, { webgpu: true, label: 'on-coalesce0', millerCoalesce: 0 });
 await browser.close();
 
-const runs = [['off-1', off1], ['off-2', off2], ['on', on], ['on-f0', onF0], ['on-f1', onF1], ['on-coalesce0', onC0]];
+const runs = [['off-1', off1], ['off-2', off2], ['on', on], ['on-f0', onF0], ['on-f1', onF1], ['on-bc0', onBc0], ['on-coalesce0', onC0]];
 for (const [label, r] of runs) {
     if (r.error) {
         console.error(`${label}: ERROR ${r.error}`);
@@ -143,16 +146,17 @@ for (const [label, r] of runs) {
 }
 
 const deterministic = off1.proofSha256 === off2.proofSha256;
-const parity = [on, onF0, onF1, onC0].every((r) => r.proofSha256 === off1.proofSha256);
+const parity = [on, onF0, onF1, onBc0, onC0].every((r) => r.proofSha256 === off1.proofSha256);
 const engaged = !!on.webgpuInit;
 const millerEngaged =
-    on.millerServed > 0 && onF0.millerServed > 0 && onF1.millerServed > 0 && onC0.millerServed > 0;
+    on.millerServed > 0 && onF0.millerServed > 0 && onF1.millerServed > 0 &&
+    onBc0.millerServed > 0 && onC0.millerServed > 0;
 console.log(JSON.stringify({
     iters: ITERS,
     paddedCycles: off1.paddedCycles,
     deterministic,
     webgpuEngaged: engaged,
-    millerServed: { on: on.millerServed, f0: onF0.millerServed, f1: onF1.millerServed, c0: onC0.millerServed },
+    millerServed: { on: on.millerServed, f0: onF0.millerServed, f1: onF1.millerServed, bc0: onBc0.millerServed, c0: onC0.millerServed },
     byteParity: parity,
     proveSeconds: {
         off: [off1.proveSeconds, off2.proveSeconds],
