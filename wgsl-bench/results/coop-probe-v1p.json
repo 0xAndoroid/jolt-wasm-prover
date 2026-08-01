@@ -1,0 +1,301 @@
+{
+  "when": "2026-08-01T10:26:58.100Z",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "description": "Metal driver on macOS Version 26.5.2 (Build 25F84)"
+  },
+  "hasTs": true,
+  "moduleMs": 9,
+  "pipelineMs": 7,
+  "tintMessages": [],
+  "manifest": {
+    "stride": 87,
+    "prep": {
+      "ops": 8036,
+      "groups": 1288
+    },
+    "comp": {
+      "ops": 9988,
+      "groups": 1927
+    }
+  },
+  "reps": 5,
+  "aborted": null,
+  "results": [
+    {
+      "name": "tiny_prep_1",
+      "n": 1,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 12.1
+    },
+    {
+      "name": "kat8_prep",
+      "n": 8,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 10.1
+    },
+    {
+      "name": "kat8_comp",
+      "n": 8,
+      "kind": "comp",
+      "kat": "pass",
+      "katWallMs": 17.6
+    },
+    {
+      "name": "prep_64",
+      "n": 64,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 7.5,
+      "wallMs": [
+        7.35,
+        7.04,
+        6.98,
+        6.96,
+        7.01
+      ],
+      "gpuMs": [
+        6.82,
+        6.62,
+        6.62,
+        6.55,
+        6.55
+      ],
+      "medMs": 6.62,
+      "usPerPair": 103.42
+    },
+    {
+      "name": "prep_256",
+      "n": 256,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 15.8,
+      "wallMs": [
+        16.08,
+        16.02,
+        15.9,
+        16.06,
+        15.93
+      ],
+      "gpuMs": [
+        15.66,
+        15.6,
+        15.47,
+        15.53,
+        15.53
+      ],
+      "medMs": 15.53,
+      "usPerPair": 60.67
+    },
+    {
+      "name": "prep_512",
+      "n": 512,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 25.8,
+      "wallMs": [
+        26.35,
+        26.86,
+        27.24,
+        26.38,
+        26.15
+      ],
+      "gpuMs": [
+        25.89,
+        26.48,
+        26.8,
+        25.95,
+        25.62
+      ],
+      "medMs": 25.95,
+      "usPerPair": 50.69
+    },
+    {
+      "name": "prep_1024",
+      "n": 1024,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 51,
+      "wallMs": [
+        51.43,
+        51.49,
+        51.58,
+        51.9,
+        51.3
+      ],
+      "gpuMs": [
+        50.99,
+        51.05,
+        51.12,
+        51.45,
+        50.86
+      ],
+      "medMs": 51.05,
+      "usPerPair": 49.86
+    },
+    {
+      "name": "prep_2048",
+      "n": 2048,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 100.9,
+      "wallMs": [
+        100.42,
+        101.17,
+        99.87,
+        99.7,
+        100.01
+      ],
+      "gpuMs": [
+        99.94,
+        100.73,
+        99.42,
+        99.29,
+        99.61
+      ],
+      "medMs": 99.61,
+      "usPerPair": 48.64
+    },
+    {
+      "name": "prep_4096",
+      "n": 4096,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 198.9,
+      "wallMs": [
+        197.8,
+        198.51,
+        198.18,
+        197.9,
+        198.5
+      ],
+      "gpuMs": [
+        197.33,
+        198.05,
+        197.72,
+        197.46,
+        198.05
+      ],
+      "medMs": 197.72,
+      "usPerPair": 48.27
+    },
+    {
+      "name": "prep_8192",
+      "n": 8192,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 394.3,
+      "wallMs": [
+        395.43,
+        394.81,
+        394.42,
+        393.64,
+        395.53
+      ],
+      "gpuMs": [
+        394.99,
+        394.33,
+        393.94,
+        393.22,
+        395.05
+      ],
+      "medMs": 394.33,
+      "usPerPair": 48.14
+    },
+    {
+      "name": "prep_32768",
+      "n": 32768,
+      "kind": "prep",
+      "kat": "pass",
+      "katWallMs": 1573,
+      "wallMs": [
+        1573.97,
+        1572.71,
+        1575.14,
+        1572.61,
+        1573.42
+      ],
+      "gpuMs": [
+        1572.86,
+        1571.82,
+        1574.57,
+        1571.68,
+        1572.54
+      ],
+      "medMs": 1572.54,
+      "usPerPair": 47.99
+    },
+    {
+      "name": "comp_512",
+      "n": 512,
+      "kind": "comp",
+      "kat": "pass",
+      "katWallMs": 53.1,
+      "wallMs": [
+        55.46,
+        53.19,
+        58.22,
+        54.56,
+        54.05
+      ],
+      "gpuMs": [
+        54.98,
+        52.82,
+        57.8,
+        54.2,
+        53.61
+      ],
+      "medMs": 54.2,
+      "usPerPair": 105.86
+    },
+    {
+      "name": "comp_2048",
+      "n": 2048,
+      "kind": "comp",
+      "kat": "pass",
+      "katWallMs": 205.5,
+      "wallMs": [
+        207.39,
+        207.05,
+        205.2,
+        206.61,
+        206.73
+      ],
+      "gpuMs": [
+        206.9,
+        206.57,
+        204.73,
+        206.18,
+        206.24
+      ],
+      "medMs": 206.24,
+      "usPerPair": 100.7
+    },
+    {
+      "name": "comp_8192",
+      "n": 8192,
+      "kind": "comp",
+      "kat": "pass",
+      "katWallMs": 805.2,
+      "wallMs": [
+        807.5,
+        807.86,
+        804.81,
+        804.8,
+        809.77
+      ],
+      "gpuMs": [
+        806.88,
+        807.4,
+        804.32,
+        804.19,
+        809.3
+      ],
+      "medMs": 806.88,
+      "usPerPair": 98.5
+    }
+  ]
+}
