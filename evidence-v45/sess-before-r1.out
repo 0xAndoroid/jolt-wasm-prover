@@ -1,0 +1,16 @@
+{"iters":1112,"run":1,"log2Padded":22,"proveSeconds":38.466694999933246,"verifySeconds":0.3095650000572205,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2469920768,"millerServed":50,"mhz":0.10903728537133951}
+{
+ "summary": [
+  {
+   "iters": 1112,
+   "log2Padded": 22,
+   "runs": [
+    38.47
+   ],
+   "median": 38.47,
+   "medianMhz": 0.109,
+   "verifySeconds": 0.3095650000572205,
+   "proofSize": 91019
+  }
+ ]
+}

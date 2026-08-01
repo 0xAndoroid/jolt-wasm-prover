@@ -1,0 +1,37 @@
+== clean r1 (port 8181, id 55b2a3226e76) 09:02:28 "Device Utilization %"=0 load:{ 2.31 3.20 3.54 }
+ ]
+}
+   trips=0
+== before r1 (port 8182, id c89765deda2c) 09:03:17 "Device Utilization %"=96 load:{ 3.57 3.40 3.59 }
+ ]
+}
+   trips=1
+== after r1 (port 8183, id baf4397a8fe1) 09:04:10 "Device Utilization %"=96 load:{ 4.43 3.60 3.65 }
+ ]
+}
+   trips=1
+== clean r2 (port 8181, id 55b2a3226e76) 09:05:02 "Device Utilization %"=96 load:{ 5.50 4.11 3.84 }
+ ]
+}
+   trips=0
+== before r2 (port 8182, id c89765deda2c) 09:05:53 "Device Utilization %"=96 load:{ 4.47 4.03 3.82 }
+ ]
+}
+   trips=1
+== after r2 (port 8183, id baf4397a8fe1) 09:12:04 "Device Utilization %"=95 load:{ 1.55 2.49 3.17 }
+ ]
+}
+   trips=1
+== clean r3 (port 8181, id 55b2a3226e76) 09:12:54 "Device Utilization %"=96 load:{ 2.21 2.56 3.16 }
+ ]
+}
+   trips=0
+== before r3 (port 8182, id c89765deda2c) 09:13:43 "Device Utilization %"=96 load:{ 3.02 2.70 3.18 }
+ ]
+}
+   trips=1
+== after r3 (port 8183, id baf4397a8fe1) 09:14:34 "Device Utilization %"=96 load:{ 4.91 3.24 3.35 }
+ ]
+}
+   trips=1
+== set complete 09:15:23 "Device Utilization %"=97
