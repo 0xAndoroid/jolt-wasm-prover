@@ -1,0 +1,90 @@
+{
+ "window_notes": "W1=04:55-05:05 fast-mode; W2=05:23-05:33 fast-mode; W3=05:37-05:41 slow-mode; soak 05:42-05:49 mixed",
+ "anchors_2e22": {
+  "off_med5": 63.22,
+  "off_runs": [
+   65.59,
+   63.22,
+   63.63,
+   62.51,
+   63.19
+  ],
+  "on_med5": 28.19,
+  "on_runs": [
+   31.54,
+   28.19,
+   28.12,
+   28.09,
+   28.8
+  ],
+  "verify_s": 0.289,
+  "proof_B": 91019,
+  "window": "W1"
+ },
+ "control_2e22_u2a_bytes_a91e4b09": {
+  "off_med3": 63.91,
+  "off_runs": [
+   66.28,
+   63.91,
+   63.24
+  ],
+  "on_med3": 28.87,
+  "on_runs": [
+   31.13,
+   28.87,
+   27.84
+  ],
+  "window": "W1-adjacent same mode"
+ },
+ "anchors_2e20": {
+  "off_med5": 24.5,
+  "off_runs": [
+   27.45,
+   24.5,
+   24.15,
+   24.49,
+   24.64
+  ],
+  "on_med5": 10.15,
+  "on_runs": [
+   13.08,
+   10.09,
+   10.8,
+   10.15,
+   10.11
+  ],
+  "verify_s": 0.273,
+  "proof_B": 86687,
+  "window": "W2"
+ },
+ "ladder_fastmode_W2": {
+  "off_med3": {
+   "2e16": 4.65,
+   "2e18": 10.03,
+   "2e21": 38.56
+  },
+  "on_2e16_partial": 2.94
+ },
+ "ladder_slowmode_W3": "traces-w5m/ladder-{off,on}.json (verify/proof/peak per run)",
+ "traced_pair_2e22": {
+  "off_wall": 81.07,
+  "on_wall": 30.92,
+  "off_peak_MB": 2734,
+  "on_peak_MB": 2693,
+  "note": "traced walls carry the tracing tax; see journal"
+ },
+ "soak": {
+  "s2e22": {
+   "ok": 10,
+   "wedged": 0,
+   "med": 29.19,
+   "peak_MB": 2820
+  },
+  "s2e20": {
+   "ok": 5,
+   "wedged": 0,
+   "med": 10.34,
+   "peak_MB": 1090
+  }
+ }
+}
