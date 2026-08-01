@@ -64,6 +64,7 @@ mod wasm {
         min_terms_commit: u32,
         min_terms_bytecode: u32,
         miller_coalesce_pairs: i32,
+        min_terms_dory_fold: u32,
     ) {
         let mut options = jolt_kernels::webgpu::WebGpuOptions {
             disable,
@@ -84,6 +85,16 @@ mod wasm {
                 "bytecode_read_raf_cycle".to_owned(),
                 min_terms_bytecode as usize,
             );
+        }
+        // W6-V3f: the stage-8 dory fold gates (T3 flagged the sweep, never
+        // run). One knob drives both curves.
+        if min_terms_dory_fold > 0 {
+            let _ = options
+                .min_terms_per_slot
+                .insert("dory_fold_g1".to_owned(), min_terms_dory_fold as usize);
+            let _ = options
+                .min_terms_per_slot
+                .insert("dory_fold_g2".to_owned(), min_terms_dory_fold as usize);
         }
         if handoff_len > 0 {
             options.handoff_len = handoff_len as usize;

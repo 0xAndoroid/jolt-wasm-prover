@@ -1,0 +1,17 @@
+[page] Failed to load resource: the server responded with a status of 404 (Not Found)
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 729ms
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1480ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1533ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={"minTerms":0,"handoffLen":0})
+iters=1112 run 1: prove 30.10s (2^22 padded, 0.139 MHz), verify 0.33s, valid=true, peak 2521 MB, miller 50
+iters=1112 run 2: prove 28.88s (2^22 padded, 0.145 MHz), verify 0.32s, valid=true, peak 2857 MB, miller 100
+iters=1112 run 3: prove 27.77s (2^22 padded, 0.151 MHz), verify 0.34s, valid=true, peak 2857 MB, miller 150
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 7ms, device+pipelines 747ms
+worker ready, sha2-chain loaded (tracing=false, webgpu=null)
+page.evaluate: Target page, context or browser has been closed
+    at run (/Users/andoroid/dev/jolt-wasm-prover/.worktrees/w6-v3-verify/bench-chain.mjs:95:34)
