@@ -65,6 +65,25 @@ fn get_start_time() -> f64 {
     start.unwrap()
 }
 
+/// W5-U3 probe: stage spans and `memprobe`-target events mirror to the JS
+/// console — the Chrome-trace buffer lives in wasm memory and dies with
+/// the OOM this probe exists to catch. `Date.now()` timestamps align with
+/// the harness's page-side poll samples across worker time origins.
+fn console_mark(kind: &str, name: &str, args: Option<&serde_json::Value>) {
+    let live_mb = crate::mem_probe::live_bytes() as f64 / (1024.0 * 1024.0);
+    let wm_mb = core::arch::wasm32::memory_size::<0>() as f64 * 65536.0 / (1024.0 * 1024.0);
+    let t = js_sys::Date::now();
+    let extra = args.map(|a| format!(" {a}")).unwrap_or_default();
+    web_sys::console::log_1(
+        &format!("[memprobe] {kind} {name} live_mb={live_mb:.1} wm_mb={wm_mb:.1} t={t:.0}{extra}")
+            .into(),
+    );
+}
+
+fn is_marked_span(name: &str) -> bool {
+    name.starts_with("prove_stage") || name == "engine::prove"
+}
+
 struct ChromeTraceLayer;
 
 impl<S> Layer<S> for ChromeTraceLayer
@@ -99,6 +118,9 @@ where
             },
         };
 
+        if is_marked_span(&event.name) {
+            console_mark("B", &event.name, event.args.as_ref());
+        }
         TRACE_EVENTS.lock().unwrap().push(event);
     }
 
@@ -121,6 +143,9 @@ where
                 args: None,
             };
 
+            if is_marked_span(&event.name) {
+                console_mark("E", &event.name, None);
+            }
             TRACE_EVENTS.lock().unwrap().push(event);
         }
     }
@@ -148,6 +173,9 @@ where
             },
         };
 
+        if trace_event.cat == "memprobe" {
+            console_mark("i", &trace_event.name, trace_event.args.as_ref());
+        }
         TRACE_EVENTS.lock().unwrap().push(trace_event);
     }
 }

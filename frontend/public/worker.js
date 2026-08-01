@@ -7,6 +7,7 @@ import init, {
     webgpu_configure,
     webgpu_warmup,
     webgpu_miller_served,
+    mem_counters_ptr,
     bench_stream,
     WasmProver,
     WasmVerifier,
@@ -86,7 +87,14 @@ self.onmessage = async (e) => {
                         console.warn('[worker] webgpu unavailable, CPU-only:', err.message || err);
                     }
                 }
-                self.postMessage({ type: 'init-done', webgpu });
+                // Shared memory + counter offset let the page poll heap
+                // watermark/live bytes while this worker is blocked proving.
+                self.postMessage({
+                    type: 'init-done',
+                    webgpu,
+                    memory: wasmExports.memory,
+                    memCountersPtr: mem_counters_ptr(),
+                });
                 break;
             }
 
@@ -194,6 +202,10 @@ self.onmessage = async (e) => {
     } catch (err) {
         const msg = err.message || String(err);
         console.error('[worker error]', msg);
-        self.postMessage({ type: 'error', error: msg });
+        self.postMessage({
+            type: 'error',
+            error: msg,
+            peakMemory: wasmExports ? wasmExports.memory.buffer.byteLength : 0,
+        });
     }
 };
