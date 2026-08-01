@@ -600,6 +600,28 @@ pub fn encode_miller_prepared_auto(
     }
 }
 
+/// W6-V1p probe export: the private schedule statics, serialized by
+/// `examples/coop_probe_export.rs` for the standalone Tint harness.
+pub fn export_schedule(computed: bool) -> (Vec<[u32; 4]>, Vec<u32>) {
+    let s: &Schedule = if computed {
+        &SCHEDULE_COMPUTED
+    } else {
+        &SCHEDULE
+    };
+    (s.ops.clone(), s.groups.clone())
+}
+
+/// W6-V1p probe export: twist/Frobenius constants buffer words.
+pub fn export_consts_words() -> Vec<u32> {
+    consts_words()
+}
+
+/// W6-V1p probe export: the composed WGSL module exactly as
+/// `encode_with_schedule` compiles it.
+pub fn export_module_source() -> String {
+    coop_module_source()
+}
+
 /// Computed-line Miller loop with automatic dispatch policy.
 pub fn encode_miller_computed_auto(
     ctx: &GpuContext,
