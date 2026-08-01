@@ -181,16 +181,17 @@ pub fn verify(prep: &VerifierPrep, proof_bytes: &[u8], io_bytes: &[u8]) -> Resul
         .map_err(|e| format!("verification failed: {e}"))
 }
 
-/// Pad to the padded trace length with no-op rows. Exact capacity up front to
-/// avoid an amortized-growth realloc of the whole trace.
+/// Pad to the padded trace length with no-op rows, in place: the tracer's
+/// amortized-doubling capacity is already the next power of two, i.e.
+/// exactly the padded length in the common case, so this is usually
+/// zero-alloc — where the old copy-into-fresh-Vec briefly held two full
+/// traces (2.7 GB at 2^23 against wasm's 4 GiB cap).
 fn pad_trace(
     trace_output: TraceOutput<OwnedTrace>,
     trace_length: usize,
 ) -> TraceOutput<OwnedTrace> {
-    let source = trace_output.trace.rows();
-    let mut rows = Vec::with_capacity(trace_length.max(source.len()));
-    rows.extend_from_slice(source);
-    rows.resize(trace_length, TraceRow::default());
+    let mut rows = trace_output.trace.into_rows();
+    rows.resize(trace_length.max(rows.len()), TraceRow::default());
     TraceOutput::new(
         OwnedTrace::new(rows),
         trace_output.device,
