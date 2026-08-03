@@ -1,0 +1,12 @@
+[package]
+name = "sha3-chain-guest"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+guest = []
+field-inline = ["jolt/field-inline"]
+
+[dependencies]
+jolt = { package = "jolt-sdk", path = "../../../../../jolt/.worktrees/w3-t2b/jolt-sdk" }
+jolt-inlines-keccak256 = { path = "../../../../../jolt/.worktrees/w3-t2b/jolt-inlines/keccak256" }

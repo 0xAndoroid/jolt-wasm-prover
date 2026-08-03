@@ -1,0 +1,48 @@
+[lock] held by: 20155 w6v3 2026-08-01 08:04:12; waiting 30s
+[lock] held by: 20155 w6v3 2026-08-01 08:04:12; waiting 30s
+[lock] held by: 20155 w6v3 2026-08-01 08:04:12; waiting 30s
+[lock] GPU busy (93%), settling (1/30)
+window start: load averages: 2.77 5.09 5.69
+=== 2^22 OFF x3 ===
+{"iters":1112,"run":1,"log2Padded":22,"proofSha256":"149d0cdf4dcf7b14cc6bb024c60769f33f31d12289ae9d8a5c2ff4ac8cc4f179","proveSeconds":82.83952500009536,"verifySeconds":0.35893499994277955,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2728984576,"millerServed":0,"mhz":0.05063167612314498}
+{"iters":1112,"run":2,"log2Padded":22,"proofSha256":"149d0cdf4dcf7b14cc6bb024c60769f33f31d12289ae9d8a5c2ff4ac8cc4f179","proveSeconds":81.6566400001049,"verifySeconds":0.34829500007629394,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2728984576,"millerServed":0,"mhz":0.05136513086987919}
+{"iters":1112,"run":3,"log2Padded":22,"proofSha256":"149d0cdf4dcf7b14cc6bb024c60769f33f31d12289ae9d8a5c2ff4ac8cc4f179","proveSeconds":79.87954999995232,"verifySeconds":0.3472349998950958,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2728984576,"millerServed":0,"mhz":0.05250785714244138}
+{
+ "summary": [
+  {
+   "iters": 1112,
+   "log2Padded": 22,
+   "runs": [
+    82.84,
+    81.66,
+    79.88
+   ],
+   "median": 81.66,
+   "medianMhz": 0.051,
+   "verifySeconds": 0.35893499994277955,
+   "proofSize": 91019
+  }
+ ]
+}
+=== 2^22 ON x3 ===
+{"iters":1112,"run":1,"log2Padded":22,"proofSha256":"149d0cdf4dcf7b14cc6bb024c60769f33f31d12289ae9d8a5c2ff4ac8cc4f179","proveSeconds":32.101210000038144,"verifySeconds":0.30276500010490415,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515599360,"millerServed":50,"mhz":0.13065875086936027}
+{"iters":1112,"run":2,"log2Padded":22,"proofSha256":"149d0cdf4dcf7b14cc6bb024c60769f33f31d12289ae9d8a5c2ff4ac8cc4f179","proveSeconds":31.885259999990463,"verifySeconds":0.39065499997138975,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515599360,"millerServed":100,"mhz":0.13154366625836686}
+{"iters":1112,"run":3,"log2Padded":22,"proofSha256":"149d0cdf4dcf7b14cc6bb024c60769f33f31d12289ae9d8a5c2ff4ac8cc4f179","proveSeconds":31.343655000209807,"verifySeconds":0.3274249999523163,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515599360,"millerServed":150,"mhz":0.13381668474758046}
+{
+ "summary": [
+  {
+   "iters": 1112,
+   "log2Padded": 22,
+   "runs": [
+    32.1,
+    31.89,
+    31.34
+   ],
+   "median": 31.89,
+   "medianMhz": 0.132,
+   "verifySeconds": 0.30276500010490415,
+   "proofSize": 91019
+  }
+ ]
+}
+window end: load averages: 7.46 8.11 7.08 gpu "Device Utilization %"=96

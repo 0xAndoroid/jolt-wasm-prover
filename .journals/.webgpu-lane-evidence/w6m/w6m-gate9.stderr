@@ -1,0 +1,43 @@
+[off-1] jolt-wasm-prover build tag 2
+[off-1] jolt-wasm-prover build tag 2
+[off-1] [worker] webgpu up: gpu-worker 5ms, device+pipelines 827ms
+[off-2] jolt-wasm-prover build tag 2
+[off-2] jolt-wasm-prover build tag 2
+[off-2] [worker] webgpu up: gpu-worker 7ms, device+pipelines 812ms
+[on] jolt-wasm-prover build tag 2
+[on] jolt-wasm-prover build tag 2
+[on] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1532ms
+[on] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1538ms
+[on-f0] jolt-wasm-prover build tag 2
+[on-f0] jolt-wasm-prover build tag 2
+[on-f0] [worker] webgpu up: gpu-worker 6ms, device+pipelines 1482ms
+[on-f0] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1516ms
+[on-f1] jolt-wasm-prover build tag 2
+[on-f1] jolt-wasm-prover build tag 2
+[on-f1] [worker] webgpu up: gpu-worker 6ms, device+pipelines 1509ms
+[on-f1] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1524ms
+[on-bc0] jolt-wasm-prover build tag 2
+[on-bc0] jolt-wasm-prover build tag 2
+[on-bc0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1507ms
+[on-bc0] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1515ms
+[on-coalesce0] jolt-wasm-prover build tag 2
+[on-coalesce0] jolt-wasm-prover build tag 2
+[on-coalesce0] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1514ms
+[on-coalesce0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1525ms
+[on-rw0] jolt-wasm-prover build tag 2
+[on-rw0] jolt-wasm-prover build tag 2
+[on-rw0] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1506ms
+[on-rw0] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1522ms
+[on-regs] jolt-wasm-prover build tag 2
+[on-regs] jolt-wasm-prover build tag 2
+[on-regs] [worker] webgpu up: gpu-worker 6ms, device+pipelines 1490ms
+[on-regs] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1524ms
+off-1: padded 2^16, prove 7.78s, valid=true, proof 78023B, sha256 3cc194fe018e64c1…
+off-2: padded 2^16, prove 7.92s, valid=true, proof 78023B, sha256 3cc194fe018e64c1…
+on: padded 2^16, prove 8.37s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1538ms, miller 100)
+on-f0: padded 2^16, prove 8.66s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1516ms, miller 100)
+on-f1: padded 2^16, prove 6.33s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1524ms, miller 100)
+on-bc0: padded 2^16, prove 8.46s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1515ms, miller 100)
+on-coalesce0: padded 2^16, prove 8.39s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1514ms, miller 100)
+on-rw0: padded 2^16, prove 8.48s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1522ms, miller 100)
+on-regs0: padded 2^16, prove 8.55s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1524ms, miller 100)

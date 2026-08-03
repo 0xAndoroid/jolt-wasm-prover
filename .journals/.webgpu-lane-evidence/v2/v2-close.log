@@ -1,0 +1,642 @@
+[lock] GPU busy (96%), settling (1/30)
++ cd /Users/andoroid/dev/jolt-wasm-prover/.worktrees/u3b-verify
++ export PW_CHANNEL=chrome BENCH_BASE=http://localhost:8247
++ PW_CHANNEL=chrome
++ BENCH_BASE=http://localhost:8247
++ OFF='{"minTermsRamRw":1073741824}'
++ node gate-webgpu.mjs 17 http://localhost:8247
+[off-1] jolt-wasm-prover build tag 2
+[off-1] jolt-wasm-prover build tag 2
+[off-1] [worker] webgpu up: gpu-worker 5ms, device+pipelines 795ms
+[off-2] jolt-wasm-prover build tag 2
+[off-2] jolt-wasm-prover build tag 2
+[off-2] [worker] webgpu up: gpu-worker 7ms, device+pipelines 784ms
+[on] jolt-wasm-prover build tag 2
+[on] jolt-wasm-prover build tag 2
+[on] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1460ms
+[on] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1471ms
+[on-f0] jolt-wasm-prover build tag 2
+[on-f0] jolt-wasm-prover build tag 2
+[on-f0] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1460ms
+[on-f0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1472ms
+[on-f1] jolt-wasm-prover build tag 2
+[on-f1] jolt-wasm-prover build tag 2
+[on-f1] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1448ms
+[on-f1] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1459ms
+[on-bc0] jolt-wasm-prover build tag 2
+[on-bc0] jolt-wasm-prover build tag 2
+[on-bc0] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1461ms
+[on-bc0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1472ms
+[on-coalesce0] jolt-wasm-prover build tag 2
+[on-coalesce0] jolt-wasm-prover build tag 2
+[on-coalesce0] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1457ms
+[on-coalesce0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1470ms
+[on-rw0] jolt-wasm-prover build tag 2
+[on-rw0] jolt-wasm-prover build tag 2
+[on-rw0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1457ms
+[on-rw0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1469ms
+[on-regs] jolt-wasm-prover build tag 2
+[on-regs] jolt-wasm-prover build tag 2
+[on-regs] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1463ms
+[on-regs] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1473ms
+off-1: padded 2^16, prove 7.80s, valid=true, proof 78023B, sha256 3cc194fe018e64c1…
+off-2: padded 2^16, prove 7.81s, valid=true, proof 78023B, sha256 3cc194fe018e64c1…
+on: padded 2^16, prove 8.43s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1460ms, miller 100)
+on-f0: padded 2^16, prove 8.72s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1460ms, miller 100)
+on-f1: padded 2^16, prove 6.34s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 4ms, warmup 1448ms, miller 100)
+on-bc0: padded 2^16, prove 8.37s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1461ms, miller 100)
+on-coalesce0: padded 2^16, prove 8.46s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1457ms, miller 100)
+on-rw0: padded 2^16, prove 8.41s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 4ms, warmup 1457ms, miller 100)
+on-regs0: padded 2^16, prove 8.42s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 1473ms, miller 100)
+{"iters":17,"paddedCycles":65536,"deterministic":true,"webgpuEngaged":true,"millerServed":{"on":100,"f0":100,"f1":100,"bc0":100,"c0":100,"rw0":100,"regs0":100},"byteParity":true,"proveSeconds":{"off":[7.797870000123978,7.814985000133515],"on":8.430265000104905,"onF0":8.718634999990464,"onF1":6.3359700000286105,"onC0":8.46009500002861},"webgpuInit":{"readyMs":2.9050002098083496,"warmupMs":1459.5750000476837},"allValid":true}
++ for i in 1 2 3
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1373ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1381ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.37925500011444,"verifySeconds":0.28881500005722044,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515468288,"millerServed":50,"mhz":0.13366486871612163}
+iters=1111 run 1: prove 31.38s (2^22 padded, 0.134 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.38
+   ],
+   "median": 31.38,
+   "medianMhz": 0.134,
+   "verifySeconds": 0.28881500005722044,
+   "proofSize": 91019
+  }
+ ]
+}
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{"minTermsRamRw":1073741824}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1574ms
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1587ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={"minTermsRamRw":1073741824})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.31002499985695,"verifySeconds":0.28891499996185305,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2649358336,"millerServed":50,"mhz":0.1339604168319624}
+iters=1111 run 1: prove 31.31s (2^22 padded, 0.134 MHz), verify 0.29s, valid=true, peak 2527 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.31
+   ],
+   "median": 31.31,
+   "medianMhz": 0.134,
+   "verifySeconds": 0.28891499996185305,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1511ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1521ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":30.81444000005722,"verifySeconds":0.28845499992370605,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515664896,"millerServed":50,"mhz":0.13611488639716354}
+iters=1111 run 1: prove 30.81s (2^22 padded, 0.136 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    30.81
+   ],
+   "median": 30.81,
+   "medianMhz": 0.136,
+   "verifySeconds": 0.28845499992370605,
+   "proofSize": 91019
+  }
+ ]
+}
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{"minTermsRamRw":1073741824}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1504ms
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1516ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={"minTermsRamRw":1073741824})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.454340000152587,"verifySeconds":0.28908500003814697,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515468288,"millerServed":50,"mhz":0.13334579584183465}
+iters=1111 run 1: prove 31.45s (2^22 padded, 0.133 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.45
+   ],
+   "median": 31.45,
+   "medianMhz": 0.133,
+   "verifySeconds": 0.28908500003814697,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1601ms
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1611ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":30.719819999933243,"verifySeconds":0.2888599998950958,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515402752,"millerServed":50,"mhz":0.13653413333831757}
+iters=1111 run 1: prove 30.72s (2^22 padded, 0.137 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    30.72
+   ],
+   "median": 30.72,
+   "medianMhz": 0.137,
+   "verifySeconds": 0.2888599998950958,
+   "proofSize": 91019
+  }
+ ]
+}
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{"minTermsRamRw":1073741824}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1459ms
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1468ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={"minTermsRamRw":1073741824})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":30.642884999990464,"verifySeconds":0.2885099999904633,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515009536,"millerServed":50,"mhz":0.1368769291795242}
+iters=1111 run 1: prove 30.64s (2^22 padded, 0.137 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    30.64
+   ],
+   "median": 30.64,
+   "medianMhz": 0.137,
+   "verifySeconds": 0.2885099999904633,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 278 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1456ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1466ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":278,"run":1,"log2Padded":20,"proofSha256":"8bb733666c0b55e2c548c0bef8c7c69f34322bf745f15d2b2a63673d32264337","proveSeconds":12.933829999923706,"verifySeconds":0.276210000038147,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":972947456,"millerServed":44,"mhz":0.08107235057258255}
+iters=278 run 1: prove 12.93s (2^20 padded, 0.081 MHz), verify 0.28s, valid=true, peak 928 MB, miller 44
+{
+ "summary": [
+  {
+   "iters": 278,
+   "log2Padded": 20,
+   "runs": [
+    12.93
+   ],
+   "median": 12.93,
+   "medianMhz": 0.081,
+   "verifySeconds": 0.276210000038147,
+   "proofSize": 86687
+  }
+ ]
+}
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{"minTermsRamRw":1073741824}'
++ node bench-chain.mjs 278 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1447ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1455ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={"minTermsRamRw":1073741824})
+{"iters":278,"run":1,"log2Padded":20,"proofSha256":"8bb733666c0b55e2c548c0bef8c7c69f34322bf745f15d2b2a63673d32264337","proveSeconds":13.067899999856948,"verifySeconds":0.2723049998283386,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":974585856,"millerServed":44,"mhz":0.08024058953707011}
+iters=278 run 1: prove 13.07s (2^20 padded, 0.080 MHz), verify 0.27s, valid=true, peak 929 MB, miller 44
+{
+ "summary": [
+  {
+   "iters": 278,
+   "log2Padded": 20,
+   "runs": [
+    13.07
+   ],
+   "median": 13.07,
+   "medianMhz": 0.08,
+   "verifySeconds": 0.2723049998283386,
+   "proofSize": 86687
+  }
+ ]
+}
++ for i in 1 2 3
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 278 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1411ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1421ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":278,"run":1,"log2Padded":20,"proofSha256":"8bb733666c0b55e2c548c0bef8c7c69f34322bf745f15d2b2a63673d32264337","proveSeconds":12.930585000038146,"verifySeconds":0.27328999996185305,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":975634432,"millerServed":44,"mhz":0.08109269611521107}
+iters=278 run 1: prove 12.93s (2^20 padded, 0.081 MHz), verify 0.27s, valid=true, peak 930 MB, miller 44
+{
+ "summary": [
+  {
+   "iters": 278,
+   "log2Padded": 20,
+   "runs": [
+    12.93
+   ],
+   "median": 12.93,
+   "medianMhz": 0.081,
+   "verifySeconds": 0.27328999996185305,
+   "proofSize": 86687
+  }
+ ]
+}
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{"minTermsRamRw":1073741824}'
++ node bench-chain.mjs 278 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1481ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1491ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={"minTermsRamRw":1073741824})
+{"iters":278,"run":1,"log2Padded":20,"proofSha256":"8bb733666c0b55e2c548c0bef8c7c69f34322bf745f15d2b2a63673d32264337","proveSeconds":13.000065000057221,"verifySeconds":0.27256000018119814,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":973733888,"millerServed":44,"mhz":0.08065928901089221}
+iters=278 run 1: prove 13.00s (2^20 padded, 0.081 MHz), verify 0.27s, valid=true, peak 929 MB, miller 44
+{
+ "summary": [
+  {
+   "iters": 278,
+   "log2Padded": 20,
+   "runs": [
+    13
+   ],
+   "median": 13,
+   "medianMhz": 0.081,
+   "verifySeconds": 0.27256000018119814,
+   "proofSize": 86687
+  }
+ ]
+}
++ for i in 1 2 3
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 278 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1427ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1438ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":278,"run":1,"log2Padded":20,"proofSha256":"8bb733666c0b55e2c548c0bef8c7c69f34322bf745f15d2b2a63673d32264337","proveSeconds":12.97780999994278,"verifySeconds":0.2724249999523163,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":974192640,"millerServed":44,"mhz":0.08079760760903598}
+iters=278 run 1: prove 12.98s (2^20 padded, 0.081 MHz), verify 0.27s, valid=true, peak 929 MB, miller 44
+{
+ "summary": [
+  {
+   "iters": 278,
+   "log2Padded": 20,
+   "runs": [
+    12.98
+   ],
+   "median": 12.98,
+   "medianMhz": 0.081,
+   "verifySeconds": 0.2724249999523163,
+   "proofSize": 86687
+  }
+ ]
+}
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{"minTermsRamRw":1073741824}'
++ node bench-chain.mjs 278 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1471ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1481ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={"minTermsRamRw":1073741824})
+{"iters":278,"run":1,"log2Padded":20,"proofSha256":"8bb733666c0b55e2c548c0bef8c7c69f34322bf745f15d2b2a63673d32264337","proveSeconds":12.993174999952316,"verifySeconds":0.2729949998855591,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":974323712,"millerServed":44,"mhz":0.08070206088995555}
+iters=278 run 1: prove 12.99s (2^20 padded, 0.081 MHz), verify 0.27s, valid=true, peak 929 MB, miller 44
+{
+ "summary": [
+  {
+   "iters": 278,
+   "log2Padded": 20,
+   "runs": [
+    12.99
+   ],
+   "median": 12.99,
+   "medianMhz": 0.081,
+   "verifySeconds": 0.2729949998855591,
+   "proofSize": 86687
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1422ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1430ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.031634999990462,"verifySeconds":0.28870500016212464,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515533824,"millerServed":50,"mhz":0.13516219818908315}
+iters=1111 run 1: prove 31.03s (2^22 padded, 0.135 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.03
+   ],
+   "median": 31.03,
+   "medianMhz": 0.135,
+   "verifySeconds": 0.28870500016212464,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1579ms
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1590ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.028389999866487,"verifySeconds":0.28872500014305114,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515337216,"millerServed":50,"mhz":0.13517633367435591}
+iters=1111 run 1: prove 31.03s (2^22 padded, 0.135 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.03
+   ],
+   "median": 31.03,
+   "medianMhz": 0.135,
+   "verifySeconds": 0.28872500014305114,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1385ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1396ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.106889999866485,"verifySeconds":0.288875,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515402752,"millerServed":50,"mhz":0.13483520853476522}
+iters=1111 run 1: prove 31.11s (2^22 padded, 0.135 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.11
+   ],
+   "median": 31.11,
+   "medianMhz": 0.135,
+   "verifySeconds": 0.288875,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1502ms
+[page] [worker] webgpu up: gpu-worker 6ms, device+pipelines 1516ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.155924999952315,"verifySeconds":0.28906500005722047,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515468288,"millerServed":50,"mhz":0.13462299707058673}
+iters=1111 run 1: prove 31.16s (2^22 padded, 0.135 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.16
+   ],
+   "median": 31.16,
+   "medianMhz": 0.135,
+   "verifySeconds": 0.28906500005722047,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1586ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1599ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.192125,"verifySeconds":0.2893599998950958,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515599360,"millerServed":50,"mhz":0.13446676044033548}
+iters=1111 run 1: prove 31.19s (2^22 padded, 0.134 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.19
+   ],
+   "median": 31.19,
+   "medianMhz": 0.134,
+   "verifySeconds": 0.2893599998950958,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1511ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1520ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.31265499997139,"verifySeconds":0.31587000012397765,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2514944000,"millerServed":50,"mhz":0.13394916528169945}
+iters=1111 run 1: prove 31.31s (2^22 padded, 0.134 MHz), verify 0.32s, valid=true, peak 2398 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.31
+   ],
+   "median": 31.31,
+   "medianMhz": 0.134,
+   "verifySeconds": 0.31587000012397765,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1503ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1513ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.153740000009538,"verifySeconds":0.3346749999523163,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515533824,"millerServed":50,"mhz":0.13463243899444227}
+iters=1111 run 1: prove 31.15s (2^22 padded, 0.135 MHz), verify 0.33s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.15
+   ],
+   "median": 31.15,
+   "medianMhz": 0.135,
+   "verifySeconds": 0.3346749999523163,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1385ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1394ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.51566000008583,"verifySeconds":0.30869000005722047,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2514944000,"millerServed":50,"mhz":0.13308634501034017}
+iters=1111 run 1: prove 31.52s (2^22 padded, 0.133 MHz), verify 0.31s, valid=true, peak 2398 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.52
+   ],
+   "median": 31.52,
+   "medianMhz": 0.133,
+   "verifySeconds": 0.30869000005722047,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1438ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1448ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.333735000133515,"verifySeconds":0.31109000015258786,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515533824,"millerServed":50,"mhz":0.13385904999777806}
+iters=1111 run 1: prove 31.33s (2^22 padded, 0.134 MHz), verify 0.31s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.33
+   ],
+   "median": 31.33,
+   "medianMhz": 0.134,
+   "verifySeconds": 0.31109000015258786,
+   "proofSize": 91019
+  }
+ ]
+}
++ for i in 1 2 3 4 5 6 7 8 9 10
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 1111 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1449ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1461ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":1111,"run":1,"log2Padded":22,"proofSha256":"456a5012da2e5185a1381c6eff398a2fdf4522ba9068d50f6a8c11b73518cedf","proveSeconds":31.188590000152587,"verifySeconds":0.2923599998950958,"valid":true,"numCycles":3405195,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2515337216,"millerServed":50,"mhz":0.1344820012696784}
+iters=1111 run 1: prove 31.19s (2^22 padded, 0.134 MHz), verify 0.29s, valid=true, peak 2399 MB, miller 50
+{
+ "summary": [
+  {
+   "iters": 1111,
+   "log2Padded": 22,
+   "runs": [
+    31.19
+   ],
+   "median": 31.19,
+   "medianMhz": 0.134,
+   "verifySeconds": 0.2923599998950958,
+   "proofSize": 91019
+  }
+ ]
+}
++ BENCH_TRACING=0
++ BENCH_WEBGPU='{}'
++ node bench-chain.mjs 2223 1
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1494ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1506ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+{"iters":2223,"run":1,"log2Padded":23,"proofSha256":"1fe280bdd8f3ca5270e496985345e02835f20c4f3f0b63262c5228b855118170","proveSeconds":61.96719999980927,"verifySeconds":0.36405999994277954,"valid":true,"numCycles":6812363,"paddedCycles":8388608,"proofSize":94481,"peakMemory":3858759680,"millerServed":56,"mhz":0.13537174505263785}
+iters=2223 run 1: prove 61.97s (2^23 padded, 0.135 MHz), verify 0.36s, valid=true, peak 3680 MB, miller 56
+{
+ "summary": [
+  {
+   "iters": 2223,
+   "log2Padded": 23,
+   "runs": [
+    61.97
+   ],
+   "median": 61.97,
+   "medianMhz": 0.135,
+   "verifySeconds": 0.36405999994277954,
+   "proofSize": 94481
+  }
+ ]
+}

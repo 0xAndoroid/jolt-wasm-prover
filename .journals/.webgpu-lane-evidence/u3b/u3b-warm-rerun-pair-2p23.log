@@ -1,0 +1,8 @@
+[lock] GPU busy (97%), settling (1/30)
+=== warm-rerun pair @2^23 ===
+"run":1,"log2Padded":23,"proofSha256":"1fe280bd
+proveSeconds":57.738480000019074
+valid":true
+"run":2,"log2Padded":23,"proofSha256":"1fe280bd
+proveSeconds":95.74786999988557
+valid":true

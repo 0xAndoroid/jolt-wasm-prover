@@ -1,0 +1,1 @@
+{"meta":{"iters":2223,"runs":1,"webgpu":{},"pollMs":100,"base":"http://localhost:8223/bench.html","when":"2026-08-01T11:09:38.911Z"},"results":[{"run":1,"proveSeconds":55.58829500007629,"verifySeconds":0.3195899999141693,"valid":true,"numCycles":6812363,"paddedCycles":8388608,"proofSize":94481,"peakMemory":4024827904,"millerServed":56}],"wmPeakMB":3838,"livePeakMB":3263}

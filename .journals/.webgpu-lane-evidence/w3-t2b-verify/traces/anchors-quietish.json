@@ -1,0 +1,32 @@
+{"iters":1112,"run":1,"log2Padded":22,"proveSeconds":116.52222999978065,"verifySeconds":0.7390950000286103,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2330722304,"mhz":0.035995740898607034}
+{"iters":1112,"run":2,"log2Padded":22,"proveSeconds":128.0731599998474,"verifySeconds":0.4521599998474121,"valid":true,"numCycles":3408259,"paddedCycles":4194304,"proofSize":91019,"peakMemory":2330722304,"mhz":0.03274928173869527}
+{"iters":278,"run":1,"log2Padded":20,"proveSeconds":44.961730000019074,"verifySeconds":0.3779500000476837,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":2330722304,"mhz":0.02332152254816608}
+{"iters":278,"run":2,"log2Padded":20,"proveSeconds":38.42359500002861,"verifySeconds":0.344625,"valid":true,"numCycles":852883,"paddedCycles":1048576,"proofSize":86687,"peakMemory":2330722304,"mhz":0.027289898303352905}
+{
+ "summary": [
+  {
+   "iters": 278,
+   "log2Padded": 20,
+   "runs": [
+    44.96,
+    38.42
+   ],
+   "median": 44.96,
+   "medianMhz": 0.023,
+   "verifySeconds": 0.3779500000476837,
+   "proofSize": 86687
+  },
+  {
+   "iters": 1112,
+   "log2Padded": 22,
+   "runs": [
+    116.52,
+    128.07
+   ],
+   "median": 128.07,
+   "medianMhz": 0.033,
+   "verifySeconds": 0.7390950000286103,
+   "proofSize": 91019
+  }
+ ]
+}

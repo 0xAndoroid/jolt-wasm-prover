@@ -1,0 +1,101 @@
+[package]
+name = "jolt-wasm-prover"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+members = [
+    "guests/sha2",
+    "guests/secp256k1",
+    "guests/sha3-chain",
+    "guests/sha2-chain",
+]
+
+[lib]
+crate-type = ["cdylib"]
+
+[[bin]]
+name = "generate-preprocessing"
+path = "preprocessing/generate.rs"
+required-features = ["native"]
+
+[[bin]]
+name = "test-roundtrip"
+path = "preprocessing/test_roundtrip.rs"
+required-features = ["native"]
+
+[features]
+default = []
+native = []
+
+[dependencies]
+tracing = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+postcard = { version = "1.0.8", features = ["use-std"] }
+bincode = { version = "2", features = ["serde"] }
+ark-serialize = "0.5.0"
+dory = { package = "dory-pcs", version = "0.4.0", features = ["backends"] }
+
+jolt-prover = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-prover" }
+jolt-kernels = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-kernels", features = ["webgpu"] }
+jolt-verifier = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-verifier" }
+jolt-witness = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-witness" }
+jolt-dory = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-dory" }
+jolt-field = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-field" }
+jolt-crypto = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-crypto" }
+jolt-transcript = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-transcript" }
+jolt-program = { path = "../../../jolt/.worktrees/w3-t2b/crates/jolt-program" }
+tracer = { path = "../../../jolt/.worktrees/w3-t2b/tracer" }
+common = { path = "../../../jolt/.worktrees/w3-t2b/common", features = ["std"] }
+
+jolt-inlines-sha2 = { path = "../../../jolt/.worktrees/w3-t2b/jolt-inlines/sha2", features = ["host"] }
+jolt-inlines-secp256k1 = { path = "../../../jolt/.worktrees/w3-t2b/jolt-inlines/secp256k1", features = ["host"] }
+jolt-inlines-keccak256 = { path = "../../../jolt/.worktrees/w3-t2b/jolt-inlines/keccak256", features = ["host"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+rayon = "1"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+wasm-bindgen-rayon = "1.3"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["console", "Window", "Performance"] }
+console_error_panic_hook = "0.1"
+getrandom = { version = "0.2.16", features = ["js"] }
+tracing-subscriber = { version = "0.3", features = ["std"] }
+serde_json = "1.0"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+jolt = { package = "jolt-sdk", path = "../../../jolt/.worktrees/w3-t2b/jolt-sdk", features = ["host"] }
+sha2-guest = { path = "guests/sha2" }
+secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
+sha3-chain-guest = { path = "guests/sha3-chain" }
+sha2-chain-guest = { path = "guests/sha2-chain" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+# One ark world for the whole graph (the jolt workspace root does the same
+# with [replace] onto the fork). Both the registry ark-* (dory-pcs's deps) and
+# the a16z git fork (the jolt tree's deps) are redirected to a local worktree
+# of the fork pinned at dev/twist-shout@76bb3a45 plus the minimal wasm32 MSM
+# fix (branch webgpu/wasm-minimal).
+[patch.crates-io]
+ark-bn254 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/bn254" }
+ark-ff = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ff" }
+ark-ec = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ec" }
+ark-serialize = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/serialize" }
+
+[patch.'https://github.com/a16z/arkworks-algebra']
+ark-bn254 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/bn254" }
+ark-ff = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ff" }
+ark-ec = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/ec" }
+ark-serialize = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/serialize" }
+ark-poly = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/poly" }
+ark-secp256k1 = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/curves/secp256k1" }
+jolt-optimizations = { path = "../../../arkworks-algebra/.worktrees/webgpu-wasm-minimal/jolt-optimizations" }

@@ -1,0 +1,21 @@
+[lock] GPU busy (96%), settling (1/30)
+window start: "Device Utilization %"=0 load averages: 6.22 6.05 4.92
+=== 2^22 OFF x3 ===
+   ],
+   "median": 83.77,
+   "medianMhz": 0.05,
+   "verifySeconds": 0.35356500005722047,
+   "proofSize": 91019
+  }
+ ]
+}
+=== 2^22 ON x3 ===
+   ],
+   "median": 32.55,
+   "medianMhz": 0.129,
+   "verifySeconds": 0.35527500009536744,
+   "proofSize": 91019
+  }
+ ]
+}
+window end: "Device Utilization %"=96

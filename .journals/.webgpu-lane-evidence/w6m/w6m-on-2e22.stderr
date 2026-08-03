@@ -1,0 +1,23 @@
+[lock] acquired, GPU settled (util 0%)
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 6ms, device+pipelines 1605ms
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1634ms
+worker ready, sha2-chain loaded (tracing=false, webgpu={})
+iters=1112 run 1: prove 29.67s (2^22 padded, 0.141 MHz), verify 0.29s, valid=true, peak 2436 MB, miller 50
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 837ms
+recycled worker in 4676 ms
+iters=1112 run 2: prove 29.93s (2^22 padded, 0.140 MHz), verify 0.29s, valid=true, peak 2436 MB, miller 50
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 827ms
+recycled worker in 4657 ms
+iters=1112 run 3: prove 29.35s (2^22 padded, 0.143 MHz), verify 0.29s, valid=true, peak 2533 MB, miller 50
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 827ms
+recycled worker in 4666 ms
+iters=1112 run 4: prove 29.60s (2^22 padded, 0.142 MHz), verify 0.30s, valid=true, peak 2436 MB, miller 50
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 3ms, device+pipelines 827ms
+recycled worker in 4657 ms
+iters=1112 run 5: prove 29.11s (2^22 padded, 0.144 MHz), verify 0.28s, valid=true, peak 2437 MB, miller 50

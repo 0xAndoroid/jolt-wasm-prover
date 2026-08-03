@@ -1,0 +1,336 @@
+gpu busy (97%) — waiting (1)
+=== [02:10:55] browser byte gate @2^16 (6 arms) ===
+[off-1] jolt-wasm-prover build tag 2
+[off-1] jolt-wasm-prover build tag 2
+[off-1] [worker] webgpu up: gpu-worker 4ms, device+pipelines 429ms
+[off-1] [memprobe] B engine::prove live_mb=26.4 wm_mb=31.1 t=1785564667054
+[off-1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/tracer/src/execution_backend.rs:56 live_mb=26.5 wm_mb=31.1 t=1785564667056 {"cycle_bytes":96,"site":"lazy_trace_start"}
+[off-1] [memprobe] i event src/engine.rs:98 live_mb=36.5 wm_mb=50.1 t=1785564667071 {"row_bytes":160,"rows":53167,"site":"trace_done"}
+[off-1] [memprobe] i event src/engine.rs:203 live_mb=36.5 wm_mb=50.1 t=1785564667072 {"cap":65536,"len":53167,"site":"pad_in_place","target":65536}
+[off-1] [memprobe] i event src/engine.rs:116 live_mb=36.5 wm_mb=50.1 t=1785564667072 {"padded":65536,"site":"pad_done"}
+[off-1] [memprobe] i event src/engine.rs:126 live_mb=36.5 wm_mb=50.1 t=1785564667072 {"site":"witness_backend_ready"}
+[off-1] [memprobe] B prove_stage0 live_mb=36.5 wm_mb=50.1 t=1785564667073
+[off-1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-dory/src/scheme.rs:550 live_mb=434.5 wm_mb=437.7 t=1785564670231 {"g1":16384,"g2":16384,"site":"dory_cache_primed"}
+[off-1] [memprobe] E prove_stage0 live_mb=425.8 wm_mb=463.6 t=1785564671549
+[off-1] [memprobe] B prove_stage1 live_mb=425.8 wm_mb=463.6 t=1785564671549
+[off-1] [memprobe] E prove_stage1 live_mb=426.8 wm_mb=463.6 t=1785564671630
+[off-1] [memprobe] B prove_stage2 live_mb=426.8 wm_mb=463.6 t=1785564671630
+[off-1] [memprobe] E prove_stage2 live_mb=428.3 wm_mb=463.6 t=1785564671724
+[off-1] [memprobe] B prove_stage3 live_mb=428.3 wm_mb=463.6 t=1785564671724
+[off-1] [memprobe] E prove_stage3 live_mb=428.3 wm_mb=463.6 t=1785564671775
+[off-1] [memprobe] B prove_stage4 live_mb=428.3 wm_mb=463.6 t=1785564671775
+[off-1] [memprobe] E prove_stage4 live_mb=428.6 wm_mb=470.1 t=1785564671842
+[off-1] [memprobe] B prove_stage5 live_mb=428.6 wm_mb=470.1 t=1785564671842
+[off-1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=431.6 wm_mb=470.1 t=1785564671847 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[off-1] [memprobe] E prove_stage5 live_mb=428.6 wm_mb=470.1 t=1785564672046
+[off-1] [memprobe] B prove_stage6a live_mb=428.6 wm_mb=470.1 t=1785564672046
+[off-1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=438.6 wm_mb=516.2 t=1785564672124 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[off-1] [memprobe] E prove_stage6a live_mb=429.1 wm_mb=516.2 t=1785564672171
+[off-1] [memprobe] B prove_stage6b live_mb=429.1 wm_mb=516.2 t=1785564672172
+[off-1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=434.2 wm_mb=516.2 t=1785564672200 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[off-1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/inc_claim_reduction.rs:127 live_mb=444.5 wm_mb=516.2 t=1785564672215 {"bytes":8388608,"site":"inc_tables_built"}
+[off-1] [memprobe] E prove_stage6b live_mb=427.4 wm_mb=516.2 t=1785564672444
+[off-1] [memprobe] B prove_stage7 live_mb=427.4 wm_mb=516.2 t=1785564672444
+[off-1] [memprobe] E prove_stage7 live_mb=427.4 wm_mb=516.2 t=1785564672473
+[off-1] [memprobe] B prove_stage8 live_mb=427.4 wm_mb=516.2 t=1785564672473
+[off-1] [memprobe] E prove_stage8 live_mb=427.6 wm_mb=516.2 t=1785564674946
+[off-1] [memprobe] i event src/engine.rs:133 live_mb=423.7 wm_mb=516.2 t=1785564674947 {"site":"prove_done"}
+[off-1] [memprobe] E engine::prove live_mb=412.7 wm_mb=516.2 t=1785564674948
+[off-2] jolt-wasm-prover build tag 2
+[off-2] jolt-wasm-prover build tag 2
+[off-2] [worker] webgpu up: gpu-worker 4ms, device+pipelines 420ms
+[off-2] [memprobe] B engine::prove live_mb=26.4 wm_mb=31.1 t=1785564683240
+[off-2] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/tracer/src/execution_backend.rs:56 live_mb=26.5 wm_mb=31.1 t=1785564683242 {"cycle_bytes":96,"site":"lazy_trace_start"}
+[off-2] [memprobe] i event src/engine.rs:98 live_mb=36.5 wm_mb=50.1 t=1785564683257 {"row_bytes":160,"rows":53167,"site":"trace_done"}
+[off-2] [memprobe] i event src/engine.rs:203 live_mb=36.5 wm_mb=50.1 t=1785564683258 {"cap":65536,"len":53167,"site":"pad_in_place","target":65536}
+[off-2] [memprobe] i event src/engine.rs:116 live_mb=36.5 wm_mb=50.1 t=1785564683258 {"padded":65536,"site":"pad_done"}
+[off-2] [memprobe] i event src/engine.rs:126 live_mb=36.5 wm_mb=50.1 t=1785564683258 {"site":"witness_backend_ready"}
+[off-2] [memprobe] B prove_stage0 live_mb=36.5 wm_mb=50.1 t=1785564683259
+[off-2] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-dory/src/scheme.rs:550 live_mb=434.5 wm_mb=437.7 t=1785564686462 {"g1":16384,"g2":16384,"site":"dory_cache_primed"}
+[off-2] [memprobe] E prove_stage0 live_mb=425.8 wm_mb=459.7 t=1785564687807
+[off-2] [memprobe] B prove_stage1 live_mb=425.8 wm_mb=459.7 t=1785564687807
+[off-2] [memprobe] E prove_stage1 live_mb=426.8 wm_mb=463.8 t=1785564687889
+[off-2] [memprobe] B prove_stage2 live_mb=426.8 wm_mb=463.8 t=1785564687890
+[off-2] [memprobe] E prove_stage2 live_mb=428.3 wm_mb=465.9 t=1785564687982
+[off-2] [memprobe] B prove_stage3 live_mb=428.3 wm_mb=465.9 t=1785564687982
+[off-2] [memprobe] E prove_stage3 live_mb=428.3 wm_mb=465.9 t=1785564688032
+[off-2] [memprobe] B prove_stage4 live_mb=428.3 wm_mb=465.9 t=1785564688032
+[off-2] [memprobe] E prove_stage4 live_mb=428.6 wm_mb=471.1 t=1785564688098
+[off-2] [memprobe] B prove_stage5 live_mb=428.6 wm_mb=471.1 t=1785564688098
+[off-2] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=431.6 wm_mb=471.1 t=1785564688103 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[off-2] [memprobe] E prove_stage5 live_mb=428.6 wm_mb=471.1 t=1785564688302
+[off-2] [memprobe] B prove_stage6a live_mb=428.6 wm_mb=471.1 t=1785564688302
+[off-2] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=438.6 wm_mb=513.9 t=1785564688384 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[off-2] [memprobe] E prove_stage6a live_mb=429.1 wm_mb=513.9 t=1785564688436
+[off-2] [memprobe] B prove_stage6b live_mb=429.1 wm_mb=513.9 t=1785564688436
+[off-2] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=434.2 wm_mb=513.9 t=1785564688465 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[off-2] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/inc_claim_reduction.rs:127 live_mb=444.5 wm_mb=513.9 t=1785564688480 {"bytes":8388608,"site":"inc_tables_built"}
+[off-2] [memprobe] E prove_stage6b live_mb=427.4 wm_mb=513.9 t=1785564688710
+[off-2] [memprobe] B prove_stage7 live_mb=427.4 wm_mb=513.9 t=1785564688710
+[off-2] [memprobe] E prove_stage7 live_mb=427.4 wm_mb=513.9 t=1785564688739
+[off-2] [memprobe] B prove_stage8 live_mb=427.4 wm_mb=513.9 t=1785564688740
+[off-2] [memprobe] E prove_stage8 live_mb=427.6 wm_mb=513.9 t=1785564691138
+[off-2] [memprobe] i event src/engine.rs:133 live_mb=423.7 wm_mb=513.9 t=1785564691139 {"site":"prove_done"}
+[off-2] [memprobe] E engine::prove live_mb=412.7 wm_mb=513.9 t=1785564691140
+[on] jolt-wasm-prover build tag 2
+[on] jolt-wasm-prover build tag 2
+[on] [worker] webgpu up: gpu-worker 3ms, device+pipelines 772ms
+[on] [worker] webgpu up: gpu-worker 4ms, device+pipelines 782ms
+[on] [memprobe] B engine::prove live_mb=30.4 wm_mb=35.2 t=1785564698182
+[on] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/tracer/src/execution_backend.rs:56 live_mb=30.5 wm_mb=35.2 t=1785564698184 {"cycle_bytes":96,"site":"lazy_trace_start"}
+[on] [memprobe] i event src/engine.rs:98 live_mb=40.5 wm_mb=54.2 t=1785564698199 {"row_bytes":160,"rows":53167,"site":"trace_done"}
+[on] [memprobe] i event src/engine.rs:203 live_mb=40.5 wm_mb=54.2 t=1785564698200 {"cap":65536,"len":53167,"site":"pad_in_place","target":65536}
+[on] [memprobe] i event src/engine.rs:116 live_mb=40.5 wm_mb=54.2 t=1785564698200 {"padded":65536,"site":"pad_done"}
+[on] [memprobe] i event src/engine.rs:126 live_mb=40.5 wm_mb=54.2 t=1785564698200 {"site":"witness_backend_ready"}
+[on] [memprobe] B prove_stage0 live_mb=40.5 wm_mb=54.2 t=1785564698201
+[on] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:237 live_mb=45.6 wm_mb=54.2 t=1785564698217 {"chunk_bytes":5242880,"site":"commit_pump_primed","superchunk":65536}
+[on] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:256 live_mb=49.5 wm_mb=68.1 t=1785564698325 {"site":"commit_pump_done"}
+[on] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-dory/src/scheme.rs:550 live_mb=430.7 wm_mb=432.9 t=1785564700995 {"g1":16384,"g2":16384,"site":"dory_cache_primed"}
+[on] [memprobe] E prove_stage0 live_mb=429.8 wm_mb=438.4 t=1785564702854
+[on] [memprobe] B prove_stage1 live_mb=429.8 wm_mb=438.4 t=1785564702854
+[on] [memprobe] E prove_stage1 live_mb=430.7 wm_mb=448.6 t=1785564702943
+[on] [memprobe] B prove_stage2 live_mb=430.7 wm_mb=448.6 t=1785564702943
+[on] [memprobe] E prove_stage2 live_mb=432.3 wm_mb=452.7 t=1785564703028
+[on] [memprobe] B prove_stage3 live_mb=432.3 wm_mb=452.7 t=1785564703028
+[on] [memprobe] E prove_stage3 live_mb=432.3 wm_mb=452.7 t=1785564703077
+[on] [memprobe] B prove_stage4 live_mb=432.3 wm_mb=452.7 t=1785564703078
+[on] [memprobe] E prove_stage4 live_mb=432.6 wm_mb=457.9 t=1785564703149
+[on] [memprobe] B prove_stage5 live_mb=432.6 wm_mb=457.9 t=1785564703149
+[on] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=435.6 wm_mb=457.9 t=1785564703163 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on] [memprobe] E prove_stage5 live_mb=435.6 wm_mb=457.9 t=1785564703354
+[on] [memprobe] B prove_stage6a live_mb=435.6 wm_mb=457.9 t=1785564703354
+[on] [memprobe] E prove_stage6a live_mb=433.1 wm_mb=514.8 t=1785564703497
+[on] [memprobe] B prove_stage6b live_mb=433.1 wm_mb=514.8 t=1785564703497
+[on] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=438.1 wm_mb=514.8 t=1785564703526 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=436.2 wm_mb=514.8 t=1785564703530 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/inc_claim_reduction.rs:127 live_mb=446.5 wm_mb=514.8 t=1785564703545 {"bytes":8388608,"site":"inc_tables_built"}
+[on] [memprobe] E prove_stage6b live_mb=431.4 wm_mb=514.8 t=1785564703673
+[on] [memprobe] B prove_stage7 live_mb=431.4 wm_mb=514.8 t=1785564703674
+[on] [memprobe] E prove_stage7 live_mb=431.4 wm_mb=514.8 t=1785564703703
+[on] [memprobe] B prove_stage8 live_mb=431.4 wm_mb=514.8 t=1785564703703
+[on] [memprobe] E prove_stage8 live_mb=431.6 wm_mb=514.8 t=1785564706655
+[on] [memprobe] i event src/engine.rs:133 live_mb=427.7 wm_mb=514.8 t=1785564706656 {"site":"prove_done"}
+[on] [memprobe] E engine::prove live_mb=416.7 wm_mb=514.8 t=1785564706657
+[on-f0] jolt-wasm-prover build tag 2
+[on-f0] jolt-wasm-prover build tag 2
+[on-f0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 763ms
+[on-f0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 773ms
+[on-f0] [memprobe] B engine::prove live_mb=30.4 wm_mb=35.2 t=1785564715793
+[on-f0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/tracer/src/execution_backend.rs:56 live_mb=30.5 wm_mb=35.2 t=1785564715795 {"cycle_bytes":96,"site":"lazy_trace_start"}
+[on-f0] [memprobe] i event src/engine.rs:98 live_mb=40.5 wm_mb=54.2 t=1785564715810 {"row_bytes":160,"rows":53167,"site":"trace_done"}
+[on-f0] [memprobe] i event src/engine.rs:203 live_mb=40.5 wm_mb=54.2 t=1785564715811 {"cap":65536,"len":53167,"site":"pad_in_place","target":65536}
+[on-f0] [memprobe] i event src/engine.rs:116 live_mb=40.5 wm_mb=54.2 t=1785564715811 {"padded":65536,"site":"pad_done"}
+[on-f0] [memprobe] i event src/engine.rs:126 live_mb=40.5 wm_mb=54.2 t=1785564715811 {"site":"witness_backend_ready"}
+[on-f0] [memprobe] B prove_stage0 live_mb=40.5 wm_mb=54.2 t=1785564715812
+[on-f0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:237 live_mb=45.6 wm_mb=54.2 t=1785564715827 {"chunk_bytes":5242880,"site":"commit_pump_primed","superchunk":65536}
+[on-f0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:256 live_mb=49.5 wm_mb=68.1 t=1785564715936 {"site":"commit_pump_done"}
+[on-f0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-dory/src/scheme.rs:550 live_mb=430.7 wm_mb=432.9 t=1785564718607 {"g1":16384,"g2":16384,"site":"dory_cache_primed"}
+[on-f0] [memprobe] E prove_stage0 live_mb=429.8 wm_mb=438.1 t=1785564720502
+[on-f0] [memprobe] B prove_stage1 live_mb=429.8 wm_mb=438.1 t=1785564720502
+[on-f0] [memprobe] E prove_stage1 live_mb=430.7 wm_mb=448.3 t=1785564720583
+[on-f0] [memprobe] B prove_stage2 live_mb=430.7 wm_mb=448.3 t=1785564720583
+[on-f0] [memprobe] E prove_stage2 live_mb=432.3 wm_mb=452.4 t=1785564720674
+[on-f0] [memprobe] B prove_stage3 live_mb=432.3 wm_mb=452.4 t=1785564720674
+[on-f0] [memprobe] E prove_stage3 live_mb=432.3 wm_mb=452.4 t=1785564720725
+[on-f0] [memprobe] B prove_stage4 live_mb=432.3 wm_mb=452.4 t=1785564720725
+[on-f0] [memprobe] E prove_stage4 live_mb=432.6 wm_mb=457.7 t=1785564720793
+[on-f0] [memprobe] B prove_stage5 live_mb=432.6 wm_mb=457.7 t=1785564720793
+[on-f0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=435.6 wm_mb=457.7 t=1785564720807 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on-f0] [memprobe] E prove_stage5 live_mb=435.6 wm_mb=457.7 t=1785564720999
+[on-f0] [memprobe] B prove_stage6a live_mb=435.6 wm_mb=457.7 t=1785564720999
+[on-f0] [memprobe] E prove_stage6a live_mb=433.1 wm_mb=514.5 t=1785564721140
+[on-f0] [memprobe] B prove_stage6b live_mb=433.1 wm_mb=514.5 t=1785564721141
+[on-f0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=438.1 wm_mb=514.5 t=1785564721169 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on-f0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=436.2 wm_mb=514.5 t=1785564721173 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on-f0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/inc_claim_reduction.rs:127 live_mb=446.5 wm_mb=514.5 t=1785564721188 {"bytes":8388608,"site":"inc_tables_built"}
+[on-f0] [memprobe] E prove_stage6b live_mb=431.4 wm_mb=514.5 t=1785564721319
+[on-f0] [memprobe] B prove_stage7 live_mb=431.4 wm_mb=514.5 t=1785564721319
+[on-f0] [memprobe] E prove_stage7 live_mb=431.4 wm_mb=514.5 t=1785564721348
+[on-f0] [memprobe] B prove_stage8 live_mb=431.4 wm_mb=514.5 t=1785564721348
+[on-f0] [memprobe] E prove_stage8 live_mb=431.6 wm_mb=514.5 t=1785564724554
+[on-f0] [memprobe] i event src/engine.rs:133 live_mb=427.7 wm_mb=514.5 t=1785564724554 {"site":"prove_done"}
+[on-f0] [memprobe] E engine::prove live_mb=416.7 wm_mb=514.5 t=1785564724555
+[on-f1] jolt-wasm-prover build tag 2
+[on-f1] jolt-wasm-prover build tag 2
+[on-f1] [worker] webgpu up: gpu-worker 4ms, device+pipelines 762ms
+[on-f1] [worker] webgpu up: gpu-worker 4ms, device+pipelines 772ms
+[on-f1] [memprobe] B engine::prove live_mb=30.4 wm_mb=35.2 t=1785564733704
+[on-f1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/tracer/src/execution_backend.rs:56 live_mb=30.5 wm_mb=35.2 t=1785564733706 {"cycle_bytes":96,"site":"lazy_trace_start"}
+[on-f1] [memprobe] i event src/engine.rs:98 live_mb=40.5 wm_mb=54.2 t=1785564733722 {"row_bytes":160,"rows":53167,"site":"trace_done"}
+[on-f1] [memprobe] i event src/engine.rs:203 live_mb=40.5 wm_mb=54.2 t=1785564733723 {"cap":65536,"len":53167,"site":"pad_in_place","target":65536}
+[on-f1] [memprobe] i event src/engine.rs:116 live_mb=40.5 wm_mb=54.2 t=1785564733723 {"padded":65536,"site":"pad_done"}
+[on-f1] [memprobe] i event src/engine.rs:126 live_mb=40.5 wm_mb=54.2 t=1785564733723 {"site":"witness_backend_ready"}
+[on-f1] [memprobe] B prove_stage0 live_mb=40.5 wm_mb=54.2 t=1785564733724
+[on-f1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:237 live_mb=45.6 wm_mb=54.2 t=1785564733738 {"chunk_bytes":5242880,"site":"commit_pump_primed","superchunk":65536}
+[on-f1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:256 live_mb=49.5 wm_mb=68.1 t=1785564733854 {"site":"commit_pump_done"}
+[on-f1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-dory/src/scheme.rs:550 live_mb=430.7 wm_mb=432.9 t=1785564736537 {"g1":16384,"g2":16384,"site":"dory_cache_primed"}
+[on-f1] [memprobe] E prove_stage0 live_mb=429.8 wm_mb=454.9 t=1785564737878
+[on-f1] [memprobe] B prove_stage1 live_mb=429.8 wm_mb=454.9 t=1785564737878
+[on-f1] [memprobe] E prove_stage1 live_mb=430.7 wm_mb=463.1 t=1785564737961
+[on-f1] [memprobe] B prove_stage2 live_mb=430.7 wm_mb=463.1 t=1785564737961
+[on-f1] [memprobe] E prove_stage2 live_mb=432.3 wm_mb=463.1 t=1785564738052
+[on-f1] [memprobe] B prove_stage3 live_mb=432.3 wm_mb=463.1 t=1785564738052
+[on-f1] [memprobe] E prove_stage3 live_mb=432.3 wm_mb=463.1 t=1785564738102
+[on-f1] [memprobe] B prove_stage4 live_mb=432.3 wm_mb=463.1 t=1785564738102
+[on-f1] [memprobe] E prove_stage4 live_mb=432.6 wm_mb=468.3 t=1785564738170
+[on-f1] [memprobe] B prove_stage5 live_mb=432.6 wm_mb=468.3 t=1785564738170
+[on-f1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=435.6 wm_mb=468.3 t=1785564738192 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on-f1] [memprobe] E prove_stage5 live_mb=435.6 wm_mb=468.3 t=1785564738390
+[on-f1] [memprobe] B prove_stage6a live_mb=435.6 wm_mb=468.3 t=1785564738390
+[on-f1] [memprobe] E prove_stage6a live_mb=433.1 wm_mb=522.9 t=1785564738535
+[on-f1] [memprobe] B prove_stage6b live_mb=433.1 wm_mb=522.9 t=1785564738535
+[on-f1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=438.1 wm_mb=522.9 t=1785564738564 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on-f1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=436.2 wm_mb=522.9 t=1785564738568 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on-f1] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/inc_claim_reduction.rs:127 live_mb=446.5 wm_mb=522.9 t=1785564738584 {"bytes":8388608,"site":"inc_tables_built"}
+[on-f1] [memprobe] E prove_stage6b live_mb=431.4 wm_mb=522.9 t=1785564738712
+[on-f1] [memprobe] B prove_stage7 live_mb=431.4 wm_mb=522.9 t=1785564738713
+[on-f1] [memprobe] E prove_stage7 live_mb=431.4 wm_mb=522.9 t=1785564738741
+[on-f1] [memprobe] B prove_stage8 live_mb=431.4 wm_mb=522.9 t=1785564738741
+[on-f1] [memprobe] E prove_stage8 live_mb=431.6 wm_mb=522.9 t=1785564740040
+[on-f1] [memprobe] i event src/engine.rs:133 live_mb=427.7 wm_mb=522.9 t=1785564740041 {"site":"prove_done"}
+[on-f1] [memprobe] E engine::prove live_mb=416.7 wm_mb=522.9 t=1785564740042
+[on-bc0] jolt-wasm-prover build tag 2
+[on-bc0] jolt-wasm-prover build tag 2
+[on-bc0] [worker] webgpu up: gpu-worker 3ms, device+pipelines 759ms
+[on-bc0] [worker] webgpu up: gpu-worker 4ms, device+pipelines 770ms
+[on-bc0] [memprobe] B engine::prove live_mb=30.4 wm_mb=35.2 t=1785564749090
+[on-bc0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/tracer/src/execution_backend.rs:56 live_mb=30.5 wm_mb=35.2 t=1785564749092 {"cycle_bytes":96,"site":"lazy_trace_start"}
+[on-bc0] [memprobe] i event src/engine.rs:98 live_mb=40.5 wm_mb=54.2 t=1785564749107 {"row_bytes":160,"rows":53167,"site":"trace_done"}
+[on-bc0] [memprobe] i event src/engine.rs:203 live_mb=40.5 wm_mb=54.2 t=1785564749108 {"cap":65536,"len":53167,"site":"pad_in_place","target":65536}
+[on-bc0] [memprobe] i event src/engine.rs:116 live_mb=40.5 wm_mb=54.2 t=1785564749108 {"padded":65536,"site":"pad_done"}
+[on-bc0] [memprobe] i event src/engine.rs:126 live_mb=40.5 wm_mb=54.2 t=1785564749108 {"site":"witness_backend_ready"}
+[on-bc0] [memprobe] B prove_stage0 live_mb=40.5 wm_mb=54.2 t=1785564749109
+[on-bc0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:237 live_mb=45.6 wm_mb=54.2 t=1785564749124 {"chunk_bytes":5242880,"site":"commit_pump_primed","superchunk":65536}
+[on-bc0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:256 live_mb=49.5 wm_mb=68.1 t=1785564749241 {"site":"commit_pump_done"}
+[on-bc0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-dory/src/scheme.rs:550 live_mb=430.7 wm_mb=432.9 t=1785564751926 {"g1":16384,"g2":16384,"site":"dory_cache_primed"}
+[on-bc0] [memprobe] E prove_stage0 live_mb=429.8 wm_mb=438.2 t=1785564753776
+[on-bc0] [memprobe] B prove_stage1 live_mb=429.8 wm_mb=438.2 t=1785564753776
+[on-bc0] [memprobe] E prove_stage1 live_mb=430.7 wm_mb=448.4 t=1785564753858
+[on-bc0] [memprobe] B prove_stage2 live_mb=430.7 wm_mb=448.4 t=1785564753858
+[on-bc0] [memprobe] E prove_stage2 live_mb=432.3 wm_mb=453.6 t=1785564753950
+[on-bc0] [memprobe] B prove_stage3 live_mb=432.3 wm_mb=453.6 t=1785564753951
+[on-bc0] [memprobe] E prove_stage3 live_mb=432.3 wm_mb=453.6 t=1785564754001
+[on-bc0] [memprobe] B prove_stage4 live_mb=432.3 wm_mb=453.6 t=1785564754001
+[on-bc0] [memprobe] E prove_stage4 live_mb=432.6 wm_mb=458.9 t=1785564754073
+[on-bc0] [memprobe] B prove_stage5 live_mb=432.6 wm_mb=458.9 t=1785564754073
+[on-bc0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=435.6 wm_mb=458.9 t=1785564754086 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on-bc0] [memprobe] E prove_stage5 live_mb=435.6 wm_mb=458.9 t=1785564754277
+[on-bc0] [memprobe] B prove_stage6a live_mb=435.6 wm_mb=458.9 t=1785564754277
+[on-bc0] [memprobe] E prove_stage6a live_mb=433.1 wm_mb=515.7 t=1785564754421
+[on-bc0] [memprobe] B prove_stage6b live_mb=433.1 wm_mb=515.7 t=1785564754421
+[on-bc0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/instruction_read_raf.rs:175 live_mb=438.2 wm_mb=515.7 t=1785564754451 {"row_bytes":48,"rows":65536,"site":"instr_rows_collected"}
+[on-bc0] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/optimized/inc_claim_reduction.rs:127 live_mb=448.5 wm_mb=515.7 t=1785564754466 {"bytes":8388608,"site":"inc_tables_built"}
+[on-bc0] [memprobe] E prove_stage6b live_mb=431.4 wm_mb=515.7 t=1785564754613
+[on-bc0] [memprobe] B prove_stage7 live_mb=431.4 wm_mb=515.7 t=1785564754613
+[on-bc0] [memprobe] E prove_stage7 live_mb=431.4 wm_mb=515.7 t=1785564754641
+[on-bc0] [memprobe] B prove_stage8 live_mb=431.4 wm_mb=515.7 t=1785564754641
+[on-bc0] [memprobe] E prove_stage8 live_mb=431.6 wm_mb=515.7 t=1785564757676
+[on-bc0] [memprobe] i event src/engine.rs:133 live_mb=427.7 wm_mb=515.7 t=1785564757677 {"site":"prove_done"}
+[on-bc0] [memprobe] E engine::prove live_mb=416.7 wm_mb=515.7 t=1785564757678
+off-1: padded 2^16, prove 7.90s, valid=true, proof 78023B, sha256 3cc194fe018e64c1…
+off-2: padded 2^16, prove 7.90s, valid=true, proof 78023B, sha256 3cc194fe018e64c1…
+on: padded 2^16, prove 8.48s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 4ms, warmup 782ms, miller 100)
+on-f0: padded 2^16, prove 8.76s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 4ms, warmup 763ms, miller 100)
+on-f1: padded 2^16, prove 6.34s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 4ms, warmup 762ms, miller 100)
+on-bc0: padded 2^16, prove 8.59s, valid=true, proof 78023B, sha256 3cc194fe018e64c1… (gpu-worker 3ms, warmup 759ms, miller 100)
+{"iters":17,"paddedCycles":65536,"deterministic":true,"webgpuEngaged":true,"millerServed":{"on":100,"f0":100,"f1":100},"byteParity":true,"proveSeconds":{"off":[7.8950399999618535,7.900884999990463],"on":8.476,"onF0":8.763289999961852,"onF1":6.338625},"webgpuInit":{"readyMs":3.930000066757202,"warmupMs":781.8050000667572},"allValid":true}
+gate rc=0
+=== [02:12:38] 2^23 re-attempt on shed build ===
+[page] jolt-wasm-prover build tag 2
+[page] jolt-wasm-prover build tag 2
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 812ms
+[page] [worker] webgpu up: gpu-worker 4ms, device+pipelines 823ms
+worker ready (tracing=true, webgpu={}, poll=100ms), target iters=2223
+[page] [memprobe] B engine::prove live_mb=30.4 wm_mb=35.2 t=1785564769760
+[page] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/tracer/src/execution_backend.rs:56 live_mb=30.5 wm_mb=35.2 t=1785564769762 {"cycle_bytes":96,"site":"lazy_trace_start"}
+[page] [memprobe] bigalloc size=335544320 live=367873793 wm_pages=10792
+[page] [memprobe] bigalloc size=671088640 live=703418113 wm_pages=21033
+[page] [memprobe] bigalloc size=1342177280 live=1374506753 wm_pages=41514
+[page] [memprobe] i event src/engine.rs:98 live_mb=1310.5 wm_mb=2594.6 t=1785564771097 {"row_bytes":160,"rows":6812363,"site":"trace_done"}
+[page] [memprobe] i event src/engine.rs:203 live_mb=1310.5 wm_mb=2594.6 t=1785564771180 {"cap":8388608,"len":6812363,"site":"pad_in_place","target":8388608}
+[page] [memprobe] i event src/engine.rs:116 live_mb=1310.5 wm_mb=2594.6 t=1785564771195 {"padded":8388608,"site":"pad_done"}
+[page] [memprobe] i event src/engine.rs:126 live_mb=1310.5 wm_mb=2594.6 t=1785564771195 {"site":"witness_backend_ready"}
+[page] [memprobe] B prove_stage0 live_mb=1310.5 wm_mb=2594.6 t=1785564771196
+[page] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:237 live_mb=1471.7 wm_mb=2594.6 t=1785564771313 {"chunk_bytes":167772160,"site":"commit_pump_primed","superchunk":2097152}
+[page] [memprobe] bigalloc size=335544320 live=2046469852 wm_pages=41514
+[page] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:261 live_mb=1641.5 wm_mb=2594.6 t=1785564773511 {"end":4194304,"site":"commit_superchunk"}
+[page] [memprobe] bigalloc size=335544320 live=2056788505 wm_pages=41514
+[page] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:261 live_mb=1649.1 wm_mb=2594.6 t=1785564775646 {"end":6291456,"site":"commit_superchunk"}
+[page] [memprobe] bigalloc size=335544320 live=2064744710 wm_pages=41514
+[page] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:261 live_mb=1656.8 wm_mb=2594.6 t=1785564777698 {"end":8388608,"site":"commit_superchunk"}
+[page] [memprobe] bigalloc size=335544320 live=2072792748 wm_pages=41514
+[page] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:256 live_mb=1664.3 wm_mb=2594.6 t=1785564779264 {"site":"commit_pump_done"}
+[page] [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-dory/src/scheme.rs:550 live_mb=1735.7 wm_mb=2594.6 t=1785564781406 {"g1":16384,"g2":16384,"site":"dory_cache_primed"}
+[page] [memprobe] E prove_stage0 live_mb=1726.1 wm_mb=2594.6 t=1785564790073
+[page] [memprobe] B prove_stage1 live_mb=1726.1 wm_mb=2594.6 t=1785564790073
+[page] [memprobe] bigalloc size=536870912 live=2348182568 wm_pages=49707
+[page] [memprobe] bigalloc size=536870912 live=2885053480 wm_pages=57900
+[page] [memprobe] bigalloc size=268435456 live=3153491036 wm_pages=57900
+[page] [memprobe] bigalloc size=268435456 live=3421629362 wm_pages=57900
+[page] [memprobe] E prove_stage1 live_mb=1727.1 wm_mb=3618.8 t=1785564796810
+[page] [memprobe] B prove_stage2 live_mb=1727.1 wm_mb=3618.8 t=1785564796810
+[page] [memprobe] bigalloc size=268435456 live=2079445685 wm_pages=57900
+[page] [memprobe] bigalloc size=268435456 live=2303841496 wm_pages=57900
+[page] [memprobe] bigalloc size=268435456 live=2573066543 wm_pages=57900
+[page] [memprobe] bigalloc size=268435456 live=2841501999 wm_pages=57900
+[page] [memprobe] bigalloc size=536870912 live=3378373070 wm_pages=57900
+[page] [memprobe] bigalloc size=268435456 live=3646808526 wm_pages=57900
+[page] [memprobe] bigalloc size=268435456 live=3915508595 wm_pages=61997
+[page] [memprobe] bigalloc size=268435456 live=3489876937 wm_pages=61997
+[page] [memprobe] E prove_stage2 live_mb=1919.2 wm_mb=3874.8 t=1785564800646
+[page] [memprobe] B prove_stage3 live_mb=1919.2 wm_mb=3874.8 t=1785564800646
+[page] [memprobe] bigalloc size=402653184 live=2617422309 wm_pages=61997
+[page] [memprobe] E prove_stage3 live_mb=1919.3 wm_mb=4002.9 t=1785564803536
+[page] [memprobe] B prove_stage4 live_mb=1919.3 wm_mb=4002.9 t=1785564803536
+[page] [memprobe] bigalloc size=268435456 live=2280963506 wm_pages=64046
+[page] [memprobe] bigalloc size=882924736 live=3214224041 wm_pages=64046
+[page] [memprobe] bigalloc size=268435456 live=3482920673 wm_pages=64046
+[page] [memprobe] OOM alloc failed size=705202944 live=3349235365 wm_pages=64046
+[page] [worker error] unreachable
+run 1: DEATH — unreachable (watermark at death 4003 MB)
+
+=== probe summary (/tmp/u3-death2-2p23.json) ===
+samples=368 wm_peak=4003MB live_peak=3734MB
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/tracer/src/execution_backend.rs:56 live_mb=30.5 wm_mb=35.2 t=1785564769762 {"cycle_bytes":96,"site":"lazy_trace_start"}
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=335544320 live=367873793 wm_pages=10792
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=671088640 live=703418113 wm_pages=21033
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=1342177280 live=1374506753 wm_pages=41514
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event src/engine.rs:98 live_mb=1310.5 wm_mb=2594.6 t=1785564771097 {"row_bytes":160,"rows":6812363,"site":"trace_done"}
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event src/engine.rs:203 live_mb=1310.5 wm_mb=2594.6 t=1785564771180 {"cap":8388608,"len":6812363,"site":"pad_in_place","target":8388608}
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event src/engine.rs:116 live_mb=1310.5 wm_mb=2594.6 t=1785564771195 {"padded":8388608,"site":"pad_done"}
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event src/engine.rs:126 live_mb=1310.5 wm_mb=2594.6 t=1785564771195 {"site":"witness_backend_ready"}
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:237 live_mb=1471.7 wm_mb=2594.6 t=1785564771313 {"chunk_bytes":167772160,"site":"commit_pump_primed","superchunk":2097152}
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=335544320 live=2046469852 wm_pages=41514
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:261 live_mb=1641.5 wm_mb=2594.6 t=1785564773511 {"end":4194304,"site":"commit_superchunk"}
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=335544320 live=2056788505 wm_pages=41514
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:261 live_mb=1649.1 wm_mb=2594.6 t=1785564775646 {"end":6291456,"site":"commit_superchunk"}
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=335544320 live=2064744710 wm_pages=41514
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:261 live_mb=1656.8 wm_mb=2594.6 t=1785564777698 {"end":8388608,"site":"commit_superchunk"}
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=335544320 live=2072792748 wm_pages=41514
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-kernels/src/webgpu/commitment.rs:256 live_mb=1664.3 wm_mb=2594.6 t=1785564779264 {"site":"commit_pump_done"}
+  [site] i live=undefinedMB wm=undefinedMB [memprobe] i event /Users/andoroid/dev/jolt/.worktrees/w5-u4/crates/jolt-dory/src/scheme.rs:550 live_mb=1735.7 wm_mb=2594.6 t=1785564781406 {"g1":16384,"g2":16384,"site":"dory_cache_primed"}
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=536870912 live=2348182568 wm_pages=49707
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=536870912 live=2885053480 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=3153491036 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=3421629362 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=2079445685 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=2303841496 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=2573066543 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=2841501999 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=536870912 live=3378373070 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=3646808526 wm_pages=57900
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=3915508595 wm_pages=61997
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=3489876937 wm_pages=61997
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=402653184 live=2617422309 wm_pages=61997
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=2280963506 wm_pages=64046
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=882924736 live=3214224041 wm_pages=64046
+  [site] bigalloc live=undefinedMB wm=undefinedMB [memprobe] bigalloc size=268435456 live=3482920673 wm_pages=64046
+  [site] OOM live=undefinedMB wm=undefinedMB [memprobe] OOM alloc failed size=705202944 live=3349235365 wm_pages=64046
+  [stage] engine::prove UNFINISHED live 30.4→?MB wm 35.2→?MB
+  [stage] prove_stage0 18.9s live 1310.5→1726.1MB wm 2594.6→2594.6MB
+  [stage] prove_stage1 6.7s live 1726.1→1727.1MB wm 2594.6→3618.8MB
+  [stage] prove_stage2 3.8s live 1727.1→1919.2MB wm 3618.8→3874.8MB
+  [stage] prove_stage3 2.9s live 1919.2→1919.3MB wm 3874.8→4002.9MB
+  [stage] prove_stage4 UNFINISHED live 1919.3→?MB wm 4002.9→?MB
+{"meta":{"iters":2223,"runs":1,"webgpu":{},"pollMs":100,"base":"http://localhost:8231","when":"2026-08-01T06:13:25.584Z"},"results":[{"run":1,"error":"unreachable","peakMemory":4197318656}],"wmPeakMB":4003,"livePeakMB":3734}
+=== [02:13:25] sequence 2 done ===

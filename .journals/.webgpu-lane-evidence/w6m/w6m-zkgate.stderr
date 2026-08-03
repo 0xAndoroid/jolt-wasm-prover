@@ -1,0 +1,18 @@
+[zk-off-1] jolt-wasm-prover build tag 2
+[zk-off-1] jolt-wasm-prover build tag 2
+[zk-off-1] [worker] webgpu up: gpu-worker 5ms, device+pipelines 863ms
+[zk-off-2] jolt-wasm-prover build tag 2
+[zk-off-2] jolt-wasm-prover build tag 2
+[zk-off-2] [worker] webgpu up: gpu-worker 7ms, device+pipelines 809ms
+[zk-on-1] jolt-wasm-prover build tag 2
+[zk-on-1] jolt-wasm-prover build tag 2
+[zk-on-1] [worker] webgpu up: gpu-worker 6ms, device+pipelines 1521ms
+[zk-on-1] [worker] webgpu up: gpu-worker 3ms, device+pipelines 1528ms
+[zk-on-2] jolt-wasm-prover build tag 2
+[zk-on-2] jolt-wasm-prover build tag 2
+[zk-on-2] [worker] webgpu up: gpu-worker 5ms, device+pipelines 1513ms
+[zk-on-2] [worker] webgpu up: gpu-worker 4ms, device+pipelines 1522ms
+zk-off-1: padded 2^16, prove 8.46s, valid=true, proof 77169B, sha256 bf6483f5cba1e435…
+zk-off-2: padded 2^16, prove 8.55s, valid=true, proof 77169B, sha256 1017b0eaf262e0ca…
+zk-on-1: padded 2^16, prove 9.24s, valid=true, proof 77169B, sha256 1e817f06fd177259… (gpu-worker 3ms, warmup 1528ms, miller 101)
+zk-on-2: padded 2^16, prove 9.23s, valid=true, proof 77169B, sha256 5bd59a936fa778da… (gpu-worker 4ms, warmup 1522ms, miller 101)

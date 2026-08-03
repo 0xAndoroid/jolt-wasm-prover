@@ -1,0 +1,11 @@
+[lock] GPU busy (94%), settling (1/30)
+=== soak 1 ===
+{"iters":2223,"run":1,"log2Padded":23,"proofSha256":"1fe280bdd8f3ca5270e496985345e02835f20c4f3f0b63262c5228b855118170","proveSeconds":66.79465499997139,"verifySeconds":0.32981499981880186,"valid":true,"numCycles":6812363,"paddedCycles":8388608,"proofSize":94481,"peakMemory":4025417728,"millerServed":56,"mhz":0.1255880129930096}
+=== soak 2 ===
+{"iters":2223,"run":1,"log2Padded":23,"proofSha256":"1fe280bdd8f3ca5270e496985345e02835f20c4f3f0b63262c5228b855118170","proveSeconds":57.280525000095366,"verifySeconds":0.344039999961853,"valid":true,"numCycles":6812363,"paddedCycles":8388608,"proofSize":94481,"peakMemory":4035182592,"millerServed":56,"mhz":0.14644781974302842}
+=== soak 3 ===
+{"iters":2223,"run":1,"log2Padded":23,"proofSha256":"1fe280bdd8f3ca5270e496985345e02835f20c4f3f0b63262c5228b855118170","proveSeconds":68.87647499990463,"verifySeconds":0.3760550000667572,"valid":true,"numCycles":6812363,"paddedCycles":8388608,"proofSize":94481,"peakMemory":4025024512,"millerServed":56,"mhz":0.1217920632554383}
+=== soak 4 ===
+{"iters":2223,"run":1,"log2Padded":23,"proofSha256":"1fe280bdd8f3ca5270e496985345e02835f20c4f3f0b63262c5228b855118170","proveSeconds":55.76618499994278,"verifySeconds":0.32559500002861025,"valid":true,"numCycles":6812363,"paddedCycles":8388608,"proofSize":94481,"peakMemory":4024631296,"millerServed":56,"mhz":0.15042463457036925}
+=== soak 5 ===
+{"iters":2223,"run":1,"log2Padded":23,"proofSha256":"1fe280bdd8f3ca5270e496985345e02835f20c4f3f0b63262c5228b855118170","proveSeconds":55.716109999895096,"verifySeconds":0.31733500003814696,"valid":true,"numCycles":6812363,"paddedCycles":8388608,"proofSize":94481,"peakMemory":3757113344,"millerServed":56,"mhz":0.15055982910536636}
