@@ -33,7 +33,7 @@ fn now_micros() -> f64 {
 
     match performance {
         Some(perf) => perf.now() * 1000.0,
-        None => 0.0, // Fallback if performance API unavailable
+        None => 0.0,
     }
 }
 
@@ -51,14 +51,9 @@ impl<S> Layer<S> for ChromeTraceLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+    fn on_new_span(&self, attrs: &Attributes<'_>, _id: &Id, _ctx: Context<'_, S>) {
         let start = get_start_time();
         let ts = now_micros() - start;
-
-        if let Some(span) = ctx.span(id) {
-            let mut extensions = span.extensions_mut();
-            extensions.insert(SpanTiming { start_ts: ts });
-        }
 
         let mut args = serde_json::Map::new();
         let mut visitor = JsonVisitor(&mut args);
@@ -130,11 +125,6 @@ where
 
         TRACE_EVENTS.lock().unwrap().push(trace_event);
     }
-}
-
-#[allow(dead_code)]
-struct SpanTiming {
-    start_ts: f64,
 }
 
 struct JsonVisitor<'a>(&'a mut serde_json::Map<String, serde_json::Value>);
