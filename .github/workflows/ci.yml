@@ -27,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Reads rust-toolchain.toml. Only rustfmt runs here: clippy/build would
+      # rustup honours rust-toolchain.toml (1.95). Only rustfmt runs here: clippy/build would
       # fetch and compile the pinned a16z/jolt + akita git graph (tens of
       # minutes), too slow for a PR gate.
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@stable
       - run: cargo fmt --all -- --check
 
   python-syntax:
