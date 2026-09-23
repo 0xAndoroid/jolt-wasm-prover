@@ -38,7 +38,8 @@ webgpu = []
 # `akita_prover::DigitRangeDevice` (patches/0007). Pulls `akita-prover` in as a
 # direct dependency for the seam types; needs the patched checkouts.
 digit-range-device = ["dep:akita-prover"]
-# Routes the stage-2 reduced-dense relation-range sumcheck rounds through
+# Routes the leading stage-2 relation-range sumcheck rounds (quotient-factored
+# and reduced-dense levels) through
 # `akita_prover::RelationRangeDevice` (patches/0008); same dependency and
 # patched-checkout requirement as `digit-range-device`.
 relation-range-device = ["dep:akita-prover"]

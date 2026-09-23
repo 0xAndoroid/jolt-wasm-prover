@@ -11,7 +11,10 @@
 @group(0) @binding(5) var<storage, read_write> dst: array<vec4<u32>>;
 @group(0) @binding(6) var<storage, read> lane_w: array<vec4<u32>>;
 
-fn w_src(i: u32) -> vec4<u32> { return select(src[params.src_w_off + i], ZERO4, i >= params.live_len); }
+fn w_src(i: u32) -> vec4<u32> {
+  if (i >= params.live_len) { return ZERO4; }
+  return src[params.src_w_off + i];
+}
 
 fn factored_weight(i: u32) -> vec4<u32> {
   let cw = hdr(0u);

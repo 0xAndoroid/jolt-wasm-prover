@@ -87,9 +87,10 @@ pub fn install_digit_range_device(
     akita_prover::set_digit_range_device(device).map_err(|e| format!("digit range device: {e}"))
 }
 
-/// Routes the leading rounds of every later reduced-dense stage-2 sumcheck
-/// through `device` (`akita_prover::set_relation_range_device`); instances
-/// the device declines stay on the CPU prover.
+/// Routes the leading rounds of every stage-2 relation-range sumcheck
+/// (quotient-factored and reduced-dense levels) through `device`
+/// (`akita_prover::set_relation_range_device`); instances the device
+/// declines stay on the CPU prover.
 #[cfg(feature = "relation-range-device")]
 pub fn install_relation_range_device(
     device: Arc<dyn akita_prover::RelationRangeDevice>,

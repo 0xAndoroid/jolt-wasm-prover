@@ -196,8 +196,10 @@ def ppt_for(units):
     return ppt
 
 
-def run_instance(rng, log_domain, factored):
-    """Build the GPU jobs and the Python expectations for one instance; returns (buffers, jobs, expected_terms, final_tables)."""
+def run_instance(rng, log_domain, factored, addends=True):
+    """Build the GPU jobs and the Python expectations for one instance; returns (buffers, jobs, expected_terms, final_tables).
+
+    `addends=False` runs without sparse additional terms (no additional pass, zero-count reduce)."""
     cc_bits = 6
     cc = 1 << cc_bits
     lane_bits = log_domain - cc_bits
@@ -219,28 +221,35 @@ def run_instance(rng, log_domain, factored):
         for lane in range(t0, t0 + n):
             lane_map[lane] = (len(lane_segs) << 8) | 1
             lane_segs.append((s0 + lane - t0, si, f))
+    # one sparse-kind lane with two segments (lane_map count 2)
+    multi = [(6, 2, 0, rng.getrandbits(128) % P), (6, 1, 1, rng.getrandbits(128) % P)]
+    lane_map[6] = (len(lane_segs) << 8) | len(multi)
+    lane_segs.extend((sl, si, f) for (_, sl, si, f) in multi)
     p0 = [alpha[i & (cc - 1)] * lane_w[i >> cc_bits] % P for i in range(domain)]
-    for (t0, n, s0, si, f) in segments:
-        for lane in range(t0, t0 + n):
+    for lane, m in enumerate(lane_map):
+        for (sl, si, f) in lane_segs[m >> 8 : (m >> 8) + (m & 0xFF)]:
             for c in range(cc):
-                p0[lane * cc + c] = fe(p0[lane * cc + c] + f * sources[si][(s0 + lane - t0) * cc + c])
+                p0[lane * cc + c] = fe(p0[lane * cc + c] + f * sources[si][sl * cc + c])
     sparse = {}
     for _ in range(40):
         sparse[rng.randrange(live_len)] = [rng.getrandbits(128) % P, 0]
     start = rng.randrange(live_len - 200)
     for i in range(start, start + 150):
         sparse.setdefault(i, [0, 0])[1] = rng.getrandbits(128) % P
-    sparse = sorted((i, l, b) for i, (l, b) in sparse.items())
+    sparse = sorted((i, l, b) for i, (l, b) in sparse.items()) if addends else []
 
     w = [d % P for d in digits]
     p = p0[:]
     rounds = log_domain - 4
+    table_len = lambda k: (domain >> k) + -(-live_len // (1 << k))  # noqa: E731
+    ta_cap = max(table_len(k) for k in range(1, rounds) if k % 2 == 1)
+    tb_cap = max([table_len(k) for k in range(2, rounds) if k % 2 == 0] or [1])
     buffers = {
         "digits": {"data": base64.b64encode(pack_digits(digits, bw)).decode()},
         "lane_w": {"data": base64.b64encode(to_bytes(lane_w) + u32s(lane_map) + b"\0" * 16).decode()},
         "U": {"data": base64.b64encode(to_bytes(p0 if not factored else [0])).decode(), "size": domain * 16},
-        "TA": {"size": 2 * domain * 16},
-        "TB": {"size": domain * 16},
+        "TA": {"size": ta_cap * 16},
+        "TB": {"size": tb_cap * 16},
         "partials": {"size": 8192 * NT * 16},
         "out": {"size": 16 * 16},
         "aux": {"size": (HDR + 2 * (1 << (log_domain // 2 + 1)) + cc + sum(len(s) for s in sources) + 2 * len(lane_segs) + 5 * 4096) * 16},
@@ -297,15 +306,14 @@ def run_instance(rng, log_domain, factored):
         live_param = live_len if k <= 1 else len(w_prev)
         r_words = [int.from_bytes((r_prev or 0).to_bytes(16, "little")[i : i + 4], "little") for i in range(0, 16, 4)]
         params = [n_units, nf.bit_length() - 1, off_first, off_second, ppt, bw, src_mode, case_c] + r_words + [live_param, src_w_off, dst_w_off, wflags]
-        add_wgs = max(1, -(-n_pairs // WG))
+        add_wgs = -(-n_pairs // WG)
         add_off = NT * wgs
         add_params = [n_pairs, 0, add_off, 0, 1, bw, src_mode, 0] + [0] * 4 + [live_len if k == 0 else len(w), 0, dst_w_off, 0]
         red_params = [wgs, add_wgs, add_off, 0, 1, 0, 0, 0] + [0] * 8
-        passes = [
-            {"shader": "round", "wgs": wgs, "params": params, "binds": [[1, "digits"], [2, "aux"], [3, "partials"], [4, src], [5, dst], [6, "lane_w"]]},
-            {"shader": "additional", "wgs": add_wgs, "params": add_params, "binds": [[1, "digits"], [2, "aux"], [3, "partials"], [5, dst]]},
-            {"shader": "reduce", "wgs": 1, "params": red_params, "binds": [[3, "partials"], [4, "out"]]},
-        ]
+        passes = [{"shader": "round", "wgs": wgs, "params": params, "binds": [[1, "digits"], [2, "aux"], [3, "partials"], [4, src], [5, dst], [6, "lane_w"]]}]
+        if n_pairs:
+            passes.append({"shader": "additional", "wgs": add_wgs, "params": add_params, "binds": [[1, "digits"], [2, "aux"], [3, "partials"], [5, dst]]})
+        passes.append({"shader": "reduce", "wgs": 1, "params": red_params, "binds": [[3, "partials"], [4, "out"]]})
         readback = [["out", 160]]
         if k == rounds - 1:
             readback.append([dst, (d_k + len(w)) * 16])
@@ -329,17 +337,17 @@ def main():
         page = browser.new_page()
         page.route("http://localhost/stage2-test", lambda route: route.fulfill(status=200, content_type="text/html", body="<!doctype html><title>stage2</title>"))
         page.goto("http://localhost/stage2-test")
-        for factored in (True, False):
-            buffers, jobs, expected, (w, p) = run_instance(rng, args.log_domain, factored)
+        for factored, addends in ((True, True), (False, True), (True, False)):
+            buffers, jobs, expected, (w, p) = run_instance(rng, args.log_domain, factored, addends)
             results = page.evaluate(PAGE_JS, {"sources": sources, "buffers": buffers, "jobs": jobs})
-            mode = "factored" if factored else "dense"
+            mode = ("factored" if factored else "dense") + ("" if addends else "/noadd")
             for k, (res, exp) in enumerate(zip(results, expected)):
                 got = from_bytes(base64.b64decode(res["out"]))[:10]
                 pairs_total += (1 << args.log_domain) >> (k + 1)
                 bad = [t for t in range(10) if got[t] != exp[t]]
                 status = "PASS" if not bad else "FAIL"
                 if bad or k < 3 or k == len(expected) - 1:
-                    print(f"{mode:8s} round {k:2d} {status} n_units={(1 << args.log_domain) >> (k + 1)} bad_terms={bad}")
+                    print(f"{mode:14s} round {k:2d} {status} n_units={(1 << args.log_domain) >> (k + 1)} bad_terms={bad}")
                 for t in bad[:3]:
                     print(f"   term {t}: got={got[t]:#x} exp={exp[t]:#x}")
                 failed += len(bad)
@@ -349,7 +357,7 @@ def main():
             d_k = len(p)
             p_ok = tab[:d_k] == p
             w_ok = tab[d_k : d_k + len(w)] == w
-            print(f"{mode:8s} final tables: P {'PASS' if p_ok else 'FAIL'} ({d_k} entries) W {'PASS' if w_ok else 'FAIL'} ({len(w)} entries)")
+            print(f"{mode:14s} final tables: P {'PASS' if p_ok else 'FAIL'} ({d_k} entries) W {'PASS' if w_ok else 'FAIL'} ({len(w)} entries)")
             failed += (not p_ok) + (not w_ok)
         browser.close()
     print(f"pairs evaluated: {pairs_total}, failures: {failed}")

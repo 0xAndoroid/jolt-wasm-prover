@@ -7,7 +7,8 @@
 
 fn w_at(i: u32) -> vec4<u32> {
   if (params.src_mode == 0u) { return fp_signed(digit_i32(i)); }
-  return select(dst[params.dst_w_off + i], ZERO4, i >= params.live_len);
+  if (i >= params.live_len) { return ZERO4; }
+  return dst[params.dst_w_off + i];
 }
 
 @compute @workgroup_size(256)
