@@ -22,11 +22,12 @@ fi
 WASM="$ROOT/pkg/jolt_wasm_prover_bg.wasm"
 JS="$ROOT/pkg/jolt_wasm_prover.js"
 [ -f "$WASM" ] || die "pkg/jolt_wasm_prover_bg.wasm not found. Run: $WASM_CMD"
-# The shipped build must carry every GPU feature: the wasm-bindgen export exists
-# only with `webgpu`, the device install messages only with the two device features.
-grep -q 'gpu_mailbox_ptr' "$JS" || die "pkg/ lacks the webgpu feature. Run: $WASM_CMD"
-grep -qa 'trace commit device' "$WASM" || die "pkg/ lacks trace-commit-device. Run: $WASM_CMD"
-grep -qa 'digit range device' "$WASM" || die "pkg/ lacks digit-range-device. Run: $WASM_CMD"
+# The shipped build must carry every GPU feature. `gpu_mailbox_ptr` is exported
+# unconditionally (returns 0 without `webgpu`), so probe the install messages of
+# src/gpu/{trace_commit,digit_range}.rs instead: each compiles only with `webgpu`
+# plus its device feature.
+grep -qaF '[gpu] trace commit device' "$WASM" || die "pkg/ lacks webgpu,trace-commit-device. Run: $WASM_CMD"
+grep -qaF '[gpu] digit range device' "$WASM" || die "pkg/ lacks webgpu,digit-range-device. Run: $WASM_CMD"
 
 cd "$ROOT/frontend"
 npm ci
