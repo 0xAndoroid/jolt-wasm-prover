@@ -39,6 +39,7 @@ async function fetchBytes(url) {
 // Resolves to {status: 'ok' | 'unavailable' | 'error: …', reason?, adapter?,
 // selftestMs, roundtripUs}; the self-test runs once per session. Never throws.
 async function initGpu() {
+    if (gpu_is_dead()) return { status: 'unavailable', reason: DEAD_PROXY_REASON };
     if (gpuProxy) {
         set_gpu_enabled();
         return selftest();
@@ -81,11 +82,12 @@ function selftest() {
 // A mailbox op timed out: proving stays on the CPU for the rest of the session.
 // The proxy is orphaned, not terminated: WebKit crashes the whole page when a
 // worker that owns a GPUDevice is terminated (headless WebKit, Sep 2026).
+const DEAD_PROXY_REASON = 'GPU proxy unresponsive — switched to CPU';
 function dropDeadProxy() {
     if (!gpuProxy || !gpu_is_dead()) return null;
     gpuProxy = null;
     set_gpu_unavailable();
-    return { status: 'unavailable', reason: 'GPU proxy unresponsive — switched to CPU' };
+    return { status: 'unavailable', reason: DEAD_PROXY_REASON };
 }
 
 self.onmessage = async (e) => {

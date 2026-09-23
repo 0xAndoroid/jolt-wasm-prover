@@ -143,12 +143,14 @@ fn mailbox_view() -> Int32Array {
 /// buffers must stay alive and untouched until this returns.
 pub fn call(op: u32, args: &[u32], regions: &[Region]) -> Result<[u32; 8], GpuError> {
     assert!(args.len() <= MAX_ARGS && regions.len() <= MAX_REGIONS);
-    if is_dead() {
-        return Err(GpuError("gpu proxy dead".into()));
-    }
     let _guard = LOCK
         .lock()
         .map_err(|_| GpuError("mailbox lock poisoned".into()))?;
+    // Checked under the lock: a caller queued behind the op that timed out
+    // must not ring a mailbox the proxy may still be servicing.
+    if is_dead() {
+        return Err(GpuError("gpu proxy dead".into()));
+    }
     let m = &MAILBOX;
     for (slot, v) in m.args.iter().zip(args.iter().chain(std::iter::repeat(&0))) {
         slot.store(*v, Ordering::Relaxed);
