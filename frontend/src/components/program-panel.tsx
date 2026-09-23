@@ -1,3 +1,4 @@
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { OutputLog } from './output-log'
 import type { ProgramState, AppStatus } from '@/lib/types'
@@ -67,6 +68,20 @@ export function ProgramPanel({
           >
             Verify Proof
           </Button>
+          {programState.lastProof && (
+            <span className="ml-3 flex min-w-0 items-center gap-2" data-proof-mode={programState.lastProof.mode}>
+              <Badge variant="outline" className="rounded-sm font-mono uppercase">
+                {programState.lastProof.mode}
+              </Badge>
+              <span className="truncate text-xs tabular-nums text-muted-foreground">
+                {(programState.lastProof.proveMs / 1000).toFixed(2)}s prove
+                {programState.lastProof.commitMs != null &&
+                  ` · commit ${Math.round(programState.lastProof.commitMs)} ms`}
+                {programState.lastProof.digitRangeMs != null &&
+                  ` · digit range ${Math.round(programState.lastProof.digitRangeMs)} ms`}
+              </span>
+            </span>
+          )}
           <div className="flex-1" />
           {programState.verifyResult && (
             <span className="flex items-center gap-2">

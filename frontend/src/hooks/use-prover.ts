@@ -4,8 +4,16 @@ import type {
   ProgramState,
   AppStatus,
   WorkerResponse,
+  GpuInfo,
+  ProveMode,
 } from '@/lib/types'
-import { PROGRAMS, PROGRAM_FILES, CACHE_BUST, SHA2_MAX_BYTES } from '@/lib/constants'
+import {
+  PROGRAMS,
+  PROGRAM_FILES,
+  CACHE_BUST,
+  SHA2_MAX_BYTES,
+  MODE_STORAGE_KEY,
+} from '@/lib/constants'
 import { WorkerClient } from '@/lib/worker-client'
 
 interface ProverState {
@@ -14,6 +22,10 @@ interface ProverState {
   wasmReady: boolean
   programStates: Record<ProgramName, ProgramState>
   outputLogs: Record<ProgramName, string>
+  gpu: GpuInfo | null
+  mode: ProveMode
+  // Why the GPU is not selectable (null when it is).
+  modeReason: string | null
 }
 
 function initialProgramStates(): Record<ProgramName, ProgramState> {
@@ -25,6 +37,7 @@ function initialProgramStates(): Record<ProgramName, ProgramState> {
       programIoBytes: null,
       verifierPreprocessingBytes: null,
       verifyResult: null,
+      lastProof: null,
     }
   }
   return states
@@ -35,6 +48,26 @@ async function sha256Digest(bytes: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(hashBuffer)
 }
 
+const hex = (bytes: Uint8Array) =>
+  Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+
+function storedMode(): ProveMode | null {
+  const v = localStorage.getItem(MODE_STORAGE_KEY)
+  return v === 'gpu' || v === 'cpu' ? v : null
+}
+
+function gpuState(gpu: GpuInfo): Pick<ProverState, 'gpu' | 'mode' | 'modeReason'> {
+  const ok = gpu.status === 'ok'
+  const chosenOff = gpu.status === 'disabled'
+  return {
+    gpu,
+    mode: ok ? 'gpu' : 'cpu',
+    modeReason: ok || chosenOff ? null : (gpu.reason ?? gpu.status),
+  }
+}
+
+const ms = (v: number) => `${Math.round(v)} ms`
+
 export function useProver() {
   const [state, setState] = useState<ProverState>({
     status: 'loading',
@@ -42,6 +75,9 @@ export function useProver() {
     wasmReady: false,
     programStates: initialProgramStates(),
     outputLogs: { sha2: '', keccak: '' },
+    gpu: null,
+    mode: 'cpu',
+    modeReason: null,
   })
 
   const clientRef = useRef<WorkerClient | null>(null)
@@ -67,7 +103,13 @@ export function useProver() {
   const handleMessage = useCallback(
     (msg: WorkerResponse) => {
       if (msg.type === 'error') {
-        setStatus('Error: ' + msg.error, 'error')
+        const gpu = msg.gpu
+        setState((prev) => ({
+          ...prev,
+          status: 'error',
+          statusText: 'Error: ' + msg.error,
+          ...(gpu ? gpuState(gpu) : {}),
+        }))
         return
       }
 
@@ -78,6 +120,17 @@ export function useProver() {
           status: 'ready',
           statusText: 'Ready',
           programStates: initialProgramStates(),
+          ...gpuState(msg.gpu),
+        }))
+        return
+      }
+
+      if (msg.type === 'gpu-status') {
+        setState((prev) => ({
+          ...prev,
+          status: prev.status === 'loading' ? 'ready' : prev.status,
+          statusText: prev.status === 'loading' ? 'Ready' : prev.statusText,
+          ...gpuState(msg.gpu),
         }))
         return
       }
@@ -110,6 +163,16 @@ export function useProver() {
 
       if (msg.type === 'prove-done') {
         const p = msg.program
+        const mode: ProveMode = msg.gpuStatus === 'ok' ? 'gpu' : 'cpu'
+        const stage = (json: string): number | undefined =>
+          json ? (JSON.parse(json) as { total_ms: number }).total_ms : undefined
+        const lastProof = {
+          mode,
+          proveMs: msg.proveMs,
+          totalMs: msg.elapsed,
+          commitMs: stage(msg.gpuCommit),
+          digitRangeMs: stage(msg.gpuDigitRange),
+        }
         setState((prev) => ({
           ...prev,
           status: 'ready',
@@ -122,6 +185,7 @@ export function useProver() {
               programIoBytes: msg.programIo,
               verifierPreprocessingBytes: msg.verifierPreprocessing,
               verifyResult: null,
+              lastProof,
             },
           },
         }))
@@ -130,6 +194,13 @@ export function useProver() {
           p,
           `  trace ${(msg.traceMs / 1000).toFixed(2)}s · Akita setup ${(msg.setupMs / 1000).toFixed(2)}s · prove ${(msg.proveMs / 1000).toFixed(2)}s`,
         )
+        log(
+          p,
+          `  mode ${mode.toUpperCase()}` +
+            (lastProof.commitMs != null ? ` · commit ${ms(lastProof.commitMs)}` : '') +
+            (lastProof.digitRangeMs != null ? ` · digit range ${ms(lastProof.digitRangeMs)}` : ''),
+        )
+        sha256Digest(msg.proof).then((d) => log(p, `Proof SHA-256: ${hex(d)}`))
         if (msg.numCycles != null)
           log(p, `RISC-V cycles: ${msg.numCycles.toLocaleString()}`)
         log(p, `Proof size: ${(msg.proofSize / 1024).toFixed(2)} KB`)
@@ -183,7 +254,9 @@ export function useProver() {
 
     const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
     setStatus(`Initializing WASM (${numThreads} threads)...`, 'loading')
-    client.send({ type: 'init', data: { numThreads, cacheBust: CACHE_BUST } })
+    // GPU unless the user chose CPU; the worker reports why when it cannot.
+    const gpu = storedMode() !== 'cpu'
+    client.send({ type: 'init', data: { numThreads, cacheBust: CACHE_BUST, gpu } })
 
     return () => client.terminate()
   }, [handleMessage, setStatus])
@@ -332,12 +405,25 @@ export function useProver() {
     clientRef.current?.send({ type: 'get-trace' })
   }, [])
 
+  const setMode = useCallback(
+    (mode: ProveMode) => {
+      localStorage.setItem(MODE_STORAGE_KEY, mode)
+      if (mode === 'gpu') setStatus('Enabling GPU...', 'loading')
+      clientRef.current?.send({ type: 'set-gpu', data: { enabled: mode === 'gpu' } })
+    },
+    [setStatus],
+  )
+
   return {
     status: state.status,
     statusText: state.statusText,
     wasmReady: state.wasmReady,
     programStates: state.programStates,
     outputLogs: state.outputLogs,
+    gpu: state.gpu,
+    mode: state.mode,
+    modeReason: state.modeReason,
+    setMode,
     proveSha2,
     proveKeccak,
     verify,
