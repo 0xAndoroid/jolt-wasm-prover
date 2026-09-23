@@ -133,3 +133,37 @@ fn main() {
 
     println!("All roundtrips passed!");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A malformed input (an overlong postcard varint) makes the sha2
+    /// guest's argument decode `unwrap` → `jolt_panic`. The proof of
+    /// that execution verifies cryptographically (the panic flag is public
+    /// IO), so the engine must reject it explicitly on both ends.
+    #[test]
+    fn rejects_panicked_guest_execution() {
+        let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
+        let ctx = engine::ProverContext::new(
+            &load(&public_dir, "akita_schedules.bin"),
+            &load(&public_dir, "sha2_program.bin"),
+            &load(&public_dir, "sha2.elf"),
+        )
+        .expect("prover context");
+        let inputs = [0xff; 11];
+
+        let out = engine::prove_unchecked(&ctx, &inputs).expect("prove");
+        assert!(out.panicked, "malformed input must panic the guest");
+        let prep = engine::decode_verifier_preprocessing(&out.verifier_preprocessing_bytes)
+            .expect("verifier prep");
+        let err = engine::verify(&prep, &out.proof_bytes, &out.io_bytes)
+            .expect_err("panicked execution must not verify");
+        assert!(err.contains("panicked"), "{err}");
+
+        let err = engine::prove(&ctx, &inputs)
+            .err()
+            .expect("prove must refuse a panicked trace");
+        assert!(err.contains("panicked"), "{err}");
+    }
+}
