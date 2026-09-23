@@ -6,7 +6,7 @@ tags: [webgpu, akita, prototype]
 # W2 prototype — digit-range sumcheck rounds on WebGPU (standalone)
 
 Goal: measure whether akita's stage-8 `digit_range_prove` (four b=8 direct-leaf instances,
-rounds 24/21/20/19, ≈0.50 s CPU-WASM at 2^18) fits the W2 kill rule (save ≥0.42 s) when run
+rounds 24/21/20/19, ≈0.50 s CPU-WASM at 2^18) fits the W2 kill rule (save ≥0.425 s) when run
 as dependent WGSL rounds under WebKit. No Rust, no wasm, nothing under `src/` or `frontend/`.
 
 Steps: see `.audit/webgpu-akita-w2-proto.tsv`.
