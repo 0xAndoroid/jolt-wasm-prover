@@ -5,7 +5,9 @@
 use jolt_akita::AkitaField;
 use jolt_field::CanonicalEncoding;
 
-use super::mailbox::{self, GpuError, Region, OP_NOP, OP_RUN};
+use super::mailbox::{
+    self, GpuError, Region, OP_CREATE_BUFFER, OP_DESTROY, OP_NOP, OP_RUN, OP_UPLOAD,
+};
 use super::GpuReport;
 
 pub const SHADER_FP128_OPS: u32 = 0;
@@ -14,6 +16,9 @@ pub const WORKGROUP_SIZE: u32 = 256;
 
 const N: usize = 1 << 20;
 const NOP_ROUNDS: u32 = 200;
+/// W1's largest persistent buffer; `a` is uploaded into it so every prove
+/// exercises CREATE_BUFFER / UPLOAD / handle binding / DESTROY at that size.
+const PERSISTENT_BYTES: u32 = 256 << 20;
 
 /// `args` for `OP_RUN`: shader, workgroups xyz, param count, ≤16 params,
 /// binding count. Params land in the uniform at binding 0; regions bind
@@ -90,8 +95,10 @@ pub fn run() -> Result<GpuReport, GpuError> {
     let t1 = now_ms();
     let (a_bytes, b_bytes, c_bytes) = (to_le_bytes(&a), to_le_bytes(&b), to_le_bytes(&c));
     let mut out = vec![0u8; N * 16];
+    let handle = mailbox::call(OP_CREATE_BUFFER, &[PERSISTENT_BYTES], &[])?[0];
+    mailbox::call(OP_UPLOAD, &[handle, 0], &[Region::upload(&a_bytes)])?;
     let workgroups = [(N as u32).div_ceil(WORKGROUP_SIZE), 1, 1];
-    mailbox::call(
+    let run = mailbox::call(
         OP_RUN,
         &run_args(
             SHADER_FP128_OPS,
@@ -100,12 +107,14 @@ pub fn run() -> Result<GpuReport, GpuError> {
             4,
         ),
         &[
-            Region::upload(&a_bytes),
+            Region::handle(handle),
             Region::upload(&b_bytes),
             Region::upload(&c_bytes),
             Region::readback(&mut out),
         ],
-    )?;
+    );
+    mailbox::call(OP_DESTROY, &[handle], &[])?;
+    run?;
     let selftest_ms = now_ms() - t1;
 
     let mut mismatches = 0u32;

@@ -9,8 +9,12 @@ Ledger: `.audit/webgpu-akita-w0.tsv` (untracked, one row per unit/verdict).
 - `worker.js`: `init.data.gpu === true` spawns the proxy, `init-done.gpu` report, `prove-done` carries `gpuStatus/gpuSelftestMs/gpuSelftestMismatches/gpuRoundtripUs`. React UI untouched.
 - `bench/bench_webgpu.py` (gpu on/off oracle bench, proof sha256 equality), `bench/test_fp128_wgsl.py` (WGSL vs Python ints).
 
-## Numbers
-(filled at the end of W0 — see PR description)
+## Numbers (Mac mini, headless WebKit 26.6 / Playwright build 2359, 8 threads, iters 17 = 2^16 padded)
+- V1 gpu on vs off: proof sha256 `4359b6b8…5312e70` identical, verify=true both; gpu_status ok / disabled; self-test 2^20 mul-adds 26–108 ms, 0 mismatches; NOP round trip 70–150 µs quiet machine (330–1320 µs with a build finishing).
+- V2 fp128.wgsl: 101,000 vectors (1,000 edge incl. 0, 1, p−1, p, p+1, 2^128−1, C) × mul/add/sub/muladd = 0 mismatches vs Python ints. Fold-2 carry bug in `fp128_mul` caught by the edge cases (result landed one limb high).
+- V3 no-feature build gpu=off warm prove 1.82 s; webgpu build gpu=off 1.73–1.94 s, gpu=on 1.74–1.94 s (same runs, noise ≈ 5–10 %). gpu=on overhead = preflight only.
+- V4 Chromium headless without `--enable-unsafe-webgpu`: requestAdapter null → gpu_status unavailable, prove + verify ok, same sha. Chromium `--enable-unsafe-webgpu --use-angle=metal`: ok, self-test 88 ms, round trip 70 µs.
+- W1 sizing: the self-test routes `a` through a 256 MiB persistent buffer (CREATE_BUFFER / UPLOAD / handle binding / DESTROY) and 16 MiB inline uploads + 16 MiB readback each prove.
 
 ## Open doors
 - Mailbox latency vs. `memory_atomic_wait32`: only worth revisiting if W1 issues many small ops (design is one big op at a time).
