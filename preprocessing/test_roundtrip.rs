@@ -87,6 +87,43 @@ fn main() {
     let inputs = postcard::to_allocvec(&sha2_input).expect("serialize");
     roundtrip(&public_dir, &schedules, "sha2", &inputs);
 
+    // Fixed valid signature over SHA-256("hello world"); limbs are
+    // little-endian u64 (limb 0 least significant), Q = (x limbs 0..4, y 4..8).
+    // Input bytes match `WasmProver::prove_ecdsa`.
+    let z: [u64; 4] = [
+        0x9088f7ace2efcde9,
+        0xc484efe37a5380ee,
+        0xa52e52d7da7dabfa,
+        0xb94d27b9934d3e08,
+    ];
+    let r: [u64; 4] = [
+        0xb8fc413b4b967ed8,
+        0x248d4b0b2829ab00,
+        0x587f69296af3cd88,
+        0x3a5d6a386e6cf7c0,
+    ];
+    let s: [u64; 4] = [
+        0x66a82f274e3dcafc,
+        0x299a02486be40321,
+        0x6212d714118f617e,
+        0x9d452f63cf91018d,
+    ];
+    let q: [u64; 8] = [
+        0x0012563f32ed0216,
+        0xee00716af6a73670,
+        0x91fc70e34e00e6c8,
+        0xeeb6be8b9e68868b,
+        0x4780de3d5fda972d,
+        0xcb1b42d72491e47f,
+        0xdc7f31262e4ba2b7,
+        0xdc7b004d3bb2800d,
+    ];
+    let mut inputs = postcard::to_allocvec(&z).expect("serialize");
+    inputs.extend_from_slice(&postcard::to_allocvec(&r).expect("serialize"));
+    inputs.extend_from_slice(&postcard::to_allocvec(&s).expect("serialize"));
+    inputs.extend_from_slice(&postcard::to_allocvec(&q).expect("serialize"));
+    roundtrip(&public_dir, &schedules, "ecdsa", &inputs);
+
     let mut inputs = postcard::to_allocvec(&[5u8; 32]).expect("serialize");
     // 17 → 2^16, 69 → 2^18 (default 100), 278 → 2^20, 556 → 2^21 padded cycles.
     let iters =

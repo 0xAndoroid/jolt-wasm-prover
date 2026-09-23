@@ -12,6 +12,7 @@ import {
   PROGRAM_FILES,
   CACHE_BUST,
   SHA2_MAX_BYTES,
+  ECDSA_TEST_VECTOR,
   MODE_STORAGE_KEY,
 } from '@/lib/constants'
 import { WorkerClient } from '@/lib/worker-client'
@@ -74,7 +75,7 @@ export function useProver() {
     statusText: 'Initializing WASM...',
     wasmReady: false,
     programStates: initialProgramStates(),
-    outputLogs: { sha2: '', keccak: '' },
+    outputLogs: { sha2: '', ecdsa: '', keccak: '' },
     gpu: null,
     mode: 'cpu',
     modeReason: null,
@@ -359,6 +360,18 @@ export function useProver() {
     [ensureProgramLoaded, log, setStatus],
   )
 
+  const proveEcdsa = useCallback(async () => {
+    setStatus('Loading...', 'loading')
+    if (!(await ensureProgramLoaded('ecdsa'))) return
+    setStatus('Proving...', 'proving')
+    log(
+      'ecdsa',
+      `\nProving secp256k1 ECDSA verify ("${ECDSA_TEST_VECTOR.message}", 1 signature, inline)`,
+    )
+    const { z, r, s, q } = ECDSA_TEST_VECTOR
+    clientRef.current?.send({ type: 'prove', data: { program: 'ecdsa', z, r, s, q } })
+  }, [ensureProgramLoaded, log, setStatus])
+
   const proveKeccak = useCallback(
     async (message: string, numIters: number) => {
       if (numIters < 1 || numIters > 100) {
@@ -425,6 +438,7 @@ export function useProver() {
     modeReason: state.modeReason,
     setMode,
     proveSha2,
+    proveEcdsa,
     proveKeccak,
     verify,
     downloadTrace,

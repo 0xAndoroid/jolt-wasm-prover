@@ -9,7 +9,7 @@ Four guest programs are included:
 | Program | Description | Guest crate |
 |---------|-------------|-------------|
 | **SHA-256** | Hash arbitrary input | `guests/sha2` |
-| **ECDSA** | Secp256k1 signature verification | `guests/secp256k1` |
+| **ECDSA** | secp256k1 ECDSA verification of one fixed signature (`jolt-inlines-secp256k1` field inlines) | `guests/secp256k1` |
 | **Keccak Chain** | Iterated Keccak-256 hashing | `guests/sha3-chain` |
 | **SHA-256 Chain** | Iterated SHA-256 (tunable trace length, for scale benchmarks) | `guests/sha2-chain` |
 
@@ -120,7 +120,7 @@ The `.cargo/config.toml` configures the WASM build with:
 
 ## Roundtrip Testing
 
-Runs the exact browser code path natively from the shipped artifacts (setup derivation, prove, verify):
+Runs the exact browser code path natively from the shipped artifacts (setup derivation, prove, verify) for `sha2`, `ecdsa` and `sha2_chain`:
 
 ```bash
 cargo run --release --features native --bin test-roundtrip

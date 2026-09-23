@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { StatusBadge } from '@/components/status-badge'
 import { ModeSelector } from '@/components/mode-selector'
 import { Sha2Inputs } from '@/components/sha2-inputs'
+import { EcdsaInputs } from '@/components/ecdsa-inputs'
 import { KeccakInputs } from '@/components/keccak-inputs'
 import { ProgramPanel } from '@/components/program-panel'
 import { useProver } from '@/hooks/use-prover'
@@ -19,6 +20,7 @@ export function App() {
     modeReason,
     setMode,
     proveSha2,
+    proveEcdsa,
     proveKeccak,
     verify,
     downloadTrace,
@@ -69,6 +71,7 @@ export function App() {
           <TabsList variant="folder">
             <TabsTrigger value="sha2">SHA-256</TabsTrigger>
             <TabsTrigger value="keccak">Keccak Chain</TabsTrigger>
+            <TabsTrigger value="ecdsa">ECDSA</TabsTrigger>
           </TabsList>
 
           <TabsContent value="sha2" id="page-sha2">
@@ -107,6 +110,20 @@ export function App() {
                   keccakItersRef.current = iters
                 }}
               />
+            </ProgramPanel>
+          </TabsContent>
+
+          <TabsContent value="ecdsa" id="page-ecdsa">
+            <ProgramPanel
+              programState={programStates.ecdsa}
+              appStatus={status}
+              wasmReady={wasmReady}
+              output={outputLogs.ecdsa}
+              onProve={proveEcdsa}
+              onVerify={() => verify('ecdsa')}
+              onTrace={downloadTrace}
+            >
+              <EcdsaInputs />
             </ProgramPanel>
           </TabsContent>
         </Tabs>

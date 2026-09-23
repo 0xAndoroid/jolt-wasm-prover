@@ -5,7 +5,8 @@
 #   uv run --with playwright python bench/test_ui_modes.py [--url http://localhost:8080] [--shots DIR]
 #
 # WebKit (has a WebGPU adapter): default mode GPU, CPU proof bytes == GPU
-# proof bytes, mode persists across reload, GPU re-enabled without reload.
+# proof bytes for SHA-256 / Keccak Chain / ECDSA, mode persists across reload,
+# GPU re-enabled without reload.
 # Chromium (no adapter): lands on CPU with the reason shown, GPU segment
 # disabled. Dead proxy: init with a 2 s op timeout, hang the proxy, the prove
 # fails with `gpu proxy unresponsive`, the next prove runs on the CPU.
@@ -140,9 +141,19 @@ def main():
         keccak_gpu, mode = prove(page)
         check(mode == "gpu", f"Keccak Chain proof ran in GPU mode (badge {mode})")
         verify(page, "Keccak Chain GPU")
+        select_tab(page, "ECDSA")
+        ecdsa_gpu, mode = prove(page)
+        check(mode == "gpu", f"ECDSA proof ran in GPU mode (badge {mode})")
+        verify(page, "ECDSA GPU")
 
         page.locator(RADIO, has_text="CPU only").click()
         page.wait_for_function(f"() => document.querySelector('{CHECKED}')?.innerText.includes('CPU')")
+        ecdsa_cpu, mode = prove(page)
+        check(mode == "cpu", f"ECDSA proof ran in CPU mode (badge {mode})")
+        check(ecdsa_cpu == ecdsa_gpu, f"ECDSA CPU proof bytes == GPU proof bytes ({ecdsa_cpu[:16]})")
+        verify(page, "ECDSA CPU")
+        shoot(page, args.shots, "webkit-ecdsa")
+        select_tab(page, "Keccak Chain")
         keccak_cpu, mode = prove(page)
         check(mode == "cpu", f"Keccak Chain proof ran in CPU mode (badge {mode})")
         check(keccak_cpu == keccak_gpu, f"Keccak Chain CPU proof bytes == GPU proof bytes ({keccak_cpu[:16]})")

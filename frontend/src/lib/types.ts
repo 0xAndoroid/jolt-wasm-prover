@@ -1,4 +1,4 @@
-export type ProgramName = 'sha2' | 'keccak'
+export type ProgramName = 'sha2' | 'ecdsa' | 'keccak'
 
 export type LoadState = 'idle' | 'loading' | 'ready'
 
@@ -52,6 +52,12 @@ export type WorkerRequest =
       }
     }
   | { type: 'prove'; data: { program: 'sha2'; input: number[] } }
+  // secp256k1 scalars / coordinates as little-endian u64 limbs ('0x…' strings;
+  // worker.js maps them through BigInt).
+  | {
+      type: 'prove'
+      data: { program: 'ecdsa'; z: string[]; r: string[]; s: string[]; q: string[] }
+    }
   | {
       type: 'prove'
       data: { program: 'keccak'; input: number[]; numIters: number }
