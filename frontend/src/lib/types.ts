@@ -8,24 +8,25 @@ export interface ProgramState {
   loadState: LoadState
   proofBytes: Uint8Array | null
   programIoBytes: Uint8Array | null
+  // Akita verifier setups are exact in the proof shape: the prover emits the
+  // verifier preprocessing for each proof and verification consumes it.
+  verifierPreprocessingBytes: Uint8Array | null
   verifyResult: { valid: boolean; elapsed: number } | null
 }
 
 export interface ProgramFiles {
-  prover: string
-  verifier: string
+  program: string
   elf: string
 }
 
 // Messages sent to the worker
 export type WorkerRequest =
-  | { type: 'init'; data: { numThreads: number } }
+  | { type: 'init'; data: { numThreads: number; cacheBust?: string } }
   | {
       type: 'load-program'
       data: {
         program: ProgramName
-        proverPreprocessing: ArrayBuffer
-        verifierPreprocessing: ArrayBuffer
+        programPreprocessing: ArrayBuffer
         elfBytes: ArrayBuffer
       }
     }
@@ -40,6 +41,7 @@ export type WorkerRequest =
         program: ProgramName
         proof: Uint8Array
         programIo: Uint8Array
+        verifierPreprocessing: Uint8Array
       }
     }
   | { type: 'get-trace' }
@@ -54,9 +56,13 @@ export type WorkerResponse =
       program: ProgramName
       proof: Uint8Array
       proofSize: number
-      compressedProofSize: number
       programIo: Uint8Array
+      verifierPreprocessing: Uint8Array
       numCycles: number | null
+      paddedCycles: number | null
+      traceMs: number
+      setupMs: number
+      proveMs: number
       peakMemory: number | null
       elapsed: number
     }

@@ -1,26 +1,22 @@
-From f287614538b79ca5f05b3528be9678c3a50dce0d Mon Sep 17 00:00:00 2001
-From: Andrew Tretyakov <42178850+0xAndoroid@users.noreply.github.com>
-Date: Fri, 31 Jul 2026 02:41:29 -0400
+From: jolt-wasm-prover <noreply@jolt-wasm-prover>
+Date: Tue, 22 Sep 2026 20:18:48 -0400
 Subject: [PATCH] fix(kernels): CoeffLut::saturated usize overflow on wasm32
 
 len*len at the 65536-entry table is 2^32, which wraps to 0 on 32-bit
 targets: the Indexed->Direct switch never fires, the next bind()'s
 (0..n*n) range is empty, both LUTs become zero-length, and every
 sparse_quadratic worker panics with index-out-of-bounds. Compute the
-squared length in u64. Found running the modular prover in-browser
-(wasm32); native 64-bit is unaffected.
+squared length in u64. Native 64-bit is unaffected. Rebased onto
+d39bd518a (the table moved to registers_read_write/sparse.rs).
 ---
- crates/jolt-kernels/src/optimized/registers_read_write.rs | 5 ++++-
- 1 file changed, 4 insertions(+), 1 deletion(-)
-
-diff --git a/crates/jolt-kernels/src/optimized/registers_read_write.rs b/crates/jolt-kernels/src/optimized/registers_read_write.rs
-index 511bd53a6..f1f93954e 100644
---- a/crates/jolt-kernels/src/optimized/registers_read_write.rs
-+++ b/crates/jolt-kernels/src/optimized/registers_read_write.rs
-@@ -346,7 +346,10 @@ impl<F: Field> CoeffLut<F> {
+diff --git a/crates/jolt-kernels/src/optimized/registers_read_write/sparse.rs b/crates/jolt-kernels/src/optimized/registers_read_write/sparse.rs
+index 3dd7837..c3bb152 100644
+--- a/crates/jolt-kernels/src/optimized/registers_read_write/sparse.rs
++++ b/crates/jolt-kernels/src/optimized/registers_read_write/sparse.rs
+@@ -32,7 +32,10 @@ impl<F: JoltField> CoeffLut<F> {
  
      /// Whether one more bind would overflow the `u16` index domain.
-     fn saturated(&self) -> bool {
+     pub(super) fn saturated(&self) -> bool {
 -        self.values.len() * self.values.len() > Self::MAX_VALUES
 +        // u64 arithmetic: at the 65536-entry table the squared length is
 +        // 2^32, which wraps to 0 on 32-bit targets (wasm32) and silently
@@ -28,7 +24,4 @@ index 511bd53a6..f1f93954e 100644
 +        (self.values.len() as u64) * (self.values.len() as u64) > Self::MAX_VALUES as u64
      }
  
-     /// Square the table with `r`: the same pair combination
--- 
-2.50.1 (Apple Git-155)
-
+     /// Apply `even + r·(odd − even)` to every value pair.

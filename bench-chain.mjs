@@ -3,18 +3,20 @@
 //
 // Usage: node bench-chain.mjs [itersCsv] [runsPerScale]
 //   itersCsv: comma-separated sha2-chain iteration counts (default targets
-//             padded 2^16,2^18,2^20,2^21,2^22)
+//             padded 2^16,2^18,2^20,2^21)
 //   runsPerScale: default 3
 //
 // Emits one JSON line per completed run to stdout and a summary at the end.
 
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 const CYCLES_PER_SHA256 = 3396;
 const targetIters = (scale) =>
     Math.max(1, Math.round((2 ** scale * 0.9) / CYCLES_PER_SHA256));
 
-const DEFAULT_SCALES = [16, 18, 20, 21, 22];
+// 2^21 is the wasm32 ceiling: a 2^22 trace needs a one-hot polynomial with
+// 2^32 coefficients (see README "Protocol").
+const DEFAULT_SCALES = [16, 18, 20, 21];
 const itersList = process.argv[2]
     ? process.argv[2].split(',').map((s) => parseInt(s, 10))
     : DEFAULT_SCALES.map(targetIters);
@@ -22,9 +24,12 @@ const RUNS = parseInt(process.argv[3] || '3', 10);
 const TIMEOUT = 1_800_000;
 
 async function run() {
-    const browser = await chromium.launch({
+    // PW_BROWSER=webkit runs the bundled WebKit (Safari engine); default is
+    // the bundled Chromium, PW_CHANNEL=chrome selects system Chrome.
+    const engine = process.env.PW_BROWSER === 'webkit' ? webkit : chromium;
+    const browser = await engine.launch({
         headless: true,
-        channel: process.env.PW_CHANNEL || undefined,
+        channel: engine === chromium ? process.env.PW_CHANNEL || undefined : undefined,
     });
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'));
@@ -56,8 +61,8 @@ async function run() {
         });
         await initDone;
 
-        const files = ['sha2_chain_prover.bin', 'sha2_chain_verifier.bin', 'sha2_chain.elf'];
-        const [prover, verifier, elf] = await Promise.all(
+        const files = ['sha2_chain_program.bin', 'sha2_chain.elf'];
+        const [program, elf] = await Promise.all(
             files.map((f) => fetch(`/${f}?bench`).then((r) => {
                 if (!r.ok) throw new Error(`fetch ${f}: ${r.status}`);
                 return r.arrayBuffer();
@@ -69,12 +74,11 @@ async function run() {
                 type: 'load-program',
                 data: {
                     program: 'sha2-chain',
-                    proverPreprocessing: prover,
-                    verifierPreprocessing: verifier,
+                    programPreprocessing: program,
                     elfBytes: elf,
                 },
             },
-            [prover, verifier, elf],
+            [program, elf],
         );
         await loaded;
     });
@@ -104,6 +108,7 @@ async function run() {
                             program: 'sha2-chain',
                             proof: proveMsg.proof,
                             programIo: proveMsg.programIo,
+                            verifierPreprocessing: proveMsg.verifierPreprocessing,
                         },
                     });
                     const verifyMsg = await verified;
@@ -111,6 +116,9 @@ async function run() {
 
                     return {
                         proveSeconds: proveMsg.elapsed / 1000,
+                        traceSeconds: proveMsg.traceMs / 1000,
+                        setupSeconds: proveMsg.setupMs / 1000,
+                        proveOnlySeconds: proveMsg.proveMs / 1000,
                         verifySeconds: verifyMsg.elapsed / 1000,
                         valid: verifyMsg.valid,
                         numCycles: proveMsg.numCycles,
@@ -137,6 +145,7 @@ async function run() {
             console.log(JSON.stringify(rec));
             process.stderr.write(
                 `iters=${iters} run ${i + 1}: prove ${r.proveSeconds.toFixed(2)}s ` +
+                `[trace ${r.traceSeconds.toFixed(2)} + setup ${r.setupSeconds.toFixed(2)} + prove ${r.proveOnlySeconds.toFixed(2)}] ` +
                 `(2^${Math.log2(r.paddedCycles)} padded, ${rec.mhz.toFixed(3)} MHz), ` +
                 `verify ${r.verifySeconds.toFixed(2)}s, valid=${r.valid}, ` +
                 `peak ${(r.peakMemory / 1024 / 1024).toFixed(0)} MB\n`,

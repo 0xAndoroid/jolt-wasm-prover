@@ -4,15 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = [
-    "guests/sha2",
-    "guests/secp256k1",
-    "guests/sha3-chain",
-    "guests/sha2-chain",
-]
-# Keep the setup-wasm-deps.sh checkouts out of this workspace so their crates
-# resolve workspace inheritance against their own roots.
-exclude = [".wasm-deps"]
+# The guests form their own workspace (guests/Cargo.toml): `#[jolt::provable]`
+# emits host glue that needs `jolt-sdk/host`, which is Dory-only and cannot
+# share a dependency graph with `jolt-prover/akita`. They are only ever built
+# for RISC-V through `jolt build` (see preprocessing/generate.rs). The
+# setup-wasm-deps.sh checkouts stay out so their crates resolve workspace
+# inheritance against their own roots.
+exclude = [".wasm-deps", "guests"]
 
 [lib]
 crate-type = ["cdylib"]
@@ -36,23 +34,22 @@ tracing = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 postcard = { version = "1.0.8", features = ["use-std"] }
 bincode = { version = "2", features = ["serde"] }
-ark-serialize = "0.5.0"
-dory = { package = "dory-pcs", version = "0.4.0", features = ["backends"] }
+serde_json = "1.0"
 
-jolt-prover = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-verifier = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-witness = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-dory = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-field = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-crypto = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-transcript = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-jolt-program = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-tracer = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb" }
-common = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["std"] }
+# One compiled prover proves exactly one protocol: `akita` selects the packed
+# lattice path (jolt-akita PCS over the Solinas fp128 field) and compiles the
+# Dory/elliptic-curve path out. It is mutually exclusive with `zk`.
+jolt-prover = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["akita"] }
+jolt-verifier = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["akita"] }
+jolt-akita = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
+jolt-witness = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
+jolt-program = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
+tracer = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
+common = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["std"] }
 
-jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
-jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
-jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
+jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["host"] }
+jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["host"] }
+jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["host"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
@@ -63,14 +60,12 @@ web-sys = { version = "0.3", features = ["console", "Window", "Performance"] }
 console_error_panic_hook = "0.1"
 getrandom = { version = "0.2.16", features = ["js"] }
 tracing-subscriber = { version = "0.3", features = ["std"] }
-serde_json = "1.0"
 
+# Guest compilation goes through jolt-host (the `jolt` CLI) rather than the
+# jolt-sdk host machinery: jolt-sdk's host side is Dory-only and does not
+# compile against a jolt-prover built with `akita`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt", rev = "70a294ad58629af59ab89f646d6d0079b57174cb", features = ["host"] }
-sha2-guest = { path = "guests/sha2" }
-secp256k1-ecdsa-verify-guest = { path = "guests/secp256k1" }
-sha3-chain-guest = { path = "guests/sha3-chain" }
-sha2-chain-guest = { path = "guests/sha2-chain" }
+jolt-host = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
 
 [profile.release]
 opt-level = 3
@@ -81,20 +76,20 @@ panic = "abort"
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
 
-# One ark world for the whole graph: dory-pcs (crates.io) depends on registry
-# ark-* 0.5.0 while the jolt crates use the a16z fork (branch dev/twist-shout);
-# without the crates-io redirect the two resolve to distinct crate instances
-# and the fork's trait bounds are unsatisfiable. (The jolt workspace root does
-# the same with a [replace] section.) The redirect must use the same
-# branch source as jolt's own ark dependencies — a rev-pinned source would be
-# a distinct package source and split the world again, and cargo rejects
-# same-repo [patch.'…/arkworks-algebra'] tables. The exact rev
-# (76bb3a4518928f1ff7f15875f940d614bb9845e6, validated with jolt
-# 70a294ad58629af59ab89f646d6d0079b57174cb) is pinned by the committed
-# Cargo.lock; only `cargo update` can drift it.
+# One ark world for the whole graph: dory-pcs (crates.io, still a hard
+# dependency of jolt-prover even though the Dory path is compiled out under
+# `akita`) depends on registry ark-* 0.5.0 while the jolt crates use the a16z
+# fork (branch dev/twist-shout); without the crates-io redirect the two
+# resolve to distinct crate instances and the fork's trait bounds are
+# unsatisfiable. (The jolt workspace root does the same with a [replace]
+# section.) The redirect must use the same branch source as jolt's own ark
+# dependencies — a rev-pinned source would be a distinct package source and
+# split the world again, and cargo rejects same-repo
+# [patch.'…/arkworks-algebra'] tables. The exact rev is pinned by the
+# committed Cargo.lock; only `cargo update` can drift it.
 #
-# Proving IN THE BROWSER additionally needs two one-line wasm32 fixes that are
-# not upstream yet — see patches/ and ./setup-wasm-deps.sh, which rewrites the
+# Proving IN THE BROWSER additionally needs wasm32 fixes that are not
+# upstream yet — see patches/ and ./setup-wasm-deps.sh, which rewrites the
 # block below onto locally patched checkouts.
 # >>> wasm-deps overrides (managed by setup-wasm-deps.sh — keep markers)
 [patch.crates-io]
@@ -102,4 +97,12 @@ ark-bn254 = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/tw
 ark-ff = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
 ark-ec = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
 ark-serialize = { git = "https://github.com/a16z/arkworks-algebra", branch = "dev/twist-shout" }
+
+# The akita crates consume jolt-field from a16z/jolt at their own pinned rev;
+# redirect that package onto the jolt rev used everywhere else so the graph
+# holds one field identity (the jolt workspace does the same with a path
+# patch). Cargo refuses a git patch onto the same repository URL, so the
+# redirect goes through a mirror of a16z/jolt serving the identical commit.
+[patch."https://github.com/a16z/jolt"]
+jolt-field = { git = "https://github.com/0xAndoroid/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
 # <<< wasm-deps overrides

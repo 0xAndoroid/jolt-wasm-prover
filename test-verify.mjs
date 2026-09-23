@@ -1,9 +1,15 @@
-import { chromium } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 const TIMEOUT = 120_000;
 
 async function run() {
-    const browser = await chromium.launch({ headless: true });
+    // PW_BROWSER=webkit runs the bundled WebKit (Safari engine); default is
+    // the bundled Chromium, PW_CHANNEL=chrome selects system Chrome.
+    const engine = process.env.PW_BROWSER === 'webkit' ? webkit : chromium;
+    const browser = await engine.launch({
+        headless: true,
+        channel: engine === chromium ? process.env.PW_CHANNEL || undefined : undefined,
+    });
     const context = await browser.newContext();
     const page = await context.newPage();
 

@@ -1,0 +1,129 @@
+From: jolt-wasm-prover <noreply@jolt-wasm-prover>
+Date: Tue, 22 Sep 2026 20:18:48 -0400
+Subject: [PATCH] fix: std::time::Instant shim for wasm32-unknown-unknown
+
+akita-prover (compression, relation_range_image) and akita-pcs (scheme)
+read std::time::Instant for diagnostics timing; Instant::now() panics on
+wasm32-unknown-unknown. Route those imports through a per-crate
+wasm_instant module that is std::time::Instant natively and a
+zero-duration stand-in on wasm32.
+---
+diff --git a/crates/akita-pcs/src/lib.rs b/crates/akita-pcs/src/lib.rs
+index b9d5588..83583c1 100644
+--- a/crates/akita-pcs/src/lib.rs
++++ b/crates/akita-pcs/src/lib.rs
+@@ -40,6 +40,7 @@
+ #![warn(unreachable_pub)]
+ 
+ mod scheme;
++mod wasm_instant;
+ #[cfg(test)]
+ #[path = "../tests/support/mod.rs"]
+ mod test_support;
+diff --git a/crates/akita-pcs/src/scheme/mod.rs b/crates/akita-pcs/src/scheme/mod.rs
+index 9cc0cbb..1f207c3 100644
+--- a/crates/akita-pcs/src/scheme/mod.rs
++++ b/crates/akita-pcs/src/scheme/mod.rs
+@@ -24,7 +24,7 @@ use akita_types::{
+ };
+ use jolt_field::{AdditiveGroup, CanonicalEncoding, ExtField, Field, PseudoMersenne, Ring};
+ use jolt_field::{Fold, Unreduced, WithCommitAccumulator};
+-use std::time::Instant;
++use crate::wasm_instant::Instant;
+ 
+ /// End-to-end PCS wrapper, generic over commitment config `Cfg`.
+ ///
+diff --git a/crates/akita-pcs/src/wasm_instant.rs b/crates/akita-pcs/src/wasm_instant.rs
+new file mode 100644
+index 0000000..d75b908
+--- /dev/null
++++ b/crates/akita-pcs/src/wasm_instant.rs
+@@ -0,0 +1,21 @@
++//! `std::time::Instant` has no clock on `wasm32-unknown-unknown` (`now()`
++//! panics). The prover only reads it for diagnostics, so the wasm32 build
++//! swaps in a zero-duration stand-in and keeps the timing code paths intact.
++
++#[cfg(not(target_arch = "wasm32"))]
++pub(crate) use std::time::Instant;
++
++#[cfg(target_arch = "wasm32")]
++#[derive(Clone, Copy, Debug)]
++pub(crate) struct Instant;
++
++#[cfg(target_arch = "wasm32")]
++impl Instant {
++    pub(crate) fn now() -> Self {
++        Self
++    }
++
++    pub(crate) fn elapsed(&self) -> core::time::Duration {
++        core::time::Duration::ZERO
++    }
++}
+diff --git a/crates/akita-prover/src/compute/compression.rs b/crates/akita-prover/src/compute/compression.rs
+index be3c8ff..f94a9cb 100644
+--- a/crates/akita-prover/src/compute/compression.rs
++++ b/crates/akita-prover/src/compute/compression.rs
+@@ -8,7 +8,9 @@ use akita_types::{
+ };
+ use jolt_field::{CanonicalEncoding, Field};
+ use std::collections::BTreeMap;
+-use std::time::{Duration, Instant};
++use std::time::Duration;
++
++use crate::wasm_instant::Instant;
+ 
+ /// Maximum number of expanded right-hand sides in one compression kernel call.
+ pub(crate) const MAX_COMPRESSION_RHS_BATCH: usize = 8;
+diff --git a/crates/akita-prover/src/lib.rs b/crates/akita-prover/src/lib.rs
+index ef1b4c2..fcc8fdf 100644
+--- a/crates/akita-prover/src/lib.rs
++++ b/crates/akita-prover/src/lib.rs
+@@ -12,6 +12,7 @@ pub mod kernels;
+ pub mod protocol;
+ pub mod types;
+ mod validation;
++mod wasm_instant;
+ 
+ use akita_algebra::CyclotomicRing;
+ use akita_error::AkitaError;
+diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
+index 1f48294..ea1e424 100644
+--- a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
++++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
+@@ -97,7 +97,7 @@ use jolt_field::solinas::parallel::*;
+ use jolt_field::{Field, Ring, Zero};
+ use jolt_field::{Fold, Unreduced};
+ use std::mem;
+-use std::time::Instant;
++use crate::wasm_instant::Instant;
+ 
+ use crate::backend::packed_digits::{
+     PackedSignedDigitIter, PackedSignedDigitView, PackedSignedDigits,
+diff --git a/crates/akita-prover/src/wasm_instant.rs b/crates/akita-prover/src/wasm_instant.rs
+new file mode 100644
+index 0000000..d75b908
+--- /dev/null
++++ b/crates/akita-prover/src/wasm_instant.rs
+@@ -0,0 +1,21 @@
++//! `std::time::Instant` has no clock on `wasm32-unknown-unknown` (`now()`
++//! panics). The prover only reads it for diagnostics, so the wasm32 build
++//! swaps in a zero-duration stand-in and keeps the timing code paths intact.
++
++#[cfg(not(target_arch = "wasm32"))]
++pub(crate) use std::time::Instant;
++
++#[cfg(target_arch = "wasm32")]
++#[derive(Clone, Copy, Debug)]
++pub(crate) struct Instant;
++
++#[cfg(target_arch = "wasm32")]
++impl Instant {
++    pub(crate) fn now() -> Self {
++        Self
++    }
++
++    pub(crate) fn elapsed(&self) -> core::time::Duration {
++        core::time::Duration::ZERO
++    }
++}

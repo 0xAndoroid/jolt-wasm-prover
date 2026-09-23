@@ -1,0 +1,18 @@
+diff --git a/crates/akita-types/src/sis/honest_fold_policy.rs b/crates/akita-types/src/sis/honest_fold_policy.rs
+index 51c0354..c480c9a 100644
+--- a/crates/akita-types/src/sis/honest_fold_policy.rs
++++ b/crates/akita-types/src/sis/honest_fold_policy.rs
+@@ -207,8 +207,11 @@ impl UnitOneHotFoldPolicy {
+         }
+         let groups = self.independent_challenge_groups(query)?;
+         let worst_case = self.deterministic_cap(query)?;
+-        const MAX_EXACT_F64_INTEGER: usize = 1usize << 52;
+-        if groups > MAX_EXACT_F64_INTEGER || query.num_fold_coeffs > MAX_EXACT_F64_INTEGER {
++        // u64: `1usize << 52` overflows on 32-bit targets (wasm32).
++        const MAX_EXACT_F64_INTEGER: u64 = 1u64 << 52;
++        if groups as u64 > MAX_EXACT_F64_INTEGER
++            || query.num_fold_coeffs as u64 > MAX_EXACT_F64_INTEGER
++        {
+             return None;
+         }
+         // For each exact power-of-two point, solve the Chernoff

@@ -13,7 +13,7 @@ mod wasm {
     #[wasm_bindgen(start)]
     pub fn wasm_main() {
         console_error_panic_hook::set_once();
-        web_sys::console::log_1(&"jolt-wasm-prover build tag 2".into());
+        web_sys::console::log_1(&"jolt-wasm-prover build tag 3 (akita)".into());
     }
 
     #[wasm_bindgen]
@@ -44,30 +44,30 @@ mod wasm {
 
     #[wasm_bindgen]
     pub struct WasmProver {
-        preprocessing: engine::ProverPrep,
-        elf_bytes: Vec<u8>,
+        ctx: engine::ProverContext,
     }
 
     #[wasm_bindgen]
     impl WasmProver {
+        /// `schedule_artifacts_bytes` is the shared `akita_schedules.bin`,
+        /// `program_preprocessing_bytes` the per-program `{name}_program.bin`.
         #[wasm_bindgen(constructor)]
         pub fn new(
-            srs_bytes: &[u8],
-            verifier_preprocessing_bytes: &[u8],
+            schedule_artifacts_bytes: &[u8],
+            program_preprocessing_bytes: &[u8],
             elf_bytes: &[u8],
         ) -> Result<WasmProver, JsValue> {
-            let preprocessing =
-                engine::build_prover_preprocessing(srs_bytes, verifier_preprocessing_bytes)
-                    .map_err(|e| JsValue::from_str(&e))?;
-            Ok(Self {
-                preprocessing,
-                elf_bytes: elf_bytes.to_vec(),
-            })
+            let ctx = engine::ProverContext::new(
+                schedule_artifacts_bytes,
+                program_preprocessing_bytes,
+                elf_bytes,
+            )
+            .map_err(|e| JsValue::from_str(&e))?;
+            Ok(Self { ctx })
         }
 
         fn prove_with_inputs(&self, inputs: &[u8]) -> Result<ProveResult, JsValue> {
-            let out = engine::prove(&self.preprocessing, &self.elf_bytes, inputs)
-                .map_err(|e| JsValue::from_str(&e))?;
+            let out = engine::prove(&self.ctx, inputs).map_err(|e| JsValue::from_str(&e))?;
             Ok(ProveResult { out })
         }
 
@@ -167,13 +167,15 @@ mod wasm {
         }
 
         #[wasm_bindgen(getter)]
-        pub fn compressed_proof_size(&self) -> usize {
-            self.out.proof_bytes.len()
-        }
-
-        #[wasm_bindgen(getter)]
         pub fn program_io(&self) -> Vec<u8> {
             self.out.io_bytes.clone()
+        }
+
+        /// Verifier preprocessing for this proof's shape — feed it to
+        /// `WasmVerifier::new`.
+        #[wasm_bindgen(getter)]
+        pub fn verifier_preprocessing(&self) -> Vec<u8> {
+            self.out.verifier_preprocessing_bytes.clone()
         }
 
         #[wasm_bindgen(getter)]
@@ -184,6 +186,21 @@ mod wasm {
         #[wasm_bindgen(getter)]
         pub fn padded_cycles(&self) -> usize {
             self.out.padded_cycles
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn trace_ms(&self) -> f64 {
+            self.out.timings.trace_ms
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn setup_ms(&self) -> f64 {
+            self.out.timings.setup_ms
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn prove_ms(&self) -> f64 {
+            self.out.timings.prove_ms
         }
     }
 

@@ -1,8 +1,9 @@
 //! Validates the exact browser path natively: loads the artifacts written by
-//! `generate-preprocessing` from `frontend/public/`, then runs the modular
-//! prover (`JoltBackend::optimized()`) and verifier from those bytes.
+//! `generate-preprocessing` from `frontend/public/`, then runs the Akita
+//! prover (`JoltAkitaBackend::optimized()`) and verifier from those bytes,
+//! including the per-proof setup derivation the browser performs.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 // The lib is cdylib-only (rlib + `-C lto=fat` can't coexist for the wasm
@@ -10,37 +11,39 @@ use std::time::Instant;
 #[path = "../src/engine.rs"]
 mod engine;
 
-fn load(dir: &PathBuf, name: &str) -> Vec<u8> {
+fn load(dir: &Path, name: &str) -> Vec<u8> {
     let path = dir.join(name);
     std::fs::read(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"))
 }
 
-fn roundtrip(dir: &PathBuf, name: &str, inputs: &[u8]) {
+fn roundtrip(dir: &Path, schedules: &[u8], name: &str, inputs: &[u8]) {
     println!("[{name}] loading artifacts...");
-    let srs = load(dir, &format!("{name}_prover.bin"));
-    let verifier_bytes = load(dir, &format!("{name}_verifier.bin"));
+    let program_bytes = load(dir, &format!("{name}_program.bin"));
     let elf = load(dir, &format!("{name}.elf"));
 
     let start = Instant::now();
-    let prep = engine::build_prover_preprocessing(&srs, &verifier_bytes).expect("prover prep");
+    let ctx = engine::ProverContext::new(schedules, &program_bytes, &elf).expect("prover context");
     println!(
-        "[{name}] prover preprocessing deserialized in {:.2}s",
+        "[{name}] artifacts decoded in {:.2}s",
         start.elapsed().as_secs_f64()
     );
 
-    let start = Instant::now();
-    let out = engine::prove(&prep, &elf, inputs).expect("prove");
-    let prove_secs = start.elapsed().as_secs_f64();
+    let out = engine::prove(&ctx, inputs).expect("prove");
+    let t = out.timings;
+    let prove_secs = t.prove_ms / 1000.0;
     println!(
-        "[{name}] proved in {prove_secs:.2}s ({} cycles, padded {}, {:.1} kHz padded, proof {} bytes)",
+        "[{name}] trace {:.2}s, setup {:.2}s, prove {prove_secs:.2}s ({} cycles, padded {}, {:.1} kHz padded, proof {} bytes, verifier preprocessing {} bytes)",
+        t.trace_ms / 1000.0,
+        t.setup_ms / 1000.0,
         out.unpadded_cycles,
         out.padded_cycles,
         out.padded_cycles as f64 / prove_secs / 1000.0,
         out.proof_bytes.len(),
+        out.verifier_preprocessing_bytes.len(),
     );
 
-    let verifier_prep =
-        engine::decode_verifier_preprocessing(&verifier_bytes).expect("verifier prep");
+    let verifier_prep = engine::decode_verifier_preprocessing(&out.verifier_preprocessing_bytes)
+        .expect("verifier prep");
     let start = Instant::now();
     engine::verify(&verifier_prep, &out.proof_bytes, &out.io_bytes).expect("verify");
     println!("[{name}] verified in {:.3}s", start.elapsed().as_secs_f64());
@@ -54,14 +57,15 @@ use jolt_inlines_sha2 as _;
 
 fn main() {
     let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
+    let schedules = load(&public_dir, "akita_schedules.bin");
 
     let sha2_input: &[u8] = b"jolt wasm prover roundtrip test input";
     let inputs = postcard::to_allocvec(&sha2_input).expect("serialize");
-    roundtrip(&public_dir, "sha2", &inputs);
+    roundtrip(&public_dir, &schedules, "sha2", &inputs);
 
     let mut inputs = postcard::to_allocvec(&[5u8; 32]).expect("serialize");
     inputs.extend_from_slice(&postcard::to_allocvec(&100u32).expect("serialize"));
-    roundtrip(&public_dir, "sha2_chain", &inputs);
+    roundtrip(&public_dir, &schedules, "sha2_chain", &inputs);
 
     println!("All roundtrips passed!");
 }

@@ -19,7 +19,13 @@ interface ProverState {
 function initialProgramStates(): Record<ProgramName, ProgramState> {
   const states = {} as Record<ProgramName, ProgramState>
   for (const p of PROGRAMS) {
-    states[p] = { loadState: 'idle', proofBytes: null, programIoBytes: null, verifyResult: null }
+    states[p] = {
+      loadState: 'idle',
+      proofBytes: null,
+      programIoBytes: null,
+      verifierPreprocessingBytes: null,
+      verifyResult: null,
+    }
   }
   return states
 }
@@ -114,18 +120,21 @@ export function useProver() {
               ...prev.programStates[p],
               proofBytes: msg.proof,
               programIoBytes: msg.programIo,
+              verifierPreprocessingBytes: msg.verifierPreprocessing,
               verifyResult: null,
             },
           },
         }))
         log(p, `Proof generated in ${(msg.elapsed / 1000).toFixed(2)}s`)
+        log(
+          p,
+          `  trace ${(msg.traceMs / 1000).toFixed(2)}s · Akita setup ${(msg.setupMs / 1000).toFixed(2)}s · prove ${(msg.proveMs / 1000).toFixed(2)}s`,
+        )
         if (msg.numCycles != null)
           log(p, `RISC-V cycles: ${msg.numCycles.toLocaleString()}`)
         log(p, `Proof size: ${(msg.proofSize / 1024).toFixed(2)} KB`)
-        log(
-          p,
-          `Proof size (compressed): ${(msg.compressedProofSize / 1024).toFixed(2)} KB`,
-        )
+        if (msg.paddedCycles != null)
+          log(p, `Padded trace length: 2^${Math.log2(msg.paddedCycles)}`)
         if (msg.peakMemory != null)
           log(
             p,
@@ -174,7 +183,7 @@ export function useProver() {
 
     const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
     setStatus(`Initializing WASM (${numThreads} threads)...`, 'loading')
-    client.send({ type: 'init', data: { numThreads } })
+    client.send({ type: 'init', data: { numThreads, cacheBust: CACHE_BUST } })
 
     return () => client.terminate()
   }, [handleMessage, setStatus])
@@ -196,13 +205,9 @@ export function useProver() {
       setStatus(`Loading ${name} preprocessing...`, 'loading')
 
       const files = PROGRAM_FILES[name]
-      const [prover, verifier, elf] = await Promise.all([
-        fetch(`./${files.prover}?${CACHE_BUST}`).then((r) => {
-          if (!r.ok) throw new Error(`Failed to load ${files.prover}`)
-          return r.arrayBuffer()
-        }),
-        fetch(`./${files.verifier}?${CACHE_BUST}`).then((r) => {
-          if (!r.ok) throw new Error(`Failed to load ${files.verifier}`)
+      const [program, elf] = await Promise.all([
+        fetch(`./${files.program}?${CACHE_BUST}`).then((r) => {
+          if (!r.ok) throw new Error(`Failed to load ${files.program}`)
           return r.arrayBuffer()
         }),
         fetch(`./${files.elf}?${CACHE_BUST}`).then((r) => {
@@ -210,29 +215,22 @@ export function useProver() {
           return r.arrayBuffer()
         }),
       ])
-
       log(
         name,
-        `Prover preprocessing: ${(prover.byteLength / 1024 / 1024).toFixed(2)} MB`,
-      )
-      log(
-        name,
-        `Verifier preprocessing: ${(verifier.byteLength / 1024 / 1024).toFixed(2)} MB`,
+        `Program preprocessing: ${(program.byteLength / 1024 / 1024).toFixed(2)} MB`,
       )
       log(name, `Guest ELF: ${(elf.byteLength / 1024).toFixed(2)} KB`)
-      log(name, 'Initializing prover & verifier...')
-
+      log(name, 'Initializing prover...')
       client.send(
         {
           type: 'load-program',
           data: {
             program: name,
-            proverPreprocessing: prover,
-            verifierPreprocessing: verifier,
+            programPreprocessing: program,
             elfBytes: elf,
           },
         },
-        [prover, verifier, elf],
+        [program, elf],
       )
     },
     [log, setStatus],
@@ -311,7 +309,7 @@ export function useProver() {
   const verify = useCallback(
     (program: ProgramName) => {
       const ps = state.programStates[program]
-      if (!ps?.proofBytes || !ps?.programIoBytes) {
+      if (!ps?.proofBytes || !ps?.programIoBytes || !ps?.verifierPreprocessingBytes) {
         log(program, 'No proof to verify. Generate a proof first.')
         return
       }
@@ -323,6 +321,7 @@ export function useProver() {
           program,
           proof: ps.proofBytes,
           programIo: ps.programIoBytes,
+          verifierPreprocessing: ps.verifierPreprocessingBytes,
         },
       })
     },
