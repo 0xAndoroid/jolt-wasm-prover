@@ -42,8 +42,8 @@ const CPU_TAIL_BITS: u32 = 12;
 const MIN_ROUNDS: usize = 4;
 const RANGE_V: [i64; 4] = [0, 2, 6, 12];
 
-/// Region slots of one round's RUN_SEQ.
-const R_PARAMS: u32 = 0;
+/// Region slots of one round's RUN_SEQ; slot 0 is the params block the proxy
+/// reads directly.
 const R_EQ: u32 = 1;
 const R_OUT: u32 = 2;
 const R_DIGITS: u32 = 3;
@@ -227,6 +227,7 @@ struct Pass {
     params: [u32; 16],
 }
 
+#[allow(clippy::too_many_arguments)]
 fn params(
     n_units: u32,
     inner_bits: u32,

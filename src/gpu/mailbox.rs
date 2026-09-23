@@ -51,18 +51,16 @@ pub struct Mailbox {
     error: [AtomicU32; ERROR_WORDS],
 }
 
-const ZERO: AtomicU32 = AtomicU32::new(0);
-
 static MAILBOX: Mailbox = Mailbox {
-    doorbell: ZERO,
-    status: ZERO,
-    op: ZERO,
-    _pad: ZERO,
-    args: [ZERO; MAX_ARGS],
-    regions: [ZERO; MAX_REGIONS * 3],
-    ret: [ZERO; 8],
-    error_len: ZERO,
-    error: [ZERO; ERROR_WORDS],
+    doorbell: AtomicU32::new(0),
+    status: AtomicU32::new(0),
+    op: AtomicU32::new(0),
+    _pad: AtomicU32::new(0),
+    args: [const { AtomicU32::new(0) }; MAX_ARGS],
+    regions: [const { AtomicU32::new(0) }; MAX_REGIONS * 3],
+    ret: [const { AtomicU32::new(0) }; 8],
+    error_len: AtomicU32::new(0),
+    error: [const { AtomicU32::new(0) }; ERROR_WORDS],
 };
 
 /// One in-flight op at a time: the mailbox has a single set of slots.
