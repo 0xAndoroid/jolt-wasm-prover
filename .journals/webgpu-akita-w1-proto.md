@@ -32,3 +32,8 @@ Branch `wgpu-akita/w1-kernel-proto`, files `bench/proto/`. Decision ledger: `.au
 
 Variant files v2b–v14 dropped (generator builds them in memory); Params trimmed to the fields kernels read;
 `stress` shape added for the 65536-term digit bound; GPU errors now fail the run. Numbers re-measured within 1 %.
+
+## Review 2 (PR #6)
+
+A correctness FAIL now exits 1 (it printed FAIL and exited 0); `stress` A = p−1 everywhere so coefficient 511 really
+sums 65536 × 0xFFFF (the {p−1, 0} pattern reached ~32.9k of the bound). Stress and small re-run PASS.

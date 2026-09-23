@@ -18,9 +18,9 @@ Variants v2b–v14 are not checked in: `--variant vN` builds the source in memor
 
 Correctness shapes (Python big-int reference, independent of the kernel: `rot(A,s)[i] = A_ext[(i−s) mod 1024]`
 with `A_ext = [A, −A]`, sum, `% p`): `small` checks every coefficient (8 columns × 4 blocks × 512) and covers A ∈ {p−1, 0},
-rows with no committed column, hot = 0 with and without the mask bit, every shift 0..511 (asserted); `stress` puts
-65536 terms with digit 0xFFFF into one chunk (2048 positions × 32 rows, all committed, A ∈ {p−1, 0}) and checks
-every coefficient; `full` spot-checks 36 coefficients.
+rows with no committed column, hot = 0 with and without the mask bit, every shift 0..511 (asserted); `stress` (2048 positions × 32 rows,
+all committed, A = p−1 everywhere, `--chunk 2048`) makes coefficient 511 sum exactly 65536 terms of digit 0xFFFF in one
+accumulator and checks every coefficient; `full` spot-checks 36 coefficients.
 
 ## Results (full 2^18 shape, median GPU timestamp of 5–10 runs; wall = batch of N submits / N)
 
@@ -35,7 +35,7 @@ every coefficient; `full` spot-checks 36 coefficients.
 | v6 | 4 x 2, full-limb + high-half accumulators | 32 | 20.8 | 21.4 | PASS 36/36 |
 | v7 | 4 x 2, wrapping sum + carry counters | 32 | 25.1 | 25.8 | PASS 36/36 |
 | v8 | 4 x 4, 128 | 32 | 21.8 | 22.4 | PASS 36/36 |
-| **v9 = commit_accumulate.wgsl** | **2 x 4, 128** | **64** | **17.05** | **17.4** | **PASS 68/68 + small exact 16384/16384 + stress exact 1024/1024** |
+| **v9 = commit_accumulate.wgsl** | **2 x 4, 128** | **64** | **17.05** | **17.4** | **PASS 68/68 + small exact 16384/16384 + stress exact 1024/1024** (`--spot 64`) |
 | v10 | 2 x 2, 256 | 32 | 20.2 | 21.2 | PASS 36/36 |
 | v11 | 2 x 4, full-limb + high-half | 32 | 20.1 | 22.0 | PASS 36/36 |
 | v12 | 2 x 8, 64 (128 accumulator words) | 32 | 44.1 | 46.2 | PASS 36/36 (register spill) |

@@ -25,8 +25,8 @@ SHAPES = {
     # T rows, real columns, column_capacity, blocks_per_column, positions_per_block
     "small": dict(T=8192, cols=8, colcap=8, blocks=4, positions=64),
     "full": dict(T=262144, cols=57, colcap=64, blocks=4, positions=2048),
-    # digit-accumulator bound: 2048 positions x 32 rows, every row committed, A in {p-1, 0} -> 65536 terms of
-    # digit 0xFFFF in one chunk (run with --chunk 2048). Checked exactly.
+    # digit-accumulator bound: 2048 positions x 32 rows, every row committed, A = p-1 everywhere -> coefficient 511
+    # sums 65536 terms of digit 0xFFFF in one chunk (run with --chunk 2048). Checked exactly.
     "stress": dict(T=65536, cols=2, colcap=8, blocks=1, positions=2048),
 }
 MAX_CHUNK = 2048  # 2048 positions x 32 rows = 65536 terms per digit accumulator, 65536 * 0xFFFF < 2^32
@@ -42,8 +42,7 @@ def gen_data(shape, seed):
     assert T == blocks * pos * 32
     pm1 = np.array([0x5808, MASK32, MASK32, MASK32], dtype=np.uint32)  # p - 1
     if shape is SHAPES["stress"]:
-        A = np.zeros((pos, 512, 4), dtype=np.uint32)
-        A[:, 0::2] = pm1
+        A = np.broadcast_to(pm1, (pos, 512, 4)).copy()
         hot = rng.integers(0, 16, size=(T, cols), dtype=np.uint8)
         code = np.full((T, colcap), 0xFF, dtype=np.uint8)
         code[:, :cols] = hot
@@ -187,6 +186,8 @@ def main():
         summary["correctness"] = dict(checked=checked, mismatches=mism, canonical=canon, padding_zero=pad_zero,
                                       verdict="PASS" if (mism == 0 and canon and pad_zero) else "FAIL", verify_s=round(time.time() - t0, 1))
     print(json.dumps(summary))
+    if not args.no_verify and summary["correctness"]["verdict"] != "PASS":
+        sys.exit(1)
 
 
 if __name__ == "__main__":
