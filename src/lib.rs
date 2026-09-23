@@ -51,8 +51,8 @@ mod wasm {
     }
 
     #[wasm_bindgen]
-    pub fn set_gpu_enabled(enabled: bool) {
-        crate::gpu::set_enabled(enabled)
+    pub fn set_gpu_enabled() {
+        crate::gpu::set_enabled()
     }
 
     #[wasm_bindgen]

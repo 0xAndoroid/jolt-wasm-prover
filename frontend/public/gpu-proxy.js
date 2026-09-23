@@ -29,7 +29,6 @@ const SHADERS = ['fp128_ops'];
 let memory = null;
 let base = 0;
 let device = null;
-let wgslBase = '/wgsl/';
 let fp128Source = '';
 const shaderSources = new Map();
 const pipelines = new Map();
@@ -43,7 +42,7 @@ const u32 = () => new Uint32Array(memory.buffer);
 const align4 = (n) => (n + 3) & ~3;
 
 async function fetchText(name) {
-    const r = await fetch(`${wgslBase}${name}.wgsl`);
+    const r = await fetch(`/wgsl/${name}.wgsl`);
     if (!r.ok) throw new Error(`fetch ${name}.wgsl: ${r.status}`);
     return r.text();
 }
@@ -215,7 +214,6 @@ async function loop() {
 async function init(data) {
     memory = data.memory;
     base = data.mailboxPtr >>> 2;
-    if (data.wgslBase) wgslBase = data.wgslBase;
     if (!navigator.gpu) return { type: 'unavailable', reason: 'navigator.gpu missing (WebGPU unsupported or insecure context)' };
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) return { type: 'unavailable', reason: 'requestAdapter returned null' };

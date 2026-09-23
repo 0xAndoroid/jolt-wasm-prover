@@ -144,8 +144,11 @@ pub fn call(op: u32, args: &[u32], regions: &[Region]) -> Result<[u32; 8], GpuEr
     let base = ptr() / 4;
     Atomics::notify(&view, base + WORD_DOORBELL)
         .map_err(|e| GpuError(format!("Atomics.notify failed: {e:?}")))?;
+    // No timeout: abandoning an in-flight op would let a slow proxy write a
+    // `readback` region after the caller has freed it, so a dead proxy blocks
+    // this thread forever rather than risking that.
     while m.status.load(Ordering::SeqCst) == STATUS_BUSY {
-        // Returns "ok" | "not-equal" | "timed-out"; any of them re-checks.
+        // Returns "ok" | "not-equal"; both re-check.
         Atomics::wait(&view, base + WORD_STATUS, STATUS_BUSY as i32)
             .map_err(|e| GpuError(format!("Atomics.wait failed: {e:?}")))?;
     }

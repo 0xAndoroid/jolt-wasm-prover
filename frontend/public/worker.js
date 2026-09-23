@@ -44,7 +44,7 @@ async function initGpu() {
     const report = await new Promise((resolve) => {
         gpuProxy.onmessage = (e) => resolve(e.data);
         gpuProxy.onerror = (e) => resolve({ type: 'unavailable', reason: e.message || 'gpu-proxy failed to load' });
-        gpuProxy.postMessage({ type: 'init', memory: wasmExports.memory, mailboxPtr, wgslBase: '/wgsl/' });
+        gpuProxy.postMessage({ type: 'init', memory: wasmExports.memory, mailboxPtr });
     });
     if (report.type !== 'ready') {
         gpuProxy.terminate();
@@ -52,7 +52,7 @@ async function initGpu() {
         set_gpu_unavailable();
         return { status: 'unavailable', reason: report.reason };
     }
-    set_gpu_enabled(true);
+    set_gpu_enabled();
     return { status: 'ready', adapter: report.adapter, features: report.features, limits: report.limits };
 }
 

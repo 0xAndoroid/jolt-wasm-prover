@@ -22,13 +22,9 @@ const STATE_ENABLED: u32 = 2;
 
 static STATE: AtomicU32 = AtomicU32::new(STATE_DISABLED);
 
-pub fn set_enabled(enabled: bool) {
-    let state = if enabled {
-        STATE_ENABLED
-    } else {
-        STATE_DISABLED
-    };
-    STATE.store(state, Ordering::SeqCst);
+/// The proxy reported `ready`: `preflight` may enter the mailbox.
+pub fn set_enabled() {
+    STATE.store(STATE_ENABLED, Ordering::SeqCst);
 }
 
 /// JS asked for the GPU but the proxy found no adapter (or the feature is
