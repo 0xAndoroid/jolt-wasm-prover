@@ -1,7 +1,7 @@
 """Standalone WebGPU prototype of the Akita one-hot trace commit accumulate.
 
     uv run --with playwright --with numpy python bench/proto/commit_proto.py \
-        [--shape small|full] [--variant best|v1|v2b|...|v14] [--chunk N] [--repeat N] [--spot N] [--seed S]
+        [--shape small|full|stress] [--variant best|v1|v2b|...|v14] [--chunk N] [--repeat N] [--spot N] [--seed S]
 
 Launches Playwright's headless WebKit, serves bench/proto/harness.html + shaders + data via
 page.route on http://localhost:7777, runs prep -> main -> reduce, verifies against a Python
@@ -14,7 +14,7 @@ import numpy as np
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_variants import BEST, VARIANTS as GEN_VARIANTS  # noqa: E402
+from gen_variants import BEST, VARIANTS as GEN_VARIANTS, source as gen_source  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 C = 0xFFFFA7F7
@@ -25,7 +25,11 @@ SHAPES = {
     # T rows, real columns, column_capacity, blocks_per_column, positions_per_block
     "small": dict(T=8192, cols=8, colcap=8, blocks=4, positions=64),
     "full": dict(T=262144, cols=57, colcap=64, blocks=4, positions=2048),
+    # digit-accumulator bound: 2048 positions x 32 rows, every row committed, A in {p-1, 0} -> 65536 terms of
+    # digit 0xFFFF in one chunk (run with --chunk 2048). Checked exactly.
+    "stress": dict(T=65536, cols=2, colcap=8, blocks=1, positions=2048),
 }
+MAX_CHUNK = 2048  # 2048 positions x 32 rows = 65536 terms per digit accumulator, 65536 * 0xFFFF < 2^32
 VARIANTS = {"v1": dict(file="commit_accumulate_v1.wgsl", chunked=False, cols=1, mode=0),
             "best": dict(file="commit_accumulate.wgsl", chunked=True, cols=GEN_VARIANTS[BEST][0], mode=0)}
 for _name, (_cols, _cpt, _scheme) in GEN_VARIANTS.items():
@@ -36,11 +40,18 @@ def gen_data(shape, seed):
     rng = np.random.default_rng(seed)
     T, cols, colcap, blocks, pos = (shape[k] for k in ("T", "cols", "colcap", "blocks", "positions"))
     assert T == blocks * pos * 32
+    pm1 = np.array([0x5808, MASK32, MASK32, MASK32], dtype=np.uint32)  # p - 1
+    if shape is SHAPES["stress"]:
+        A = np.zeros((pos, 512, 4), dtype=np.uint32)
+        A[:, 0::2] = pm1
+        hot = rng.integers(0, 16, size=(T, cols), dtype=np.uint8)
+        code = np.full((T, colcap), 0xFF, dtype=np.uint8)
+        code[:, :cols] = hot
+        return A, code
     # A: positions x 512 coefficients x 4 limbs, canonical (< p).
     A = rng.integers(0, 1 << 32, size=(pos, 512, 4), dtype=np.uint64).astype(np.uint32)
     top = (A[..., 1] == MASK32) & (A[..., 2] == MASK32) & (A[..., 3] == MASK32)
     A[top, 3] = 0
-    pm1 = np.array([0x5808, MASK32, MASK32, MASK32], dtype=np.uint32)  # p - 1
     A[0, 0] = pm1
     A[0, 1] = 0
     A[1, 511] = pm1
@@ -54,6 +65,11 @@ def gen_data(shape, seed):
     code[:, :cols] = np.where(committed, hot, 0xFF)
     code[0:4, :] = 0xFF                       # rows with every column uncommitted
     code[T - 1, :cols] = 0                    # last row: hot = 0 with mask bit on every column
+    if shape is SHAPES["small"]:
+        r = np.arange(T) % 32
+        shifts = (16 * r[:, None] + code[:, :cols])[code[:, :cols] < 16]
+        assert len(np.unique(shifts)) == 512, "small shape must exercise every shift 0..511"
+        assert ((hot[:, :cols] == 0) & ~mask).any(), "small shape must have hot = 0 without the mask bit"
     return A, code
 
 
@@ -104,8 +120,8 @@ def main():
     pos, colcap, blocks = shape["positions"], shape["colcap"], shape["blocks"]
     chunk = min(args.chunk, pos) if var["chunked"] else pos
     num_chunks = pos // chunk
-    assert pos % chunk == 0 and colcap % 8 == 0
-    params = dict(positions=pos, colcap_vec2=colcap // 8, chunk=chunk, num_chunks=num_chunks, blocks=blocks, colcap=colcap, part_mode=var["mode"])
+    assert pos % chunk == 0 and colcap % 8 == 0 and chunk <= MAX_CHUNK
+    params = dict(positions=pos, num_chunks=num_chunks, blocks=blocks, colcap=colcap, part_mode=var["mode"])
     dispatch = [num_chunks, colcap // var["cols"], blocks] if var["chunked"] else [512 // 64, colcap, blocks]
     constants = {"CHUNK": chunk} if var["chunked"] else {}
 
@@ -118,6 +134,8 @@ def main():
         "/a.bin": ("application/octet-stream", A.tobytes()),
         "/hot.bin": ("application/octet-stream", code.tobytes()),
     }
+    if args.variant in GEN_VARIANTS:
+        files["/" + var["file"]] = ("text/plain", gen_source(args.variant).encode())
 
     def route(r):
         path = r.request.url.split("localhost:7777", 1)[1].split("?")[0]
@@ -136,7 +154,7 @@ def main():
         page.goto("http://localhost:7777/harness.html")
         out = page.evaluate("window.result")
         browser.close()
-    if "error" in out:
+    if "error" in out or out["errors"]:
         print(json.dumps(out, indent=1))
         sys.exit(1)
 
@@ -151,7 +169,7 @@ def main():
         canon = bool((R < P).all())
         pad_zero = bool((R[shape["cols"]:] == 0).all())
         mism = 0
-        if args.shape == "small":
+        if args.shape != "full":
             checked = shape["cols"] * blocks * 512
             for c in range(shape["cols"]):
                 for b in range(blocks):

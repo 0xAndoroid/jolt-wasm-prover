@@ -35,7 +35,7 @@ window.result = (async () => {
   for (const c of [prep, main, reduce]) compileInfo[c.name] = { ms: c.ms, msgs: c.msgs, err: c.err };
   if (prep.err || main.err || reduce.err) return { error: 'pipeline creation failed', compileInfo };
 
-  const P = cfg.params; // {positions, colcap_vec2, chunk, num_chunks, blocks, colcap}
+  const P = cfg.params; // {positions, num_chunks, blocks, colcap, part_mode}
   const nCoef = P.colcap * P.blocks * 512;
   const A = await fetchBuf('/a.bin');
   const HOT = await fetchBuf('/hot.bin');
@@ -48,7 +48,7 @@ window.result = (async () => {
   const bufRes = mk(nCoef * 16, ST | CS);
   const bufMap = mk(nCoef * 16, GPUBufferUsage.MAP_READ | CD);
   const bufParams = mk(32, GPUBufferUsage.UNIFORM | CD);
-  device.queue.writeBuffer(bufParams, 0, new Uint32Array([P.positions, P.colcap_vec2, P.chunk, P.num_chunks, P.blocks, P.colcap, P.part_mode, 0]));
+  device.queue.writeBuffer(bufParams, 0, new Uint32Array([P.positions, P.num_chunks, P.blocks, P.colcap, P.part_mode, 0, 0, 0]));
 
   // Upload timing: writeBuffer + queue flush, wall clock.
   const timedUpload = async (buf, data) => {

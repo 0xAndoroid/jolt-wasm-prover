@@ -27,3 +27,8 @@ Branch `wgpu-akita/w1-kernel-proto`, files `bench/proto/`. Decision ledger: `.au
 - Load reuse across contributions (needs ≥ 16 columns of accumulators per thread), padded `S` to drop the index masks,
   chunk/partial-buffer tradeoff at 2^20+ (128 MB PART at chunk 64; run block ranges sequentially or chunk 256).
 - Integration must pack hot+mask into the byte-code layout (0xFF = uncommitted) and pass CHUNK as an override.
+
+## Review 1 (PR #6)
+
+Variant files v2b–v14 dropped (generator builds them in memory); Params trimmed to the fields kernels read;
+`stress` shape added for the 65536-term digit bound; GPU errors now fail the run. Numbers re-measured within 1 %.

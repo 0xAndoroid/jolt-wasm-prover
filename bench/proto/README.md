@@ -7,9 +7,20 @@ No Rust, no wasm. Numbers below: Apple M5 Max (40 GPU cores), Playwright headles
 
 ```
 uv run --with playwright --with numpy python bench/proto/commit_proto.py --shape full            # chosen kernel
-uv run --with playwright --with numpy python bench/proto/commit_proto.py --shape small --variant v5 --chunk 16
-uv run python bench/proto/gen_variants.py                                                          # regenerate kernels
+uv run --with playwright --with numpy python bench/proto/commit_proto.py --shape small --variant v9 --chunk 64   # exact, 16384 coefs
+uv run --with playwright --with numpy python bench/proto/commit_proto.py --shape stress --chunk 2048           # digit-accumulator bound
+uv run python bench/proto/gen_variants.py                                                          # rewrite commit_accumulate.wgsl
 ```
+
+Files: `common.wgsl` (Params, constants) · `prep.wgsl` · `commit_accumulate.wgsl` (chosen, generated) · `reduce.wgsl` ·
+`commit_accumulate_v1.wgsl` (hand-written baseline) · `harness.html` · `commit_proto.py` · `gen_variants.py`.
+Variants v2b–v14 are not checked in: `--variant vN` builds the source in memory from `gen_variants.VARIANTS`.
+
+Correctness shapes (Python big-int reference, independent of the kernel: `rot(A,s)[i] = A_ext[(i−s) mod 1024]`
+with `A_ext = [A, −A]`, sum, `% p`): `small` checks every coefficient (8 columns × 4 blocks × 512) and covers A ∈ {p−1, 0},
+rows with no committed column, hot = 0 with and without the mask bit, every shift 0..511 (asserted); `stress` puts
+65536 terms with digit 0xFFFF into one chunk (2048 positions × 32 rows, all committed, A ∈ {p−1, 0}) and checks
+every coefficient; `full` spot-checks 36 coefficients.
 
 ## Results (full 2^18 shape, median GPU timestamp of 5–10 runs; wall = batch of N submits / N)
 
@@ -24,7 +35,7 @@ uv run python bench/proto/gen_variants.py                                       
 | v6 | 4 x 2, full-limb + high-half accumulators | 32 | 20.8 | 21.4 | PASS 36/36 |
 | v7 | 4 x 2, wrapping sum + carry counters | 32 | 25.1 | 25.8 | PASS 36/36 |
 | v8 | 4 x 4, 128 | 32 | 21.8 | 22.4 | PASS 36/36 |
-| **v9 = commit_accumulate.wgsl** | **2 x 4, 128** | **64** | **17.05** | **17.4** | **PASS 68/68 + small exact 16384/16384** |
+| **v9 = commit_accumulate.wgsl** | **2 x 4, 128** | **64** | **17.05** | **17.4** | **PASS 68/68 + small exact 16384/16384 + stress exact 1024/1024** |
 | v10 | 2 x 2, 256 | 32 | 20.2 | 21.2 | PASS 36/36 |
 | v11 | 2 x 4, full-limb + high-half | 32 | 20.1 | 22.0 | PASS 36/36 |
 | v12 | 2 x 8, 64 (128 accumulator words) | 32 | 44.1 | 46.2 | PASS 36/36 (register spill) |
@@ -60,8 +71,9 @@ gather (7.4e9 x 16 B = 118 GB, ~7 TB/s) is the floor of this formulation; ALU ad
 - `hot` (storage, `array<u32>` viewed as bytes): row-major, `column_capacity` bytes per row (64 at this shape →
   16 MB), byte = `hot[row][c]` (0..15) if committed (`hot != 0 || mask bit c`), else `0xFF`; padding columns 0xFF.
   This replaces the separate `hot[row][c]` u8 + `mask[row]` u64 arrays: the CPU folds the mask in while packing.
-- `Params` uniform (8 x u32): positions_per_block, column_capacity/8, chunk, num_chunks, blocks_per_column,
-  column_capacity, part_mode (0), pad. `CHUNK` is also a pipeline override constant (must equal `chunk`).
+- `Params` uniform (5 x u32, 32-byte buffer): positions_per_block, num_chunks, blocks_per_column, column_capacity,
+  part_mode (0). The chunk size is the main kernel's `CHUNK` override constant; `num_chunks = positions / CHUNK`,
+  `CHUNK ≤ 2048` (digit accumulators: 2048 positions × 32 rows = 65536 terms; `commit_proto.py` asserts this).
 - `PART` scratch: `num_chunks x column_capacity x blocks x 512 x 32 B` (128 MB at chunk 64, 64 MB at chunk 128
   (+0.7 ms)). Index `((chunk*colcap + c)*blocks + b)*512 + i`, two vec4: digits {0,2,4,6} then {1,3,5,7}.
 - `RES`: `(c*blocks + b)*512 + i` → vec4<u32> canonical fp128, i.e. rings ordered column-major then block; 2 MB.

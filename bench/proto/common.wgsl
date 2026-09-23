@@ -5,13 +5,10 @@
 
 struct Params {
   positions: u32,    // positions_per_block (2048 at 2^18)
-  colcap_vec2: u32,  // hot row stride in vec2<u32> units = column_capacity / 8
-  chunk: u32,        // positions per workgroup (V2)
-  num_chunks: u32,   // positions / chunk
+  num_chunks: u32,   // positions / CHUNK (CHUNK is the main kernel's override constant)
   blocks: u32,       // blocks_per_column
-  colcap: u32,       // column_capacity
-  part_mode: u32,    // 0: 16-bit digit partials; 1: (wrapping limb sum, carry count) partials
-  _pad1: u32,
+  colcap: u32,       // column_capacity (hot row stride in bytes)
+  part_mode: u32,    // 0: 16-bit digit partials; 1: (wrapping limb sum, carry count) partials (v7 only)
 }
 
 const C_LO: u32 = 0xFFFFA7F7u;          // 2^128 mod p

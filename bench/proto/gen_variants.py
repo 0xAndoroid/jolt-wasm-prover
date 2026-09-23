@@ -1,6 +1,8 @@
-"""Generates the unrolled V2-family kernels (bench/proto/commit_accumulate_*.wgsl).
+"""Generates the unrolled V2-family kernels.
 
-    uv run python bench/proto/gen_variants.py
+    uv run python bench/proto/gen_variants.py      # rewrites commit_accumulate.wgsl (= VARIANTS[BEST])
+
+commit_proto.py --variant vN builds the other variants in memory via source(); they are not checked in.
 
 Each variant: workgroup = (chunk of CHUNK positions, group of COLS columns, block); A2[q] staged in
 workgroup memory as 32-bit limbs; every thread owns CPT coefficients (i, i + 512/CPT, ...) x COLS
@@ -67,7 +69,7 @@ SCHEMES = {
 }
 
 
-def build(name, title, cols, cpt, scheme="digits"):
+def build(title, cols, cpt, scheme):
     sch = SCHEMES[scheme]
     step = 512 // cpt
     acc = []
@@ -93,9 +95,8 @@ def build(name, title, cols, cpt, scheme="digits"):
         for t in range(cpt):
             store.append(f"  {{ let o = ((chunk * P.colcap + cbase + {c}u) * P.blocks + b) * 512u + i + {t * step}u; "
                          + sch["store"].format(a=f"{c}_{t}") + " }")
-    src = HEAD.format(title=title, cols=cols, cpt=cpt, acc_decl="\n".join(acc), words=words,
-                      cols_code="\n".join(cols_code), store="\n".join(store))
-    (HERE / f"{name}.wgsl").write_text(src)
+    return HEAD.format(title=title, cols=cols, cpt=cpt, acc_decl="\n".join(acc), words=words,
+                       cols_code="\n".join(cols_code), store="\n".join(store))
 
 
 VARIANTS = {
@@ -117,10 +118,13 @@ VARIANTS = {
 
 BEST = "v9"
 
+
+def source(name):
+    cols, cpt, scheme = VARIANTS[name]
+    label = f"CHOSEN KERNEL (= {BEST})" if name == BEST else name.upper()
+    return build(f"{label}: {cols} columns x {cpt} coefficients per thread ({512 // cpt} threads), "
+                 f"{cols * cpt * 8} accumulator words, scheme={scheme}.", cols, cpt, scheme)
+
+
 if __name__ == "__main__":
-    cols, cpt, scheme = VARIANTS[BEST]
-    build("commit_accumulate", f"CHOSEN KERNEL (= {BEST}): {cols} columns x {cpt} coefficients per thread "
-          f"({512 // cpt} threads), {cols * cpt * 8} accumulator words, scheme={scheme}.", cols, cpt, scheme)
-    for name, (cols, cpt, scheme) in VARIANTS.items():
-        build(f"commit_accumulate_{name}", f"{name.upper()}: {cols} columns x {cpt} coefficients per thread "
-              f"({512 // cpt} threads), {cols * cpt * 8} accumulator words, scheme={scheme}.", cols, cpt, scheme)
+    (HERE / "commit_accumulate.wgsl").write_text(source(BEST))
