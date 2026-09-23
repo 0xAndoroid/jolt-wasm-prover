@@ -3,8 +3,8 @@
 # native roundtrip can compare and cross-verify them:
 #
 #   node server.mjs &            # restart after every wasm/frontend rebuild (it caches)
-#   uv run --with playwright python bench/dump_browser_proof.py --out /tmp/browser
-#   JOLT_ROUNDTRIP_VERIFY_DIR=/tmp/browser cargo run --release --features native --bin test-roundtrip
+#   uv run --with playwright python bench/dump_browser_proof.py --out "$TMPDIR/browser"
+#   JOLT_ROUNDTRIP_VERIFY_DIR="$TMPDIR/browser" cargo run --release --features native --bin test-roundtrip
 #
 # The default input is the sha2 roundtrip input of preprocessing/test_roundtrip.rs.
 

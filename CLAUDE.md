@@ -64,7 +64,7 @@ uv run --with playwright python bench/test_fp128_wgsl.py                        
 uv run --with playwright python bench/proto/commit_proto.py --shape full                          # shipped commit kernels vs Python reference (also --shape small --variant v9 --chunk 64, --shape stress --chunk 2048)
 ```
 
-Cross-target proof check (native vs browser bytes for the same program/input): `JOLT_ROUNDTRIP_DUMP_DIR=DIR` makes `test-roundtrip` write `{name}_{proof,io,verifier_preprocessing}.bin`; `uv run --with playwright python bench/dump_browser_proof.py --out DIR` dumps the browser's sha2 proof of the roundtrip input; `JOLT_ROUNDTRIP_VERIFY_DIR=DIR` makes `test-roundtrip` compare them and verify the browser proof natively. Known state (abbcf0b): both verify in their own target, bytes differ in `joint_opening_proof`, native rejects the browser proof — upstream akita, see `cargo test --release --features native --bin test-roundtrip -- --ignored sha2_proof_matches_browser_digest`.
+Cross-target proof check (native vs browser proof bytes, native verify of the browser proof): README "Cross-target proof check" — `bench/dump_browser_proof.py` + `JOLT_ROUNDTRIP_{DUMP,VERIFY}_DIR` on `test-roundtrip`. Known state: the native verifier rejects browser proofs (`joint_opening_proof` diverges, upstream akita); `--ignored sha2_proof_matches_browser_digest` tracks it.
 
 `bench_webgpu.py` needs `node server.mjs` restarted after every wasm/frontend rebuild (it caches). GPU-commit chunk rule: CHUNK = smallest of 64..2048 dividing P with PART scratch `(P/CHUNK)·64·blocks·512·32 B` ≤ 256 MiB; GPU memory at 2^21 ≈ 576 MiB (A 64 + A2 128 + codes 128 + PART 256).
 
