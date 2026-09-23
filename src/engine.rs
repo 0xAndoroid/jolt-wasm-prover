@@ -124,6 +124,7 @@ pub struct ProveOutput {
     pub unpadded_cycles: usize,
     pub padded_cycles: usize,
     pub timings: PhaseTimings,
+    #[cfg(target_arch = "wasm32")]
     pub gpu: crate::gpu::GpuReport,
 }
 
@@ -142,6 +143,7 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
     };
 
     // Outside the phase clock: gpu=on overhead is exactly this preflight.
+    #[cfg(target_arch = "wasm32")]
     let mut gpu = crate::gpu::preflight();
 
     let mut clock = Clock::start();
@@ -191,7 +193,10 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
     )
     .map_err(|e| format!("prove error: {e}"))?;
     let prove_ms = clock.lap();
-    gpu.commit = crate::gpu::take_commit_report();
+    #[cfg(target_arch = "wasm32")]
+    {
+        gpu.commit = crate::gpu::take_commit_report();
+    }
 
     Ok(ProveOutput {
         proof_bytes: encode(&proof, "proof")?,
@@ -204,6 +209,7 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
             setup_ms,
             prove_ms,
         },
+        #[cfg(target_arch = "wasm32")]
         gpu,
     })
 }
