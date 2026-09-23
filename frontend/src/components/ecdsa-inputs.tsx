@@ -29,7 +29,7 @@ export function EcdsaInputs() {
         ))}
       </dl>
       <p className="text-xs text-muted-foreground">
-        Fixed secp256k1 test vector; the field arithmetic runs through the{' '}
+        Fixed secp256k1 test vector; field multiplication and division run through the{' '}
         <code>jolt-inlines-secp256k1</code> inlines. A proof that verifies means the
         signature is valid — an invalid signature spoils the proof so it cannot verify.
       </p>
