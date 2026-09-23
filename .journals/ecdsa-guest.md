@@ -24,7 +24,14 @@ Branch `feat/ecdsa-inline-guest`, card 568, orchestrator task d03fb23b.
    WebKit gate (macbook-home, wasm 22.4 MiB): ECDSA GPU 2.10 s / CPU 9.19 s,
    proof SHA-256 501fd2b7… identical, verify VALID both; SHA-256 + Keccak +
    Chromium + dead-proxy sections unchanged and green; no overflow 375/1440.
-3. review i/3 — 
+3. review 1/3 — opus-max (70117802): 5 findings, all self-fixed (d88be85 f4d6afe a598177).
+   review 2/3 — opus-max (06668770): 1 copy finding fixed (34b18dc).
+   review 3/3 — opus-max (b22a028a): 2 nits (copy wording, comment) fixed
+   (571f467 1fc1a88); CI green. Merged despite non-zero round-3 count: both
+   findings were self-fixed text nits, substance (vector, limb order, postcard
+   bytes, TS types, UI test, layout) cleared three times independently.
+   Follow-ups (pre-existing): native vs wasm proof bytes differ (both verify);
+   npm run lint 6 errors in untouched files; engine::verify accepts io.panic.
 4. merge 1/1 — 
 5. deploy 1/1 — 
 
