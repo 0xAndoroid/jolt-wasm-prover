@@ -1,0 +1,131 @@
+<!doctype html>
+<html><body><script>
+// Driven by commit_proto.py: fetches /config.json, /a.bin, /hot.bin, the shader sources, runs
+// prep -> main -> reduce, times everything, returns JSON + base64 result via window.result.
+const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+const fetchBuf = async (p) => new Uint8Array(await (await fetch(p)).arrayBuffer());
+const fetchText = async (p) => (await fetch(p)).text();
+const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+
+window.result = (async () => {
+  const cfg = await (await fetch('/config.json')).json();
+  const adapter = await navigator.gpu.requestAdapter();
+  const hasTs = adapter.features.has('timestamp-query');
+  const device = await adapter.requestDevice({ requiredFeatures: hasTs ? ['timestamp-query'] : [], requiredLimits: { maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize, maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup, maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX, maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize, maxBufferSize: adapter.limits.maxBufferSize } });
+  const errors = [];
+  device.addEventListener('uncapturederror', (e) => errors.push(String(e.error.message)));
+
+  const [common, prepSrc, mainSrc, reduceSrc] = await Promise.all(
+    ['/common.wgsl', '/prep.wgsl', '/' + cfg.variant_file, '/reduce.wgsl'].map(fetchText));
+  const compile = async (name, src, constants) => {
+    const t0 = performance.now();
+    const mod = device.createShaderModule({ code: common + '\n' + src });
+    const info = await mod.getCompilationInfo();
+    const msgs = info.messages.map((m) => `${m.type} ${m.lineNum}:${m.linePos} ${m.message}`);
+    let pipeline = null, err = null;
+    try {
+      pipeline = await device.createComputePipelineAsync({ layout: 'auto', compute: { module: mod, entryPoint: 'main', constants } });
+    } catch (e) { err = String(e.message || e); }
+    return { pipeline, ms: performance.now() - t0, msgs, err, name };
+  };
+  const prep = await compile('prep', prepSrc);
+  const main = await compile('main', mainSrc, cfg.constants || {});
+  const reduce = await compile('reduce', reduceSrc);
+  const compileInfo = {};
+  for (const c of [prep, main, reduce]) compileInfo[c.name] = { ms: c.ms, msgs: c.msgs, err: c.err };
+  if (prep.err || main.err || reduce.err) return { error: 'pipeline creation failed', compileInfo };
+
+  const P = cfg.params; // {positions, num_chunks, blocks, colcap, part_mode}
+  const nCoef = P.colcap * P.blocks * 512;
+  const A = await fetchBuf('/a.bin');
+  const HOT = await fetchBuf('/hot.bin');
+  const mk = (size, usage) => device.createBuffer({ size, usage });
+  const ST = GPUBufferUsage.STORAGE, CD = GPUBufferUsage.COPY_DST, CS = GPUBufferUsage.COPY_SRC;
+  const bufA = mk(A.byteLength, ST | CD);
+  const bufA2 = mk(A.byteLength * 2, ST);
+  const bufHot = mk(HOT.byteLength, ST | CD);
+  const bufPart = mk(P.num_chunks * nCoef * 32, ST);
+  const bufRes = mk(nCoef * 16, ST | CS);
+  const bufMap = mk(nCoef * 16, GPUBufferUsage.MAP_READ | CD);
+  const bufParams = mk(32, GPUBufferUsage.UNIFORM | CD);
+  device.queue.writeBuffer(bufParams, 0, new Uint32Array([P.positions, P.num_chunks, P.blocks, P.colcap, P.part_mode, 0, 0, 0]));
+
+  // Upload timing: writeBuffer + queue flush, wall clock.
+  const timedUpload = async (buf, data) => {
+    const t0 = performance.now();
+    device.queue.writeBuffer(buf, 0, data);
+    await device.queue.onSubmittedWorkDone();
+    return performance.now() - t0;
+  };
+  const uploadA = await timedUpload(bufA, A);
+  const uploadHot = await timedUpload(bufHot, HOT);
+
+  const bg = (pl, entries) => device.createBindGroup({ layout: pl.getBindGroupLayout(0), entries: entries.map((b, i) => ({ binding: i, resource: { buffer: b } })) });
+  const bgPrep = bg(prep.pipeline, [bufA, bufA2]);
+  const bgMain = bg(main.pipeline, [bufParams, bufA2, bufHot, bufPart]);
+  const bgReduce = bg(reduce.pipeline, [bufParams, bufPart, bufRes]);
+  const disp = cfg.dispatch; // [x,y,z] for main
+
+  const nPass = 3;
+  const qs = hasTs ? device.createQuerySet({ type: 'timestamp', count: 2 * nPass }) : null;
+  const qBuf = hasTs ? mk(8 * 2 * nPass, GPUBufferUsage.QUERY_RESOLVE | CS) : null;
+  const qMap = hasTs ? mk(8 * 2 * nPass, GPUBufferUsage.MAP_READ | CD) : null;
+
+  const encodeRun = (withTs) => {
+    const enc = device.createCommandEncoder();
+    const passes = [
+      [prep.pipeline, bgPrep, [P.positions * 1024 / 256, 1, 1]],
+      [main.pipeline, bgMain, disp],
+      [reduce.pipeline, bgReduce, [nCoef / 64, 1, 1]],
+    ];
+    passes.forEach(([pl, g, d], k) => {
+      const desc = withTs && hasTs ? { timestampWrites: { querySet: qs, beginningOfPassWriteIndex: 2 * k, endOfPassWriteIndex: 2 * k + 1 } } : {};
+      const pass = enc.beginComputePass(desc);
+      pass.setPipeline(pl); pass.setBindGroup(0, g); pass.dispatchWorkgroups(d[0], d[1], d[2]); pass.end();
+    });
+    if (withTs && hasTs) { enc.resolveQuerySet(qs, 0, 2 * nPass, qBuf, 0); enc.copyBufferToBuffer(qBuf, 0, qMap, 0, 8 * 2 * nPass); }
+    return enc.finish();
+  };
+
+  // Warm-up (also the first correctness run).
+  device.queue.submit([encodeRun(false)]);
+  await device.queue.onSubmittedWorkDone();
+
+  // GPU timestamps: one timed run per repeat (each has its own resolve/readback).
+  const gpuMs = { prep: [], main: [], reduce: [] };
+  for (let rep = 0; rep < cfg.repeat && hasTs; rep++) {
+    device.queue.submit([encodeRun(true)]);
+    await qMap.mapAsync(GPUMapMode.READ);
+    const ts = new BigUint64Array(qMap.getMappedRange().slice(0));
+    qMap.unmap();
+    const ns = (k) => Number(ts[2 * k + 1] - ts[2 * k]) / 1e6;
+    gpuMs.prep.push(ns(0)); gpuMs.main.push(ns(1)); gpuMs.reduce.push(ns(2));
+  }
+
+  // Wall: a batch of `repeat` identical runs submitted back to back.
+  const t0 = performance.now();
+  for (let rep = 0; rep < cfg.repeat; rep++) device.queue.submit([encodeRun(false)]);
+  await device.queue.onSubmittedWorkDone();
+  const wallBatch = performance.now() - t0;
+
+  // Readback.
+  const tr0 = performance.now();
+  const enc = device.createCommandEncoder();
+  enc.copyBufferToBuffer(bufRes, 0, bufMap, 0, nCoef * 16);
+  device.queue.submit([enc.finish()]);
+  await bufMap.mapAsync(GPUMapMode.READ);
+  const res = new Uint8Array(bufMap.getMappedRange().slice(0));
+  bufMap.unmap();
+  const readbackMs = performance.now() - tr0;
+
+  return {
+    adapter: adapter.info ? `${adapter.info.vendor}/${adapter.info.architecture}` : null,
+    hasTs, errors, compileInfo,
+    upload_ms: { A: uploadA, hot: uploadHot, A_bytes: A.byteLength, hot_bytes: HOT.byteLength },
+    gpu_ms: hasTs ? { prep: median(gpuMs.prep), main: median(gpuMs.main), reduce: median(gpuMs.reduce), main_all: gpuMs.main } : null,
+    wall_ms_per_run: wallBatch / cfg.repeat, wall_batch_ms: wallBatch, repeat: cfg.repeat,
+    readback_ms: readbackMs, result_bytes: res.byteLength,
+    result_b64: b64(res),
+  };
+})().catch((e) => ({ error: String(e && e.stack || e) }));
+</script></body></html>

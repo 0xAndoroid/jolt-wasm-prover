@@ -3,3 +3,4 @@ pkg
 node_modules
 frontend/dist
 .wasm-deps
+__pycache__/
