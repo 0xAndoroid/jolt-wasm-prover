@@ -1,7 +1,7 @@
 """Standalone WebGPU prototype of the Akita one-hot trace commit accumulate.
 
     uv run --with playwright --with numpy python bench/proto/commit_proto.py \
-        [--shape small|full] [--variant v1|v2|v2b] [--chunk N] [--repeat N] [--spot N] [--seed S]
+        [--shape small|full] [--variant v1|v2b|v3|v4|v5] [--chunk N] [--repeat N] [--spot N] [--seed S]
 
 Launches Playwright's headless WebKit, serves bench/proto/harness.html + shaders + data via
 page.route on http://localhost:7777, runs prep -> main -> reduce, verifies against a Python
@@ -25,8 +25,10 @@ SHAPES = {
 }
 VARIANTS = {
     "v1": dict(file="commit_accumulate_v1.wgsl", chunked=False),
-    "v2": dict(file="commit_accumulate_v2.wgsl", chunked=True),
-    "v2b": dict(file="commit_accumulate_v2b.wgsl", chunked=True),
+    "v2b": dict(file="commit_accumulate_v2b.wgsl", chunked=True, cols=8),
+    "v3": dict(file="commit_accumulate_v3.wgsl", chunked=True, cols=4),
+    "v4": dict(file="commit_accumulate_v4.wgsl", chunked=True, cols=8),
+    "v5": dict(file="commit_accumulate_v5.wgsl", chunked=True, cols=4),
 }
 
 
@@ -90,7 +92,7 @@ def ref_coeff(A_ext, code, shape, c, b, i):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shape", default="small", choices=SHAPES)
-    ap.add_argument("--variant", default="v2", choices=VARIANTS)
+    ap.add_argument("--variant", default="v2b", choices=VARIANTS)
     ap.add_argument("--chunk", type=int, default=128)
     ap.add_argument("--repeat", type=int, default=5)
     ap.add_argument("--spot", type=int, default=32, help="random coefficients checked at the full shape")
@@ -104,7 +106,7 @@ def main():
     num_chunks = pos // chunk
     assert pos % chunk == 0 and colcap % 8 == 0
     params = dict(positions=pos, colcap_vec2=colcap // 8, chunk=chunk, num_chunks=num_chunks, blocks=blocks, colcap=colcap)
-    dispatch = [num_chunks, colcap // 8, blocks] if var["chunked"] else [512 // 64, colcap, blocks]
+    dispatch = [num_chunks, colcap // var["cols"], blocks] if var["chunked"] else [512 // 64, colcap, blocks]
     constants = {"CHUNK": chunk} if var["chunked"] else {}
 
     t0 = time.time()
