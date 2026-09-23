@@ -150,6 +150,7 @@ git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0004-akita-wasm-instant.patc
 git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0005-akita-types-wasm32-shift.patch"
 git -C "$DEPS/jolt" apply --verbose "$ROOT/patches/0006-jolt-akita-trace-commit-device.patch"
 git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0007-akita-digit-range-device.patch"
+git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0008-akita-relation-range-device.patch"
 
 block="$(mktemp)"
 write_local_block "$block"

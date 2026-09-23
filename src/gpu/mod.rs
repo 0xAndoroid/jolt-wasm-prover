@@ -240,6 +240,43 @@ pub fn take_digit_range_report() -> String {
     String::new()
 }
 
+/// Mean ms per dependent RUN_SEQ trip: one dispatch of the digit-range
+/// reduce kernel over zero partials plus a 96 B inline readback — the shape
+/// of one stage-2 sumcheck round without its compute.
+pub fn trip_probe(n: u32) -> f64 {
+    #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
+    {
+        use mailbox::{Region, OP_RUN_SEQ};
+        if STATE.load(Ordering::SeqCst) != STATE_ENABLED || n == 0 {
+            return f64::NAN;
+        }
+        let mut params = [0u32; 16];
+        params[4] = 1;
+        let param_bytes: Vec<u8> = params.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let partials = [0u8; 80];
+        let mut out = [0u8; 96];
+        // reduce kernel (shader 8): partials -> binding 3, out -> binding 4.
+        let args = [1, 8, 1, 2, 3, 2, 4, 1];
+        let t0 = now_ms();
+        for _ in 0..n {
+            let regions = [
+                Region::upload(&param_bytes),
+                Region::readback(&mut out),
+                Region::upload(&partials),
+            ];
+            if mailbox::call(OP_RUN_SEQ, &args, &regions).is_err() {
+                return f64::NAN;
+            }
+        }
+        (now_ms() - t0) / f64::from(n)
+    }
+    #[cfg(not(all(target_arch = "wasm32", feature = "webgpu")))]
+    {
+        let _ = n;
+        f64::NAN
+    }
+}
+
 /// Address of the mailbox for `gpu-proxy.js`; 0 when compiled out.
 pub fn mailbox_ptr() -> u32 {
     #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]

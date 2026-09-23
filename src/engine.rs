@@ -24,6 +24,9 @@ use jolt_prover::ProverConfig;
 use jolt_witness::{JoltVmWitnessConfig, JoltVmWitnessInputs, TraceBackend};
 use tracer::execution_backend::TracerBackend;
 
+#[cfg(feature = "relation-range-device")]
+#[path = "relation_range_reference.rs"]
+pub mod relation_range_reference;
 #[cfg(feature = "trace-commit-device")]
 #[path = "trace_commit_reference.rs"]
 pub mod trace_commit_reference;
@@ -82,6 +85,29 @@ pub fn install_digit_range_device(
     device: Arc<dyn akita_prover::DigitRangeDevice>,
 ) -> Result<(), String> {
     akita_prover::set_digit_range_device(device).map_err(|e| format!("digit range device: {e}"))
+}
+
+/// Routes the leading rounds of every later reduced-dense stage-2 sumcheck
+/// through `device` (`akita_prover::set_relation_range_device`); instances
+/// the device declines stay on the CPU prover.
+#[cfg(feature = "relation-range-device")]
+pub fn install_relation_range_device(
+    device: Arc<dyn akita_prover::RelationRangeDevice>,
+) -> Result<(), String> {
+    akita_prover::set_relation_range_device(device)
+        .map_err(|e| format!("relation range device: {e}"))
+}
+
+/// `JOLT_RELATION_RANGE_DEVICE=cpu-ref` installs the CPU reference device.
+#[cfg(all(feature = "relation-range-device", not(target_arch = "wasm32")))]
+pub fn install_relation_range_device_from_env() -> Result<(), String> {
+    match std::env::var("JOLT_RELATION_RANGE_DEVICE").as_deref() {
+        Ok("cpu-ref") => {
+            install_relation_range_device(Arc::new(relation_range_reference::CpuReferenceDevice))
+        }
+        Ok(other) => Err(format!("unknown JOLT_RELATION_RANGE_DEVICE={other:?}")),
+        Err(_) => Ok(()),
+    }
 }
 
 /// `JOLT_TRACE_COMMIT_DEVICE=cpu-ref` installs the CPU reference device.

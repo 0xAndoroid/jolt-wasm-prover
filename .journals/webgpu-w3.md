@@ -18,13 +18,18 @@ Orchestrator task c45196f3 · kanban #562 · playbook: vault `reference/feature-
 
 ## Playbook steps — Phase 2 (deployment readiness)
 1. plan 1/1 — skip: spec is explicit (build + WebKit pass + DEPLOY.md), one lane.
-2. implement 1/1 — fable-high, worktree `webgpu-w3/deploy-readiness`: full W1+W2 wasm build, frontend build, Playwright headless WebKit pass both modes 2^18 + 2^20 (verify=true, byte-identical), 375/1440 screenshots, DEPLOY.md + build-pages.sh refreshed for the webgpu feature set, CSP/_headers check. Preview deploy: skip — DEPLOY.md marks no preview path (user rule). [running]
-3. review i/3 — fresh fable-medium. [pending]
-4. merge 1/1 — shell. [pending]
-5. deploy 1/1 — skip: production `wrangler pages deploy` is the user's; exact command in the report. [pending]
+2. implement 1/1 — fable-high, worktree `webgpu-w3/deploy-readiness`: full W1+W2 wasm build, frontend build, Playwright headless WebKit pass both modes 2^18 + 2^20 (verify=true, byte-identical), 375/1440 screenshots, DEPLOY.md + build-pages.sh refreshed for the webgpu feature set, CSP/_headers check. Preview deploy: skip — DEPLOY.md marks no preview path (user rule). [done — PR #14 @11ee71d → 0484354; blocker: wasm 56.9 MB > 25 MiB cap → strip=symbols 22.4 MiB]
+3. review i/3 — fresh fable-medium. [done — 1/3: 1 fixed @b222a0e; 2/3: 1 minor @11ee71d; 3/3: ZERO ISSUES]
+4. merge 1/1 — shell. [done — 0484354]
+5. deploy 1/1 — skip: production `wrangler pages deploy` is the user's; exact command in the report. [skip — ready dist copied to main checkout frontend/dist + pkg]
 
-## Playbook steps — Phase 3
-(filled when phase 2 merges)
+## Playbook steps — Phase 3 (W3 perf)
+1. plan 1/1 — done early as `plan p3 1/1` (e93207ea) → `.journals/webgpu-w3-p3-plan.md`: lever 1 stage-2 GO, lever 2 PARK (4–5 % ^18 reachable), lever 3 KILL by arithmetic (W1 wall 33 ms = 2.1 %). [done]
+2. implement 1/1 — fable-high, worktree `webgpu-w3/stage2-gpu`, units U0→U5 (RD then QF), patch 0008. [running]
+   - bench (orchestrator lane, `--machine macbook-home`, self-guarded load1 < 3): idle `bench_webgpu.py --gpu all` 2^16–2^21 → kill-rule verdict. [pending]
+3. review i/3 — fresh fable-medium + one astra pass on the WGSL math. [pending]
+4. merge 1/1 — shell. [pending]
+5. deploy 1/1 — skip: production deploy is the user's. [pending]
 
 ## Plan (phase 1)
 Numbers measured from source (main @ 7a26b84):
@@ -92,3 +97,13 @@ Inherently sequential: the g RUN_SEQ rounds — round k's params carry challenge
 - Screenshots 375/1440 GPU+CPU: `/tmp/webgpu-w3-p2-{375,1440}.png`, `/tmp/webgpu-w3-p2-cpu-{375,1440}.png` — selector legible, selected segment obvious, reason line on CPU-only (chromium), no horizontal overflow.
 - Non-issue: WebKit logs `Refused to apply a stylesheet … style-src` only around `page.screenshot` — Playwright's injected screenshot stylesheet, not the app.
 - Byte-level code equality stripped vs unstripped NOT shown (sections re-hash after the full rebuild); functional equivalence is the browser pass above.
+
+## Implementation notes (phase 3) — implement 1/1 (branch `webgpu-w3/stage2-gpu`)
+Verdict: **KILL lever 1 at U0** (binding predicate "eligible ≥ 0.19 s @2^18 AND ≥ 0.6 s @2^20": 2^18 PASS 0.370 s, 2^20 FAIL 0.508 s). Ledger rows in `.audit/webgpu-w3.tsv` (phase3).
+- U0 method: `bench_webgpu.py --dump-trace PATH --trip-probe 47` (new flags) + `bench/trace_spans.py` (per-span inclusive totals, per-level `stage2_sumcheck` round sequences, `stage2_plan` log lines). Traces were warm W1+W2 runs on the mini (load1 ≈ 25–45, 8 threads).
+- Mini numbers (prove / stage2 all levels / eligible = rounds with table > 2^12 + `new`): 2^18 2.240 s / 467 ms / 370 ms; 2^20 5.161 s / 583 ms / 508 ms. Per level @2^18 (nv 24,21,20,19,18,17): 194, 47, 33, 106, 47, 28 ms; @2^20 (nv 25,22,20,19,18,17): 365, 73, 28, 24, 48, 29 ms — levels 2–5 do not grow with the trace, so stage 2 is 20.8 % of prove @2^18 but 11.3 % @2^20; the 8 % bar at 2^20 is unreachable even at zero GPU cost (508 × 0.446 / 3551 = 6.4 %).
+- `stage2_plan` (new log line, patch 0008): L0/L1 quotient_factored + packing linear (2 sources ≤ 576 values); L2–L5 reduced_dense + sparse linear (1 source, 64 values); **additional=true at every level** (sparse compression linear + negative-binary intervals → cubic addend). RD-only (plan's first stage) = 150 mini ms @2^18 → ≈ 1.7 % MBP after GPU cost; passing needs the full QF surface (factored alpha/lane weights, packing linear, additional cubic, two-round compact prefix) ≈ Metal's whole `direct_relation` family, for ≈ 6–7 % @2^18 only.
+- U1: 47 dependent RUN_SEQ trips (one dispatch + 96 B readback) = 0.42–0.82 ms/trip (`gpu_trip_probe` export, worker `gpu-trip-probe` message).
+- Lever 2 number (plan's park/kill): post-W2 `digit_range_prove` CPU remainder 95 mini ms @2^18, 123 @2^20 → 42 / 55 MBP ms < 0.12 / 0.45 → stays parked.
+- Left on the branch (feature `relation-range-device`, off by default): patch 0008 = `RelationRangeDevice` seam for reduced-dense instances (device gets compact digits + one flat weight table = dense weights + structured linear terms; per round `round(prev, e_first, e_second) → 6 terms`; handoff returns folded witness + weights, CPU resumes with the weights as `DenseRelationWeights` and zero linear terms; parity mode keeps the CPU authoritative and compares terms + tables) and `src/relation_range_reference.rs` (CPU reference device, `JOLT_RELATION_RANGE_DEVICE=cpu-ref`). The seam **declines instances with additional terms**, i.e. every shipped level today — it is a skeleton, `cargo check`-clean but NOT roundtrip-verified. No WGSL was written.
+- Design notes if resumed: one RUN_SEQ per round fits the 8-region mailbox with a combined `[P | A | W]` table layout (weights, binary-support weights, witness) and a single post-copy handoff; additional linear weights fold into P exactly, the binary term needs its own dense table A (ρ·eq(τ,i)·1_S(i)) folded per round → 4 extra cubic coefficients; QF levels cannot use dense tables (2^24–2^25 domains) and need the factored alpha/lane + packing kernels.

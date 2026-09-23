@@ -61,6 +61,7 @@ uv run --with playwright python bench/bench_webgpu.py --iters 17,69,278,556 --ru
 uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 5 --gpu all                # off / w1 (commit only) / on (W1+W2) / w2 (digit range only); W2 increment = w1 − on
 uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 1 --gpu on --parity 6      # CPU shadow of the first 6 GPU digit-range rounds per instance; aborts on mismatch
 uv run --with playwright python bench/test_fp128_wgsl.py                                          # fp128.wgsl vs Python ints mod p, 100k vectors
+uv run --with playwright python bench/bench_webgpu.py --iters 69,278 --runs 2 --gpu on --dump-trace $TMPDIR/t --trip-probe 47  # span trace per mode/size + mailbox trip latency; summarize with `uv run python bench/trace_spans.py $TMPDIR/t.on.69.json`
 uv run --with playwright python bench/proto/commit_proto.py --shape full                          # shipped commit kernels vs Python reference (also --shape small --variant v9 --chunk 64, --shape stress --chunk 2048)
 ```
 
@@ -92,6 +93,7 @@ uv run --with playwright python bench/proto/commit_proto.py --shape full        
 - **default** (no features) — WASM library build (`cdylib`)
 - **`native`** — enables the preprocessing binaries (`jolt-host` guest compilation)
 - **`trace-commit-device`** — `engine::install_trace_commit_device` + `CpuReferenceDevice`; with `webgpu` also `gpu::trace_commit::WebGpuTraceCommit`. Needs the patched `jolt-akita` from `./setup-wasm-deps.sh` (patch 0006), so it is off by default to keep pinned-rev native builds working
+- **`relation-range-device`** — `engine::install_relation_range_device` + `CpuReferenceDevice` for the stage-2 reduced-dense sumcheck (patch 0008, `JOLT_RELATION_RANGE_DEVICE=cpu-ref` natively); seam skeleton only — it declines instances with additional terms (every shipped level), no GPU driver (W3 lever 1 was killed at U0, see `.journals/webgpu-w3.md`)
 - **`digit-range-device`** — `engine::install_digit_range_device` + the `akita-prover` dependency for the seam types; needs patch 0007 from `./setup-wasm-deps.sh`, off by default for the same reason. `webgpu,trace-commit-device,digit-range-device` together give the W1+W2 browser build
 - **`webgpu`** — compiles the GPU mailbox + self-test into the wasm build; without it `gpu_mailbox_ptr()` returns 0 and worker.js reports `unavailable`
 

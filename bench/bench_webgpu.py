@@ -61,13 +61,13 @@ async ({ threads, gpu, parityRounds }) => {
 """
 
 RUN_JS = """
-async ({ iters, parityRounds }) => {
+async ({ iters, parityRounds, dumpTrace }) => {
     const send = (type, data) => {
         const reply = window.__bench.wait({ 'prove': 'prove-done', 'verify': 'verify-done', 'clear-trace': 'trace-cleared', 'get-trace': 'trace' }[type]);
         window.__bench.worker.postMessage({ type, data });
         return reply;
     };
-    if (parityRounds) await send('clear-trace');
+    if (parityRounds || dumpTrace) await send('clear-trace');
     const p = await send('prove', { program: 'sha2-chain', input: Array.from(new Uint8Array(32).fill(5)), numIters: iters });
     if (p.type === 'error') return { error: p.error };
     // The parity shadow reports each compared round as a tracing event; count them per prove.
@@ -105,6 +105,22 @@ async ({ iters, parityRounds }) => {
 
 TEARDOWN_JS = "() => { window.__bench.worker.terminate(); window.__bench = null; }"
 
+GET_TRACE_JS = """
+async () => {
+    const reply = window.__bench.wait('trace');
+    window.__bench.worker.postMessage({ type: 'get-trace' });
+    return (await reply).trace;
+}
+"""
+
+TRIP_PROBE_JS = """
+async ({ n }) => {
+    const reply = window.__bench.wait('gpu-trip-probe-done');
+    window.__bench.worker.postMessage({ type: 'gpu-trip-probe', data: { n } });
+    return (await reply).msPerTrip;
+}
+"""
+
 
 def launch(p, browser):
     if browser == "webkit":
@@ -122,6 +138,8 @@ def main():
     ap.add_argument("--parity", type=int, default=0, help="check the first N GPU digit-range rounds per instance against the CPU prover")
     ap.add_argument("--browser", default="webkit", choices=["webkit", "chromium", "chromium-unsafe"])
     ap.add_argument("--threads", type=int, default=8)
+    ap.add_argument("--dump-trace", default=None, help="write the worker's span trace (Chrome Trace Format JSON) of the last prove of each mode/size to PATH.<mode>.<iters>.json (see bench/trace_spans.py)")
+    ap.add_argument("--trip-probe", type=int, default=0, help="before proving, time N dependent one-dispatch RUN_SEQ trips through the mailbox and print ms/trip")
     ap.add_argument("--url", default=os.environ.get("BENCH_URL", "http://localhost:8080"))
     args = ap.parse_args()
     modes = {"both": ["on", "off"], "on": ["on"], "off": ["off"], "w1": ["w1"], "w2": ["w2"], "all": ["off", "w1", "on", "w2"]}[args.gpu]
@@ -140,13 +158,24 @@ def main():
             page.goto(args.url, wait_until="domcontentloaded")
             init = page.evaluate(SETUP_JS, {"threads": args.threads, "gpu": gpu_arg[label], "parityRounds": args.parity})
             sys.stderr.write(f"gpu={label}: worker ready, init gpu={json.dumps(init)}\n")
+            if args.trip_probe and label != "off":
+                for _ in range(3):
+                    ms = page.evaluate(TRIP_PROBE_JS, {"n": args.trip_probe})
+                    sys.stderr.write(f"gpu={label}: trip probe {args.trip_probe} dependent RUN_SEQ trips: {ms:.3f} ms/trip\n")
+                    print(json.dumps({"gpu": label, "tripProbe": args.trip_probe, "msPerTrip": ms}), flush=True)
             for iters in iters_list:
                 for i in range(args.runs):
-                    r = page.evaluate(RUN_JS, {"iters": iters, "parityRounds": args.parity})
+                    r = page.evaluate(RUN_JS, {"iters": iters, "parityRounds": args.parity, "dumpTrace": bool(args.dump_trace)})
                     if "error" in r:
                         print(json.dumps({"gpu": label, "iters": iters, "run": i + 1, "error": r["error"]}))
                         sys.stderr.write(f"gpu={label} iters={iters} run {i + 1}: ERROR {r['error']}\n")
                         break
+                    if args.dump_trace:
+                        trace = page.evaluate(GET_TRACE_JS)
+                        path = f"{args.dump_trace}.{label}.{iters}.json"
+                        with open(path, "w") as f:
+                            f.write(trace)
+                        sys.stderr.write(f"gpu={label} iters={iters} run {i + 1}: trace -> {path}\n")
                     rec = {"gpu": label, "iters": iters, "run": i + 1, "log2Padded": r["paddedCycles"].bit_length() - 1, **r, "init": init}
                     results.append(rec)
                     print(json.dumps(rec), flush=True)

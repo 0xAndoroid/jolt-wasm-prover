@@ -72,6 +72,8 @@ use jolt_inlines_sha2 as _;
 fn main() {
     #[cfg(feature = "trace-commit-device")]
     engine::install_trace_commit_device_from_env().expect("trace commit device");
+    #[cfg(feature = "relation-range-device")]
+    engine::install_relation_range_device_from_env().expect("relation range device");
     if std::env::var_os("RUST_LOG").is_some() {
         use tracing_subscriber::fmt::format::FmtSpan;
         tracing_subscriber::fmt()

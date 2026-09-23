@@ -15,6 +15,7 @@ import init, {
     set_gpu_op_timeout_ms,
     set_gpu_unavailable,
     set_digit_range_parity_rounds,
+    gpu_trip_probe,
 } from '/pkg/jolt_wasm_prover.js';
 
 // Akita backend kernels recurse deeply on rayon workers (64 MiB stacks
@@ -126,6 +127,12 @@ self.onmessage = async (e) => {
                     gpu = { status: 'disabled' };
                 }
                 self.postMessage({ type: 'gpu-status', gpu });
+                break;
+            }
+
+            // Bench probe: `n` dependent one-dispatch RUN_SEQ trips with a 96 B readback each.
+            case 'gpu-trip-probe': {
+                self.postMessage({ type: 'gpu-trip-probe-done', msPerTrip: gpu_trip_probe(data.n) });
                 break;
             }
 

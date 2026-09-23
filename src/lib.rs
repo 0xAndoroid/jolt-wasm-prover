@@ -106,6 +106,13 @@ mod wasm {
         let _ = rounds;
     }
 
+    /// Bench probe: mean milliseconds of `n` dependent RUN_SEQ trips (one
+    /// dispatch + 96 B readback each); NaN when the GPU is not enabled.
+    #[wasm_bindgen]
+    pub fn gpu_trip_probe(n: u32) -> f64 {
+        crate::gpu::trip_probe(n)
+    }
+
     #[wasm_bindgen]
     pub struct WasmProver {
         ctx: engine::ProverContext,
