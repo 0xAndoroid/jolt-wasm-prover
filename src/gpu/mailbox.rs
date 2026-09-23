@@ -25,7 +25,7 @@ pub const OP_DOWNLOAD: u32 = 7;
 pub const OP_ALLOC: u32 = 8;
 /// Several uploads in one trip: `args = [n, {handle, byte_offset, region}…]`.
 pub const OP_UPLOAD_MULTI: u32 = 9;
-pub const RUN_SEQ_COPY: usize = 28;
+pub const RUN_SEQ_COPY: usize = MAX_ARGS - 4;
 
 pub const STATUS_IDLE: u32 = 0;
 pub const STATUS_BUSY: u32 = 1;
@@ -39,7 +39,8 @@ pub const REGION_UPLOAD: u32 = 1;
 pub const REGION_READBACK: u32 = 2;
 pub const REGION_HANDLE: u32 = 4;
 
-pub const MAX_ARGS: usize = 32;
+/// A stage-2 RUN_SEQ (3 passes, 12 bindings) plus the post-copy spec needs 38 words.
+pub const MAX_ARGS: usize = 64;
 pub const MAX_REGIONS: usize = 8;
 const ERROR_WORDS: usize = 64;
 

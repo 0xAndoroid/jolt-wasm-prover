@@ -22,6 +22,12 @@ mod selftest;
 #[cfg(all(
     target_arch = "wasm32",
     feature = "webgpu",
+    feature = "relation-range-device"
+))]
+pub mod stage2;
+#[cfg(all(
+    target_arch = "wasm32",
+    feature = "webgpu",
     feature = "trace-commit-device"
 ))]
 pub mod trace_commit;
@@ -89,6 +95,17 @@ pub fn digit_range_enabled() -> bool {
     DIGIT_RANGE_ENABLED.load(Ordering::SeqCst)
 }
 
+static STAGE2_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Bench knob (`s2off`): GPU on but the stage-2 relation-range rounds stay on the CPU.
+pub fn set_stage2_enabled(enabled: bool) {
+    STAGE2_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+pub fn stage2_enabled() -> bool {
+    STAGE2_ENABLED.load(Ordering::SeqCst)
+}
+
 /// What a prove run learned about the GPU before doing any field work.
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct GpuReport {
@@ -105,6 +122,9 @@ pub struct GpuReport {
     /// JSON breakdown of the GPU digit-range instances in this prove
     /// (`digit_range::Breakdown`); empty when none ran.
     pub digit_range: String,
+    /// JSON breakdown of the GPU stage-2 instances in this prove
+    /// (`stage2::Breakdown`); empty when none ran.
+    pub stage2: String,
 }
 
 /// The session's one self-test result (`selftest`), reused by every prove.
@@ -188,6 +208,10 @@ fn selftest_enabled() -> GpuReport {
             #[cfg(feature = "digit-range-device")]
             if report.status == "ok" {
                 digit_range::install_once();
+            }
+            #[cfg(feature = "relation-range-device")]
+            if report.status == "ok" {
+                stage2::install_once();
             }
             report
         }
@@ -275,6 +299,23 @@ pub fn trip_probe(n: u32) -> f64 {
         let _ = n;
         f64::NAN
     }
+}
+
+/// Breakdown of the GPU stage-2 instances since the last call (JSON);
+/// empty when the device is compiled out or never ran.
+pub fn take_stage2_report() -> String {
+    #[cfg(all(
+        target_arch = "wasm32",
+        feature = "webgpu",
+        feature = "relation-range-device"
+    ))]
+    {
+        let b = stage2::take_breakdown();
+        if b.instances > 0 {
+            return serde_json::to_string(&b).expect("plain struct");
+        }
+    }
+    String::new()
 }
 
 /// Address of the mailbox for `gpu-proxy.js`; 0 when compiled out.

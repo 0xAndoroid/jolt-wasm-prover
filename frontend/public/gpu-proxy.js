@@ -7,21 +7,22 @@
 // it Atomics.waitAsync's on the doorbell, runs the op, writes the result
 // back into wasm memory and flips `status`.
 
+const MAX_ARGS = 64;
+const MAX_REGIONS = 8;
 const W = {
     DOORBELL: 0,
     STATUS: 1,
     OP: 2,
     ARGS: 4,
-    REGIONS: 36,
-    RET: 60,
-    ERROR_LEN: 68,
-    ERROR: 69,
+    REGIONS: 4 + MAX_ARGS,
+    RET: 4 + MAX_ARGS + 3 * MAX_REGIONS,
+    ERROR_LEN: 4 + MAX_ARGS + 3 * MAX_REGIONS + 8,
+    ERROR: 4 + MAX_ARGS + 3 * MAX_REGIONS + 9,
     ERROR_BYTES: 256,
 };
-const MAX_REGIONS = 8;
 const OP = { NOP: 1, CREATE_BUFFER: 2, UPLOAD: 3, DESTROY: 4, RUN: 5, RUN_SEQ: 6, DOWNLOAD: 7, ALLOC: 8, UPLOAD_MULTI: 9 };
 // RUN_SEQ args[RUN_SEQ_COPY..] = [srcRegion, dstRegion, dstByteOffset, byteLen]: a copy after the passes (byteLen 0 = none).
-const RUN_SEQ_COPY = 28;
+const RUN_SEQ_COPY = MAX_ARGS - 4;
 const STATUS = { IDLE: 0, BUSY: 1, DONE: 2, ERROR: 3 };
 const REGION = { UPLOAD: 1, READBACK: 2, HANDLE: 4 };
 // Index = shader id in the RUN op (src/gpu/selftest.rs, src/gpu/trace_commit.rs);
@@ -36,6 +37,9 @@ const SHADERS = [
     ['fp128', 'digit_range/common', 'digit_range/round1'],
     ['fp128', 'digit_range/common', 'digit_range/field'],
     ['fp128', 'digit_range/common', 'digit_range/reduce'],
+    ['fp128', 'stage2/common', 'stage2/round'],
+    ['fp128', 'stage2/common', 'stage2/additional'],
+    ['fp128', 'stage2/common', 'stage2/reduce'],
 ];
 
 let memory = null;
@@ -279,7 +283,7 @@ function writeError(msg) {
 
 async function serve() {
     const m = u32();
-    const args = new Uint32Array(m.buffer, (base + W.ARGS) * 4, 32);
+    const args = new Uint32Array(m.buffer, (base + W.ARGS) * 4, MAX_ARGS);
     const ret = new Uint32Array(m.buffer, (base + W.RET) * 4, 8);
     const op = Atomics.load(m, base + W.OP);
     const regions = readRegions();

@@ -232,6 +232,7 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
     {
         gpu.commit = crate::gpu::take_commit_report();
         gpu.digit_range = crate::gpu::take_digit_range_report();
+        gpu.stage2 = crate::gpu::take_stage2_report();
     }
 
     Ok(ProveOutput {

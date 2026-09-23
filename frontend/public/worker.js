@@ -15,6 +15,8 @@ import init, {
     set_gpu_op_timeout_ms,
     set_gpu_unavailable,
     set_digit_range_parity_rounds,
+    set_gpu_stage2_enabled,
+    set_relation_range_parity_rounds,
     gpu_trip_probe,
 } from '/pkg/jolt_wasm_prover.js';
 
@@ -109,11 +111,14 @@ self.onmessage = async (e) => {
                 await initThreadPool(data.numThreads);
                 init_tracing();
                 set_gpu_op_timeout_ms(data.gpuTimeoutMs ?? 30000);
-                // gpu: true | false | 'w1' (GPU on, digit-range rounds on the CPU) | 'w2' (GPU on, trace commit on the CPU).
+                // gpu: true | false | 'w1' (GPU on, digit-range rounds on the CPU) | 'w2' (GPU on, trace commit on the CPU)
+                //      | 's2off' (W1 + W2 on, stage-2 rounds on the CPU). Only `true` enables the stage-2 device.
                 const gpu = data.gpu ? await initGpu() : { status: 'disabled' };
                 set_gpu_commit_enabled(data.gpu !== 'w2');
                 set_gpu_digit_range_enabled(data.gpu !== 'w1');
+                set_gpu_stage2_enabled(data.gpu === true);
                 set_digit_range_parity_rounds(data.parityRounds ?? 0);
+                set_relation_range_parity_rounds(data.parityRounds ?? 0);
                 self.postMessage({ type: 'init-done', gpu });
                 break;
             }
@@ -205,6 +210,7 @@ self.onmessage = async (e) => {
                     gpuRoundtripUs: result.gpu_roundtrip_us,
                     gpuCommit: result.gpu_commit,
                     gpuDigitRange: result.gpu_digit_range,
+                    gpuStage2: result.gpu_stage2,
                     peakMemory,
                     elapsed,
                 });

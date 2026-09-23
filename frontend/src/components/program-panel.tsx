@@ -79,6 +79,8 @@ export function ProgramPanel({
                   ` · commit ${Math.round(programState.lastProof.commitMs)} ms`}
                 {programState.lastProof.digitRangeMs != null &&
                   ` · digit range ${Math.round(programState.lastProof.digitRangeMs)} ms`}
+                {programState.lastProof.stage2Ms != null &&
+                  ` · stage 2 ${Math.round(programState.lastProof.stage2Ms)} ms`}
               </span>
             </span>
           )}

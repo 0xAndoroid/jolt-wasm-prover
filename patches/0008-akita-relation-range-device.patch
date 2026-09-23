@@ -1,25 +1,43 @@
 diff --git a/crates/akita-prover/src/lib.rs b/crates/akita-prover/src/lib.rs
-index be429f5..83ae10a 100644
+index be429f5..1a29854 100644
 --- a/crates/akita-prover/src/lib.rs
 +++ b/crates/akita-prover/src/lib.rs
-@@ -78,6 +78,12 @@ pub use protocol::sumcheck::digit_range::device::{
+@@ -78,6 +78,13 @@ pub use protocol::sumcheck::digit_range::device::{
      DigitRangeSession, FIELD_BYTES as DIGIT_RANGE_FIELD_BYTES,
      MESSAGE_BYTES as DIGIT_RANGE_MESSAGE_BYTES,
  };
 +pub use protocol::sumcheck::relation_range_image::device::{
 +    set_relation_range_device, set_relation_range_parity_rounds, RelationRangeDevice,
-+    RelationRangeJob, RelationRangeSession, RelationRangeShape,
-+    FIELD_BYTES as RELATION_RANGE_FIELD_BYTES, MESSAGE_BYTES as RELATION_RANGE_MESSAGE_BYTES,
-+    TERMS as RELATION_RANGE_TERMS,
++    RelationRangeJob, RelationRangeSession, RelationRangeShape, RoundInput as RelationRangeRoundInput,
++    WeightsKind as RelationRangeWeightsKind, FIELD_BYTES as RELATION_RANGE_FIELD_BYTES,
++    MESSAGE_BYTES as RELATION_RANGE_MESSAGE_BYTES, PAIR_BYTES as RELATION_RANGE_PAIR_BYTES,
++    SEGMENT_BYTES as RELATION_RANGE_SEGMENT_BYTES, TERMS as RELATION_RANGE_TERMS,
 +};
  pub use protocol::sumcheck::{
      DigitRangeProver, LowBasisRangeCheckProver, RelationRangeImageProver,
  };
 diff --git a/crates/akita-prover/src/protocol/core/fold/stages.rs b/crates/akita-prover/src/protocol/core/fold/stages.rs
-index 7473241..1ce5807 100644
+index 7473241..9bcbac4 100644
 --- a/crates/akita-prover/src/protocol/core/fold/stages.rs
 +++ b/crates/akita-prover/src/protocol/core/fold/stages.rs
-@@ -223,6 +223,7 @@ where
+@@ -170,6 +170,16 @@ where
+         );
+         linear_weights.sort_unstable_by_key(|(index, _)| *index);
+     }
++    tracing::info!(
++        level,
++        domain_len,
++        live_len = domain.live_len(),
++        linear_weights = linear_weights.len(),
++        binary_intervals = binary_intervals.len(),
++        binary_support = binary_intervals.iter().map(|r| r.len()).sum::<usize>(),
++        physical_l2 = physical_l2.is_some(),
++        "stage2_additional_plan"
++    );
+     let additional_relation_terms = (!linear_weights.is_empty() || !binary_intervals.is_empty())
+         .then(|| {
+             AdditionalRelationTerms::new(
+@@ -223,6 +233,7 @@ where
                  .ok_or_else(|| AkitaError::InvalidSetup("Stage 2 round overflow".into()))?;
              Ok(challenge)
          })?;
@@ -27,23 +45,89 @@ index 7473241..1ce5807 100644
      if final_claim != stage2_prover.expected_final_claim()? {
          return Err(AkitaError::InvalidInput(
              "stage-2 prover final claim disagrees with its folded oracle".into(),
+diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/additional_terms.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/additional_terms.rs
+index e82d0a1..a9d596e 100644
+--- a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/additional_terms.rs
++++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/additional_terms.rs
+@@ -175,6 +175,58 @@ impl<E: Field + Ring> AdditionalRelationTerms<E> {
+         self.input_claim
+     }
+ 
++    /// Add the linear weights into a flat table over the current domain.
++    pub(crate) fn add_linear_into(&self, out: &mut [E]) {
++        for weight in &self.weights {
++            if let Some(slot) = out.get_mut(weight.index) {
++                *slot += weight.linear;
++            }
++        }
++    }
++
++    /// Keep only the binary weights (the linear part moved elsewhere).
++    pub(crate) fn drop_linear(&mut self) {
++        for weight in &mut self.weights {
++            weight.linear = E::zero();
++        }
++        self.weights.retain(|weight| !weight.binary.is_zero());
++    }
++
++    /// Current pairs on the wire: per parent index `m` the bytes
++    /// `[m, 0, 0, 0]` (u32) then `l0, l1, rho*b0, rho*b1`; returns the blob.
++    pub(crate) fn pairs_bytes(
++        &self,
++        binary_only: bool,
++        to_bytes: impl Fn(&E, &mut [u8]),
++    ) -> Vec<u8> {
++        let mut out = Vec::with_capacity(self.weights.len() * 80);
++        let mut cursor = 0usize;
++        let mut slot = [0u8; 16];
++        while cursor < self.weights.len() {
++            let parent = self.weights[cursor].index >> 1;
++            let mut linear = [E::zero(); 2];
++            let mut binary = [E::zero(); 2];
++            while cursor < self.weights.len() && self.weights[cursor].index >> 1 == parent {
++                let weight = self.weights[cursor];
++                let side = weight.index & 1;
++                linear[side] = if binary_only {
++                    E::zero()
++                } else {
++                    weight.linear
++                };
++                binary[side] = self.binary_batching * weight.binary;
++                cursor += 1;
++            }
++            out.extend_from_slice(&(parent as u32).to_le_bytes());
++            out.extend_from_slice(&[0u8; 12]);
++            for value in [linear[0], linear[1], binary[0], binary[1]] {
++                to_bytes(&value, &mut slot);
++                out.extend_from_slice(&slot);
++            }
++        }
++        out
++    }
++
+     /// Compute the complete cubic directly in coefficient form.
+     ///
+     /// For one folded pair, write `w(t) = w0 + t dw`, and likewise for the
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device.rs
 new file mode 100644
-index 0000000..10e6d1e
+index 0000000..5301f64
 --- /dev/null
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device.rs
-@@ -0,0 +1,154 @@
-+//! Optional device seam for the reduced-dense stage-2 sumcheck rounds.
+@@ -0,0 +1,193 @@
++//! Optional device seam for the stage-2 relation-range sumcheck rounds.
 +//!
-+//! A [`RelationRangeDevice`] may take the first rounds of one
-+//! `ReducedDense` instance: it receives the compact digit witness and the
-+//! flat relation weights (dense weights plus the structured linear terms,
-+//! one field element per padded address) once, then per round the previous
-+//! challenge and the prover's remaining Gruen eq tables, and returns the six
-+//! round terms (norm `q0,q1,q2`, relation `c0,c1,c2`). After its last round
-+//! it hands the folded witness and weight tables back and the CPU prover
-+//! finishes with the weights in dense form, so the transcript, challenge
-+//! derivation and proof layout are unchanged.
++//! A [`RelationRangeDevice`] may take the first rounds of one instance. It
++//! receives the compact digit witness once plus the relation weights either
++//! as one flat table (`Dense`: dense weights + every linear term per padded
++//! address) or factored (`Factored`: lane weights on the device, the common
++//! alpha factor and the packing/sparse linear sources folded by the host and
++//! passed per round with their lane segments). Per round it gets the
++//! previous challenge, the prover's remaining Gruen eq tables and the sparse
++//! additional pairs, and returns the ten round terms: norm `q0,q1,q2`
++//! (eq-weighted), relation `c0,c1,c2`, additional cubic `a0..a3`. After its
++//! last round it hands the folded witness (and the folded flat weights once
++//! the lane phase started) back and the CPU prover finishes, so the
++//! transcript, challenge derivation and proof layout are unchanged.
 +
 +use std::sync::atomic::{AtomicUsize, Ordering};
 +use std::sync::{Arc, OnceLock};
@@ -55,11 +139,25 @@ index 0000000..10e6d1e
 +
 +/// Canonical little-endian byte length of one field element on the wire.
 +pub const FIELD_BYTES: usize = 16;
-+/// Round messages carry `virt[q0, q1, q2]` then `rel[c0, c1, c2]`.
-+pub const TERMS: usize = 6;
++/// Round messages: `virt[q0,q1,q2]`, `rel[c0,c1,c2]`, `add[a0,a1,a2,a3]`.
++pub const TERMS: usize = 10;
 +pub const MESSAGE_BYTES: usize = TERMS * FIELD_BYTES;
++/// One additional pair on the wire: `[m, 0, 0, 0]` u32 then `l0, l1, b0, b1`.
++pub const PAIR_BYTES: usize = 5 * FIELD_BYTES;
++/// One linear segment on the wire: `[source_lane, source_index, 0, 0]` u32
++/// then `factor`; `lane_map[lane] = start << 8 | count` selects a lane's
++/// segments.
++pub const SEGMENT_BYTES: usize = 2 * FIELD_BYTES;
 +
-+/// Shape of one instance, offered before the weights are materialized.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum WeightsKind {
++    /// `weights` holds `domain_len` flat entries, folded by the device.
++    Dense,
++    /// `alpha[coef] * lane_weights[lane] + segments`; the device folds the
++    /// lane table into a flat table at the first lane round.
++    Factored,
++}
++
 +pub struct RelationRangeShape {
 +    /// Live witness length `live_lane_count * coeff_count`.
 +    pub len: usize,
@@ -68,37 +166,58 @@ index 0000000..10e6d1e
 +    pub coefficient_bits: usize,
 +    pub lane_bits: usize,
 +    pub bit_width: u8,
++    pub weights: WeightsKind,
++    pub segments: usize,
 +}
 +
-+/// One reduced-dense instance as bytes.
 +pub struct RelationRangeJob<'a> {
 +    pub shape: RelationRangeShape,
-+    /// `len` digits in two's complement at `bit_width` bits each, LSB-first
-+    /// contiguous (`PackedSignedDigits` encoding), flat index
-+    /// `lane * coeff_count + coefficient`.
++    /// `len` digits, two's complement at `bit_width` bits each, LSB-first
++    /// contiguous (`PackedSignedDigits`), flat index `lane * coeff_count +
++    /// coefficient`.
 +    pub digits: &'a [u8],
-+    /// `domain_len` weights, 16 B LE each: dense relation weight plus the
-+    /// structured linear term at that flat address (zero beyond `len`).
++    /// `Dense`: `domain_len` weights (16 B LE each); `Factored`: empty.
 +    pub weights: &'a [u8],
++    /// `Factored`: `1 << lane_bits` lane weights; `Dense`: empty.
++    pub lane_weights: &'a [u8],
++    /// `Factored`: `shape.segments` linear segments (`SEGMENT_BYTES` each).
++    pub segments: &'a [u8],
++    /// `Factored`: one word per live lane, `start << 8 | count` into `segments`.
++    pub lane_map: &'a [u32],
++    /// `Factored`: lanes per linear source (source values are
++    /// `lane_count * coeff_count`, lane-major).
++    pub source_lanes: &'a [u32],
++}
++
++pub struct RoundInput<'a> {
++    pub round: usize,
++    /// Challenge that folds the tables before this round's evaluation
++    /// (absent in round 0).
++    pub prev: Option<&'a [u8; FIELD_BYTES]>,
++    pub e_first: &'a [u8],
++    pub e_second: &'a [u8],
++    /// `Factored`, while `round <= coefficient_bits`: the common alpha
++    /// factor folded so far (`coeff_count >> round` entries).
++    pub alpha: &'a [u8],
++    /// `Factored`, while `round <= coefficient_bits`: every linear source
++    /// folded so far, concatenated.
++    pub sources: &'a [u8],
++    /// Additional pairs of this round (`PAIR_BYTES` each; binary weights
++    /// pre-multiplied by the batching coefficient).
++    pub pairs: &'a [u8],
 +}
 +
 +pub trait RelationRangeSession: Send + Sync {
-+    /// Fold the witness and weight tables by `prev` (absent in round 0),
-+    /// then write round `round`'s six terms (16 B LE each) into `out`.
-+    /// `e_first`/`e_second` are this round's remaining Gruen tables.
 +    fn round(
 +        &mut self,
-+        round: usize,
-+        prev: Option<&[u8; FIELD_BYTES]>,
-+        e_first: &[u8],
-+        e_second: &[u8],
++        input: &RoundInput<'_>,
 +        out: &mut [u8; MESSAGE_BYTES],
 +    ) -> Result<(), AkitaError>;
 +
-+    /// `(witness, weights)` as the last round evaluated them (folded by
-+    /// every earlier challenge), 16 B LE per entry; the witness has
-+    /// `ceil(len / 2^rounds_folded)` entries, the weights `domain_len >>
-+    /// rounds_folded`.
++    /// `(witness, weights)` as the last round evaluated them (folded by every
++    /// earlier challenge): the witness has `ceil(len / 2^rounds_folded)`
++    /// entries; the weights `domain_len >> rounds_folded` entries for `Dense`
++    /// and for `Factored` once the lane phase started, otherwise empty.
 +    fn tables(self: Box<Self>) -> Result<(Vec<u8>, Vec<u8>), AkitaError>;
 +}
 +
@@ -107,7 +226,6 @@ index 0000000..10e6d1e
 +    /// materialized for declined instances).
 +    fn rounds_for(&self, shape: &RelationRangeShape) -> usize;
 +
-+    /// Open a session for `rounds` rounds (as returned by `rounds_for`).
 +    fn open(
 +        &self,
 +        job: &RelationRangeJob<'_>,
@@ -126,7 +244,8 @@ index 0000000..10e6d1e
 +}
 +
 +/// Keep the CPU prover authoritative and check the device's first `rounds`
-+/// messages and its handoff tables against it; a mismatch fails the prove.
++/// round polynomials and its handoff tables against it; a mismatch fails the
++/// prove.
 +pub fn set_relation_range_parity_rounds(rounds: usize) {
 +    PARITY_ROUNDS.store(rounds, Ordering::SeqCst);
 +}
@@ -182,85 +301,148 @@ index 0000000..10e6d1e
 +    pub(super) session: Option<Box<dyn RelationRangeSession>>,
 +    pub(super) rounds: usize,
 +    pub(super) prev: Option<E>,
-+    /// CPU state stays authoritative; device terms and tables are compared.
++    /// CPU state stays authoritative; device polynomials and tables are compared.
 +    pub(super) parity: bool,
++    pub(super) kind: WeightsKind,
 +    pub(super) witness_len: usize,
 +    pub(super) domain_len: usize,
 +}
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs
 new file mode 100644
-index 0000000..996105f
+index 0000000..ed1c562
 --- /dev/null
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs
-@@ -0,0 +1,251 @@
+@@ -0,0 +1,410 @@
 +use super::device::{
 +    field_from_bytes, field_to_bytes, fields_from_bytes, fields_to_bytes, installed_device,
-+    parity_rounds, DeviceRounds, RelationRangeJob, RelationRangeShape, FIELD_BYTES, MESSAGE_BYTES,
-+    TERMS,
++    parity_rounds, DeviceRounds, RelationRangeJob, RelationRangeShape, RoundInput, WeightsKind,
++    FIELD_BYTES, MESSAGE_BYTES, TERMS,
 +};
 +use super::*;
 +use akita_serialization::{AkitaSerialize, Compress};
 +
-+/// What `ingest_reduced_dense_challenge` does with the CPU state after the
-+/// device was consulted.
++/// What `ingest_challenge` does with the CPU state after the device was
++/// consulted.
 +pub(super) enum DeviceFold<E: Field> {
-+    /// The device owns the tables this round: skip the CPU fold.
++    /// The device owns the tables this round: the CPU fold is skipped.
 +    Skip,
 +    /// Fold on the CPU; with `Some`, compare the handed-back tables (already
 +    /// folded by this challenge) against the CPU state afterwards.
 +    Cpu(Option<(Vec<E>, Vec<E>)>),
 +}
 +
++/// One device round as the host consumes it.
++pub(super) struct DeviceRound<E: Field> {
++    pub(super) virt: NormRoundTerms<E>,
++    pub(super) rel: [E; 3],
++    pub(super) additional: UniPoly<E>,
++}
++
++const MAX_SEGMENTS: usize = 1 << 20;
++
 +impl<E: Field + Ring + Unreduced + AkitaSerialize> RelationRangeImageProver<E> {
-+    /// Offer a `ReducedDense` instance to the installed device.
++    /// Offer the instance to the installed device (called from `new` before
++    /// the two-round prefix is built).
 +    pub(super) fn try_open_device(&mut self) {
 +        let Some(device) = installed_device() else {
 +            return;
 +        };
-+        if self.additional_relation_terms.is_some()
-+            || E::zero().serialized_size(Compress::No) != FIELD_BYTES
-+            || self.num_vars < 2
-+        {
++        if E::zero().serialized_size(Compress::No) != FIELD_BYTES || self.num_vars < 2 {
 +            return;
 +        }
-+        let (
-+            RelationRoundState::ReducedDense { weights: dense },
-+            WitnessState::CompactPrefix(compact),
-+        ) = (&self.relation_state, &self.witness_state)
-+        else {
++        let WitnessState::CompactPrefix(compact) = &self.witness_state else {
 +            return;
++        };
++        let (kind, domain_len) = match &self.relation_state {
++            RelationRoundState::ReducedDense { weights } => {
++                (WeightsKind::Dense, weights.evaluations().len())
++            }
++            RelationRoundState::QuotientFactored { weights, .. } => (
++                WeightsKind::Factored,
++                weights.common_alpha_factor().len() * weights.relation_lane_weights().len(),
++            ),
++        };
++        let (lane_map, segments) = match kind {
++            WeightsKind::Factored => match self.linear_terms.export_lane_segments(MAX_SEGMENTS) {
++                Some(s) => s,
++                None => {
++                    tracing::info!("stage2_device_declined_linear_kind");
++                    return;
++                }
++            },
++            WeightsKind::Dense => (Vec::new(), Vec::new()),
 +        };
 +        let shape = RelationRangeShape {
 +            len: compact.len(),
-+            domain_len: dense.evaluations().len(),
++            domain_len,
 +            coefficient_bits: self.coefficient_bits(),
 +            lane_bits: self.lane_bits,
 +            bit_width: compact.bit_width(),
++            weights: kind,
++            segments: segments.len(),
 +        };
 +        let rounds = device.rounds_for(&shape).min(self.num_vars - 1);
 +        if rounds == 0 {
 +            return;
 +        }
++        let parity = parity_rounds() > 0;
 +        let started = Instant::now();
-+        let mut flat = dense.evaluations().to_vec();
-+        self.linear_terms.add_flat_into(&mut flat);
-+        let weights = fields_to_bytes(&flat);
-+        drop(flat);
++        let (weights, lane_weights) = match &self.relation_state {
++            RelationRoundState::ReducedDense { weights: dense } => {
++                let mut flat = dense.evaluations().to_vec();
++                self.linear_terms.add_flat_into(&mut flat);
++                if let Some(additional) = &self.additional_relation_terms {
++                    additional.add_linear_into(&mut flat);
++                }
++                (fields_to_bytes(&flat), Vec::new())
++            }
++            RelationRoundState::QuotientFactored { weights, .. } => {
++                (Vec::new(), fields_to_bytes(weights.relation_lane_weights()))
++            }
++        };
++        let mut segment_bytes = Vec::with_capacity(segments.len() * 32);
++        for (words, factor) in &segments {
++            for w in words {
++                segment_bytes.extend_from_slice(&w.to_le_bytes());
++            }
++            let mut f = [0u8; FIELD_BYTES];
++            field_to_bytes(factor, &mut f);
++            segment_bytes.extend_from_slice(&f);
++        }
++        let source_lanes = self.linear_terms.source_lanes();
 +        let weights_ms = started.elapsed().as_secs_f64() * 1e3;
 +        let job = RelationRangeJob {
 +            shape,
 +            digits: compact.encoded_bytes(),
 +            weights: &weights,
++            lane_weights: &lane_weights,
++            segments: &segment_bytes,
++            lane_map: &lane_map,
++            source_lanes: &source_lanes,
 +        };
 +        match device.open(&job, rounds) {
 +            Ok(session) => {
-+                let parity = parity_rounds() > 0;
-+                tracing::info!(rounds, parity, weights_ms, "stage2_device_plan");
++                tracing::info!(
++                    rounds,
++                    parity,
++                    weights_ms,
++                    kind = ?kind,
++                    segments = segments.len(),
++                    "stage2_device_plan"
++                );
++                // The flat table absorbed the additional linear weights; only the
++                // binary part stays sparse. Parity keeps the CPU state intact.
++                if kind == WeightsKind::Dense && !parity {
++                    if let Some(additional) = &mut self.additional_relation_terms {
++                        additional.drop_linear();
++                    }
++                }
 +                self.device = Some(DeviceRounds {
 +                    session: Some(session),
 +                    rounds,
 +                    prev: None,
 +                    parity,
++                    kind,
 +                    witness_len: job.shape.len,
 +                    domain_len: job.shape.domain_len,
 +                });
@@ -272,28 +454,57 @@ index 0000000..996105f
 +    /// The device's terms for the current round (`None` when the device is
 +    /// not running this round). A device error is recorded and surfaces
 +    /// through `take_device_error`; the returned terms are then zero.
-+    pub(super) fn device_round_terms(&mut self) -> Option<(NormRoundTerms<E>, [E; 3])> {
++    pub(super) fn device_round(&mut self) -> Option<DeviceRound<E>> {
 +        let round = self.rounds_completed;
++        let d = self.device.as_ref()?;
++        if round >= d.rounds {
++            return None;
++        }
++        let factored_phase = d.kind == WeightsKind::Factored && round <= self.coefficient_bits();
 +        let can_skip = self.can_skip_norm_linear_coeff();
 +        let (e_first, e_second) = self.split_eq.remaining_eq_tables();
 +        let e_first = fields_to_bytes(e_first);
 +        let e_second = fields_to_bytes(e_second);
++        let (alpha, sources) = if factored_phase {
++            match &self.relation_state {
++                RelationRoundState::QuotientFactored { weights, .. } => (
++                    fields_to_bytes(weights.common_alpha_factor()),
++                    self.linear_terms.source_values_bytes(field_to_bytes),
++                ),
++                RelationRoundState::ReducedDense { .. } => (Vec::new(), Vec::new()),
++            }
++        } else {
++            (Vec::new(), Vec::new())
++        };
++        // A dense flat table already carries the additional linear weights.
++        let binary_only = d.kind == WeightsKind::Dense;
++        let pairs = self
++            .additional_relation_terms
++            .as_ref()
++            .map(|a| a.pairs_bytes(binary_only, field_to_bytes))
++            .unwrap_or_default();
 +        let d = self.device.as_mut()?;
-+        if round >= d.rounds {
-+            return None;
-+        }
++        let prev = d.prev.map(|r| {
++            let mut bytes = [0u8; FIELD_BYTES];
++            field_to_bytes(&r, &mut bytes);
++            bytes
++        });
 +        let terms = (|| -> Result<[E; TERMS], AkitaError> {
 +            let session = d
 +                .session
 +                .as_mut()
 +                .ok_or_else(|| AkitaError::InvalidSetup("relation-range session closed".into()))?;
-+            let prev = d.prev.map(|r| {
-+                let mut bytes = [0u8; FIELD_BYTES];
-+                field_to_bytes(&r, &mut bytes);
-+                bytes
-+            });
++            let input = RoundInput {
++                round,
++                prev: prev.as_ref(),
++                e_first: &e_first,
++                e_second: &e_second,
++                alpha: &alpha,
++                sources: &sources,
++                pairs: &pairs,
++            };
 +            let mut out = [0u8; MESSAGE_BYTES];
-+            session.round(round, prev.as_ref(), &e_first, &e_second, &mut out)?;
++            session.round(&input, &mut out)?;
 +            let mut terms = [E::zero(); TERMS];
 +            for (term, bytes) in terms.iter_mut().zip(out.chunks_exact(FIELD_BYTES)) {
 +                *term = field_from_bytes(bytes);
@@ -312,7 +523,13 @@ index 0000000..996105f
 +        } else {
 +            NormRoundTerms::Full([terms[0], terms[1], terms[2]])
 +        };
-+        Some((virt, [terms[3], terms[4], terms[5]]))
++        let mut additional = terms[6..10].to_vec();
++        trim_trailing_zeros(&mut additional);
++        Some(DeviceRound {
++            virt,
++            rel: [terms[3], terms[4], terms[5]],
++            additional: UniPoly::from_coeffs(additional),
++        })
 +    }
 +}
 +
@@ -326,72 +543,122 @@ index 0000000..996105f
 +        }
 +    }
 +
-+    /// Record challenge `r` for the device; on its last round take the
-+    /// tables back (folded by `r` here) and, unless parity mode keeps the
-+    /// CPU authoritative, resume the CPU prover from them.
++    /// Record challenge `r` for the device and fold the host-side pieces it
++    /// does not own (Gruen tables, the factored alpha / linear sources in
++    /// coefficient rounds, the live lane count, the sparse additional
++    /// terms). On the device's last round take the tables back (folded by
++    /// `r` here) and, unless parity keeps the CPU authoritative, resume the
++    /// CPU prover from them.
 +    pub(super) fn device_ingest(&mut self, r: E) -> DeviceFold<E> {
-+        let Some(d) = self.device.as_mut() else {
++        let Some(d) = self.device.as_ref() else {
 +            return DeviceFold::Cpu(None);
 +        };
 +        let round = self.rounds_completed;
-+        if round + 1 < d.rounds {
-+            d.prev = Some(r);
-+            return if d.parity {
-+                DeviceFold::Cpu(None)
-+            } else {
-+                DeviceFold::Skip
++        if round >= d.rounds {
++            return DeviceFold::Cpu(None);
++        }
++        let (parity, kind, rounds, witness_len, domain_len) =
++            (d.parity, d.kind, d.rounds, d.witness_len, d.domain_len);
++        let last = round + 1 == rounds;
++        if parity {
++            if !last {
++                if let Some(d) = self.device.as_mut() {
++                    d.prev = Some(r);
++                }
++                return DeviceFold::Cpu(None);
++            }
++            return match self.device_take_tables(r, witness_len, domain_len, rounds) {
++                Some(tables) => DeviceFold::Cpu(Some(tables)),
++                None => DeviceFold::Cpu(None),
 +            };
 +        }
-+        let parity = d.parity;
-+        let (witness_len, domain_len) = (d.witness_len, d.domain_len);
++        self.split_eq.bind(r);
++        let in_coefficient_round = self.in_coefficient_round();
++        if let Some(additional) = &mut self.additional_relation_terms {
++            additional.bind(r);
++        }
++        if kind == WeightsKind::Factored && in_coefficient_round {
++            if let RelationRoundState::QuotientFactored { weights, .. } = &mut self.relation_state {
++                fold_evals_in_place(weights.components_mut().0, r);
++            }
++            self.linear_terms.fold_coefficients(r);
++        }
++        if !in_coefficient_round {
++            self.live_lane_count = self.live_lane_count.div_ceil(2);
++        }
++        if !last {
++            if let Some(d) = self.device.as_mut() {
++                d.prev = Some(r);
++            }
++            return DeviceFold::Skip;
++        }
++        let Some((witness, weights)) = self.device_take_tables(r, witness_len, domain_len, rounds)
++        else {
++            return DeviceFold::Skip;
++        };
++        self.witness_state = WitnessState::FoldedSuffix(witness);
++        if !weights.is_empty() {
++            let live_len = witness_len.div_ceil(1 << rounds);
++            match DenseRelationWeights::new(weights, live_len) {
++                Ok(dense) => {
++                    self.relation_state = RelationRoundState::ReducedDense { weights: dense };
++                }
++                Err(e) => {
++                    self.device_error.get_or_insert(e);
++                    return DeviceFold::Skip;
++                }
++            }
++            let coeff_count = 1usize << self.coefficient_bits().saturating_sub(rounds);
++            self.linear_terms = PreparedProverLinearTerms::zero(self.live_lane_count, coeff_count);
++        }
++        DeviceFold::Skip
++    }
++
++    /// Take the device's tables after its last round and fold them by `r`;
++    /// records a device error and returns `None` when they are malformed.
++    fn device_take_tables(
++        &mut self,
++        r: E,
++        witness_len: usize,
++        domain_len: usize,
++        rounds: usize,
++    ) -> Option<(Vec<E>, Vec<E>)> {
++        let d = self.device.take()?;
 +        let tables = d
 +            .session
-+            .take()
 +            .ok_or_else(|| AkitaError::InvalidSetup("relation-range session closed".into()))
 +            .and_then(|session| session.tables())
 +            .and_then(|(w, p)| Ok((fields_from_bytes::<E>(&w)?, fields_from_bytes::<E>(&p)?)));
-+        self.device = None;
 +        let (mut witness, mut weights) = match tables {
 +            Ok(tables) => tables,
 +            Err(e) => {
 +                self.device_error.get_or_insert(e);
-+                return DeviceFold::Cpu(None);
++                return None;
 +            }
 +        };
-+        let rounds = round + 1;
 +        let expected_witness = witness_len.div_ceil(1 << (rounds - 1));
 +        let expected_weights = domain_len >> (rounds - 1);
-+        if witness.len() != expected_witness || weights.len() != expected_weights {
++        let lane_phase = rounds > self.coefficient_bits();
++        let weights_ok = match d.kind {
++            WeightsKind::Dense => weights.len() == expected_weights,
++            WeightsKind::Factored => weights.len() == if lane_phase { expected_weights } else { 0 },
++        };
++        if witness.len() != expected_witness || !weights_ok {
 +            self.device_error.get_or_insert(AkitaError::InvalidSize {
 +                expected: expected_witness + expected_weights,
 +                actual: witness.len() + weights.len(),
 +            });
-+            return DeviceFold::Cpu(None);
++            return None;
 +        }
 +        fold_evals_in_place(&mut witness, r);
-+        fold_evals_in_place(&mut weights, r);
-+        if parity {
-+            return DeviceFold::Cpu(Some((witness, weights)));
++        if !weights.is_empty() {
++            fold_evals_in_place(&mut weights, r);
 +        }
-+        let live_len = witness_len.div_ceil(1 << rounds);
-+        match DenseRelationWeights::new(weights, live_len) {
-+            Ok(dense) => self.relation_state = RelationRoundState::ReducedDense { weights: dense },
-+            Err(e) => {
-+                self.device_error.get_or_insert(e);
-+                return DeviceFold::Cpu(None);
-+            }
-+        }
-+        self.witness_state = WitnessState::FoldedSuffix(witness);
-+        let coeff_count = 1usize << self.coefficient_bits().saturating_sub(rounds);
-+        let live_lanes = if rounds > self.coefficient_bits() {
-+            self.live_lane_count.div_ceil(2)
-+        } else {
-+            self.live_lane_count
-+        };
-+        self.linear_terms = PreparedProverLinearTerms::zero(live_lanes, coeff_count);
-+        DeviceFold::Skip
++        Some((witness, weights))
 +    }
++}
 +
++impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
 +    /// Parity mode: the handed-back tables must equal the CPU state.
 +    pub(super) fn check_device_tables(&mut self, witness: &[E], weights: &[E]) {
 +        let cpu_witness = match &self.witness_state {
@@ -400,10 +667,28 @@ index 0000000..996105f
 +        };
 +        let mut cpu_weights = match &self.relation_state {
 +            RelationRoundState::ReducedDense { weights } => weights.evaluations().to_vec(),
-+            RelationRoundState::QuotientFactored { .. } => Vec::new(),
++            RelationRoundState::QuotientFactored { weights, .. } => {
++                if weights.common_alpha_factor().len() == 1 {
++                    let alpha = weights.common_alpha_factor()[0];
++                    weights
++                        .relation_lane_weights()
++                        .iter()
++                        .map(|lane| alpha * *lane)
++                        .collect()
++                } else {
++                    Vec::new()
++                }
++            }
 +        };
-+        self.linear_terms.add_flat_into(&mut cpu_weights);
-+        if cpu_witness != witness || cpu_weights != weights {
++        if !weights.is_empty() {
++            self.linear_terms.add_flat_into(&mut cpu_weights);
++            if matches!(self.relation_state, RelationRoundState::ReducedDense { .. }) {
++                if let Some(additional) = &self.additional_relation_terms {
++                    additional.add_linear_into(&mut cpu_weights);
++                }
++            }
++        }
++        if cpu_witness != witness || (!weights.is_empty() && cpu_weights != weights) {
 +            self.device_error.get_or_insert(AkitaError::InvalidSetup(format!(
 +                "relation-range device handoff mismatch after round {} (witness {} vs {}, weights {} vs {})",
 +                self.rounds_completed,
@@ -416,36 +701,30 @@ index 0000000..996105f
 +            tracing::info!(round = self.rounds_completed, "stage2_device_tables_ok");
 +        }
 +    }
-+}
 +
-+impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
-+    /// Parity mode: the device's round terms must equal the CPU's.
-+    pub(super) fn check_device_terms(
-+        &mut self,
-+        cpu: &(NormRoundTerms<E>, [E; 3]),
-+        dev: &(NormRoundTerms<E>, [E; 3]),
-+    ) {
++    /// Parity mode: the device's round polynomial must equal the CPU's.
++    pub(super) fn check_device_poly(&mut self, cpu: &UniPoly<E>) {
++        let Some(dev) = self.device_parity_poly.take() else {
++            return;
++        };
 +        if self.rounds_completed >= parity_rounds() {
 +            return;
 +        }
-+        let same_virt = match (cpu.0, dev.0) {
-+            (NormRoundTerms::Full(a), NormRoundTerms::Full(b)) => a == b,
-+            (NormRoundTerms::SkipLinear(a), NormRoundTerms::SkipLinear(b)) => a == b,
-+            _ => false,
-+        };
-+        if same_virt && cpu.1 == dev.1 {
++        if dev == *cpu {
 +            tracing::info!(round = self.rounds_completed, "stage2_device_parity_ok");
 +        } else {
-+            self.device_error
-+                .get_or_insert(AkitaError::InvalidSetup(format!(
-+                    "relation-range device parity mismatch at round {} (num_vars {})",
-+                    self.rounds_completed, self.num_vars
-+                )));
++            self.device_error.get_or_insert(AkitaError::InvalidSetup(format!(
++                "relation-range device parity mismatch at round {} (num_vars {}, cpu degree {}, device degree {})",
++                self.rounds_completed,
++                self.num_vars,
++                cpu.coeffs.len(),
++                dev.coeffs.len()
++            )));
 +        }
 +    }
 +}
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/evaluation_trace.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/evaluation_trace.rs
-index 941df54..f141f64 100644
+index 941df54..e136234 100644
 --- a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/evaluation_trace.rs
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/evaluation_trace.rs
 @@ -13,6 +13,7 @@ use akita_types::{
@@ -456,7 +735,7 @@ index 941df54..f141f64 100644
  use jolt_field::{CanonicalEncoding, ExtField, Field, Ring};
  
  /// One contiguous physical opening-digit run for a claim inside one witness chunk.
-@@ -232,6 +233,33 @@ impl<E: Field> PreparedProverLinearTerms<E> {
+@@ -232,6 +233,116 @@ impl<E: Field> PreparedProverLinearTerms<E> {
          self.sources.len()
      }
  
@@ -476,6 +755,89 @@ index 941df54..f141f64 100644
 +            });
 +    }
 +
++    /// Per-lane linear segments for the device: `lane_map[lane] = start << 8 |
++    /// count` into the returned segments `([source_lane, source_index, 0, 0],
++    /// factor)`; `None` for the dense lane kind, more than 255 terms on one
++    /// lane or more than `max` segments.
++    pub(crate) fn export_lane_segments(
++        &self,
++        max: usize,
++    ) -> Option<(Vec<u32>, Vec<([u32; 4], E)>)> {
++        let mut lane_map = vec![0u32; self.live_lane_count];
++        let mut out: Vec<([u32; 4], E)> = Vec::new();
++        match &self.lane_weights {
++            PreparedLaneWeights::Dense(_) => return None,
++            PreparedLaneWeights::Packing(packing) => {
++                for (lane, slot) in lane_map.iter_mut().enumerate() {
++                    let Some(segment) = packing
++                        .lane_to_segment
++                        .get(lane)
++                        .and_then(|s| *s)
++                        .and_then(|s| packing.segments.get(s.get() - 1))
++                    else {
++                        continue;
++                    };
++                    let offset = lane.checked_sub(segment.target_lane_start)?;
++                    if offset >= segment.lane_count {
++                        continue;
++                    }
++                    *slot = ((out.len() as u32) << 8) | 1;
++                    out.push((
++                        [
++                            (segment.source_lane_start + offset) as u32,
++                            segment.source_index as u32,
++                            0,
++                            0,
++                        ],
++                        segment.factor,
++                    ));
++                    if out.len() > max {
++                        return None;
++                    }
++                }
++            }
++            PreparedLaneWeights::Sparse(lanes) => {
++                for (lane, terms) in lanes.iter().enumerate() {
++                    if terms.is_empty() {
++                        continue;
++                    }
++                    if terms.len() > 255 {
++                        return None;
++                    }
++                    lane_map[lane] = ((out.len() as u32) << 8) | terms.len() as u32;
++                    for term in terms {
++                        out.push((
++                            [term.lane as u32, term.source_index as u32, 0, 0],
++                            term.factor,
++                        ));
++                    }
++                    if out.len() > max {
++                        return None;
++                    }
++                }
++            }
++        }
++        Some((lane_map, out))
++    }
++
++    /// Lanes per source (values are `lane_count * coeff_count` each).
++    pub(crate) fn source_lanes(&self) -> Vec<u32> {
++        self.sources.iter().map(|s| s.lane_count as u32).collect()
++    }
++
++    /// Every source's current values, concatenated.
++    pub(crate) fn source_values_bytes(&self, to_bytes: impl Fn(&E, &mut [u8])) -> Vec<u8> {
++        let total: usize = self.sources.iter().map(|s| s.values.len()).sum();
++        let mut out = vec![0u8; total * 16];
++        let mut slots = out.chunks_exact_mut(16);
++        for source in &self.sources {
++            for value in &source.values {
++                to_bytes(value, slots.next().expect("sized above"));
++            }
++        }
++        out
++    }
++
 +    /// `(lane-weight kind, sources, source values)` for the stage-2 plan log line.
 +    pub(crate) fn describe(&self) -> (&'static str, usize, usize) {
 +        let kind = match &self.lane_weights {
@@ -491,7 +853,7 @@ index 941df54..f141f64 100644
          if self.live_lane_count != 1 || self.coeff_count != 1 {
              return Err(AkitaError::InvalidProof);
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/lifecycle.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/lifecycle.rs
-index 799d302..92180b8 100644
+index 799d302..9c31c8f 100644
 --- a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/lifecycle.rs
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/lifecycle.rs
 @@ -1,4 +1,5 @@
@@ -533,7 +895,55 @@ index 799d302..92180b8 100644
          let relation_linear_claim = relation_claim + linear_opening_claim;
          let additional_claim = additional_relation_terms
              .as_ref()
-@@ -231,7 +249,7 @@ impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
+@@ -187,51 +205,17 @@ impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
+             batching_coeff * range_image_evaluation + relation_linear_claim + additional_claim;
+         let relation_state = match relation_weights {
+             RelationWeightOracle::QuotientFactored(weights) => {
+-                let prefix = if can_use_stage2_two_round_prefix(coefficient_bits, b) {
+-                    let proof = build_stage2_bivariate_skip_proof_from_m_compact(
+-                        w_evals_compact.view(),
+-                        weights.common_alpha_factor(),
+-                        weights.relation_lane_weights(),
+-                        &linear_terms,
+-                        stage1_point,
+-                        b,
+-                        live_lane_count,
+-                        lane_bits,
+-                        coefficient_bits,
+-                    )
+-                    .ok_or_else(|| {
+-                        AkitaError::InvalidSetup(
+-                            "stage-2 compact prefix is unavailable for the validated geometry"
+-                                .into(),
+-                        )
+-                    })?;
+-                    let skip_state = Stage2BivariateSkipState::new(
+-                        &proof,
+-                        stage1_point,
+-                        range_image_evaluation,
+-                        relation_linear_claim,
+-                        batching_coeff,
+-                    )
+-                    .ok_or_else(|| {
+-                        AkitaError::InvalidSetup(
+-                            "stage-2 compact prefix claim recovery failed".into(),
+-                        )
+-                    })?;
+-                    QuotientPrefixState::Deferred(DeferredCompactPrefix {
+-                        skip_state,
+-                        phase: DeferredCompactPrefixPhase::Round0,
+-                    })
+-                } else {
+-                    QuotientPrefixState::Disabled
+-                };
+-                RelationRoundState::QuotientFactored { weights, prefix }
++                RelationRoundState::QuotientFactored {
++                    weights,
++                    prefix: QuotientPrefixState::Disabled,
++                }
+             }
+             RelationWeightOracle::ReducedDense(weights) => {
+                 RelationRoundState::ReducedDense { weights }
              }
          };
  
@@ -542,15 +952,64 @@ index 799d302..92180b8 100644
              witness_state: WitnessState::CompactPrefix(w_evals_compact),
              b,
              input_claim,
-@@ -248,9 +266,15 @@ impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
+@@ -248,9 +232,64 @@ impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
              scan_time_total: 0.0,
              fold_time_total: 0.0,
              rounds_completed: 0,
 -        })
 +            device: None,
 +            device_error: None,
++            device_add_poly: None,
++            device_parity_poly: None,
++            pending_tables: None,
 +        };
++        // The device replaces the two-round compact prefix. Parity mode keeps
++        // the CPU authoritative but on the round-by-round flow (no prefix), so
++        // the alpha / linear folds the device receives advance one round at a time.
 +        prover.try_open_device();
++        let cpu_prefix = prover.device.is_none();
++        if let (
++            true,
++            true,
++            RelationRoundState::QuotientFactored { weights, prefix },
++            WitnessState::CompactPrefix(w_evals_compact),
++        ) = (
++            cpu_prefix,
++            can_use_stage2_two_round_prefix(coefficient_bits, b),
++            &mut prover.relation_state,
++            &prover.witness_state,
++        ) {
++            let proof = build_stage2_bivariate_skip_proof_from_m_compact(
++                w_evals_compact.view(),
++                weights.common_alpha_factor(),
++                weights.relation_lane_weights(),
++                &prover.linear_terms,
++                stage1_point,
++                b,
++                live_lane_count,
++                lane_bits,
++                coefficient_bits,
++            )
++            .ok_or_else(|| {
++                AkitaError::InvalidSetup(
++                    "stage-2 compact prefix is unavailable for the validated geometry".into(),
++                )
++            })?;
++            let skip_state = Stage2BivariateSkipState::new(
++                &proof,
++                stage1_point,
++                range_image_evaluation,
++                relation_linear_claim,
++                batching_coeff,
++            )
++            .ok_or_else(|| {
++                AkitaError::InvalidSetup("stage-2 compact prefix claim recovery failed".into())
++            })?;
++            *prefix = QuotientPrefixState::Deferred(DeferredCompactPrefix {
++                skip_state,
++                phase: DeferredCompactPrefixPhase::Round0,
++            });
++        }
 +        Ok(prover)
      }
 +}
@@ -560,20 +1019,27 @@ index 799d302..92180b8 100644
      ///
      /// # Panics
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
-index fc38730..fc709be 100644
+index fc38730..c622256 100644
 --- a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
-@@ -270,6 +270,9 @@ pub struct RelationRangeImageProver<E: Field> {
+@@ -270,6 +270,16 @@ pub struct RelationRangeImageProver<E: Field> {
      scan_time_total: f64,
      fold_time_total: f64,
      rounds_completed: usize,
 +
 +    device: Option<device::DeviceRounds<E>>,
 +    device_error: Option<AkitaError>,
++    /// Device additional-term polynomial of the round whose combined
++    /// polynomial is cached (replaces `additional_round_polynomial`).
++    device_add_poly: Option<UniPoly<E>>,
++    /// Parity mode: the device's full round polynomial to compare.
++    device_parity_poly: Option<UniPoly<E>>,
++    /// Parity mode: handed-back tables to compare after the CPU fold.
++    pending_tables: Option<(Vec<E>, Vec<E>)>,
  }
  
  mod additional_terms;
-@@ -278,6 +281,8 @@ mod coefficient_prefix;
+@@ -278,6 +288,8 @@ mod coefficient_prefix;
  mod coefficient_round_fold;
  mod compact_prefix;
  mod dense_terms;
@@ -583,10 +1049,10 @@ index fc38730..fc709be 100644
  mod lane_prefix;
  mod lifecycle;
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/round_flow.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/round_flow.rs
-index 6b485a7..4c203af 100644
+index 6b485a7..2457498 100644
 --- a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/round_flow.rs
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/round_flow.rs
-@@ -1,6 +1,8 @@
+@@ -1,8 +1,24 @@
 +use super::device_flow::DeviceFold;
  use super::*;
 +use akita_serialization::AkitaSerialize;
@@ -595,93 +1061,63 @@ index 6b485a7..4c203af 100644
 +impl<E: Field + Ring + Unreduced + AkitaSerialize> RelationRangeImageProver<E> {
      fn finish_ingested_round(&mut self, fold_started: Instant) {
          self.rounds_completed += 1;
++        if let Some((witness, weights)) = self.pending_tables.take() {
++            self.check_device_tables(&witness, &weights);
++        }
++        // Parity mode: CPU paths that cache the next round themselves still
++        // have to run the device round so the comparison (and the device's
++        // fold sequence) stays in step.
++        if self.cached_round_poly.is_some() && self.device.as_ref().is_some_and(|d| d.parity) {
++            if let Some(dev) = self.device_round() {
++                let (norm_poly, relation_poly) = self.polys_from_terms(dev.virt, dev.rel);
++                let mut combined = self.combine_polys(&norm_poly, &relation_poly);
++                add_coeffs(&mut combined, &dev.additional);
++                self.device_parity_poly = Some(combined);
++            }
++        }
          if self.rounds_completed < self.num_vars {
-@@ -23,25 +25,34 @@ impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
+             if self.cached_round_poly.is_none() {
+                 self.cached_round_poly = Some(self.compute_current_round_poly_from_state());
+@@ -23,6 +39,19 @@ impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
  
      pub(super) fn compute_current_round_poly_from_state(&mut self) -> UniPoly<E> {
          let t_scan = Instant::now();
-+        let device_terms = self.device_round_terms();
-+        let parity = self.device.as_ref().is_some_and(|d| d.parity);
-         let (poly, norm_poly) = match &self.relation_state {
--            RelationRoundState::ReducedDense { weights: dense } => match &self.witness_state {
--                WitnessState::CompactPrefix(compact_witness) => {
--                    let (virt_terms, rel_terms) = self.compute_round_compact_reduced_dense_terms(
--                        compact_witness.view(),
--                        dense.evaluations(),
--                    );
--                    let (norm_poly, relation_poly) = self.polys_from_terms(virt_terms, rel_terms);
--                    (self.combine_polys(&norm_poly, &relation_poly), norm_poly)
--                }
--                WitnessState::FoldedSuffix(folded_witness) => {
--                    let (virt_terms, rel_terms) = self.compute_folded_reduced_dense_round_terms(
--                        folded_witness,
--                        dense.evaluations(),
--                    );
--                    let (norm_poly, relation_poly) = self.polys_from_terms(virt_terms, rel_terms);
--                    (self.combine_polys(&norm_poly, &relation_poly), norm_poly)
--                }
--            },
-+            RelationRoundState::ReducedDense { weights: dense } => {
-+                let cpu_terms = || match &self.witness_state {
-+                    WitnessState::CompactPrefix(compact_witness) => self
-+                        .compute_round_compact_reduced_dense_terms(
-+                            compact_witness.view(),
-+                            dense.evaluations(),
-+                        ),
-+                    WitnessState::FoldedSuffix(folded_witness) => self
-+                        .compute_folded_reduced_dense_round_terms(
-+                            folded_witness,
-+                            dense.evaluations(),
-+                        ),
-+                };
-+                let (virt_terms, rel_terms) = match device_terms {
-+                    Some(dev) if !parity => dev,
-+                    Some(dev) => {
-+                        let cpu = cpu_terms();
-+                        self.check_device_terms(&cpu, &dev);
-+                        cpu
-+                    }
-+                    None => cpu_terms(),
-+                };
-+                let (norm_poly, relation_poly) = self.polys_from_terms(virt_terms, rel_terms);
-+                (self.combine_polys(&norm_poly, &relation_poly), norm_poly)
++        if let Some(dev) = self.device_round() {
++            let (norm_poly, relation_poly) = self.polys_from_terms(dev.virt, dev.rel);
++            let mut combined = self.combine_polys(&norm_poly, &relation_poly);
++            if self.device.as_ref().is_some_and(|d| d.parity) {
++                add_coeffs(&mut combined, &dev.additional);
++                self.device_parity_poly = Some(combined);
++            } else {
++                self.device_add_poly = Some(dev.additional);
++                self.prev_norm_poly = Some(norm_poly);
++                self.scan_time_total += t_scan.elapsed().as_secs_f64();
++                return combined;
 +            }
-             RelationRoundState::QuotientFactored { weights, .. } => {
-                 self.compute_quotient_round_from_state(weights)
-             }
-@@ -50,7 +61,9 @@ impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
++        }
+         let (poly, norm_poly) = match &self.relation_state {
+             RelationRoundState::ReducedDense { weights: dense } => match &self.witness_state {
+                 WitnessState::CompactPrefix(compact_witness) => {
+@@ -50,7 +79,18 @@ impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
          self.scan_time_total += t_scan.elapsed().as_secs_f64();
          poly
      }
++}
++
++fn add_coeffs<E: Field>(polynomial: &mut UniPoly<E>, additional: &UniPoly<E>) {
++    if polynomial.coeffs.len() < additional.coeffs.len() {
++        polynomial.coeffs.resize(additional.coeffs.len(), E::zero());
++    }
++    for (coefficient, addition) in polynomial.coeffs.iter_mut().zip(&additional.coeffs) {
++        *coefficient += *addition;
++    }
 +}
  
 +impl<E: Field + Ring + Unreduced> RelationRangeImageProver<E> {
      fn compute_quotient_round_from_state(
          &self,
          weights: &RelationWeightFactorization<E>,
-@@ -162,6 +175,15 @@ impl<E: Field + Ring + Unreduced + Fold> RelationRangeImageProver<E> {
-     fn ingest_reduced_dense_challenge(&mut self, r: E) {
-         self.split_eq.bind(r);
-         let folding_lane_round = !self.in_coefficient_round();
-+        let parity_tables = match self.device_ingest(r) {
-+            DeviceFold::Skip => {
-+                if folding_lane_round {
-+                    self.live_lane_count = self.live_lane_count.div_ceil(2);
-+                }
-+                return;
-+            }
-+            DeviceFold::Cpu(tables) => tables,
-+        };
-         self.witness_state = match mem::replace(
-             &mut self.witness_state,
-             WitnessState::FoldedSuffix(Vec::new()),
-@@ -187,10 +209,15 @@ impl<E: Field + Ring + Unreduced + Fold> RelationRangeImageProver<E> {
-         if folding_lane_round {
-             self.live_lane_count = self.live_lane_count.div_ceil(2);
-         }
-+        if let Some((witness, weights)) = parity_tables {
-+            self.check_device_tables(&witness, &weights);
-+        }
+@@ -190,7 +230,9 @@ impl<E: Field + Ring + Unreduced + Fold> RelationRangeImageProver<E> {
      }
  }
  
@@ -692,3 +1128,48 @@ index 6b485a7..4c203af 100644
      fn num_rounds(&self) -> usize {
          self.num_vars
      }
+@@ -209,26 +251,34 @@ impl<E: Field + Ring + Unreduced + Fold> SumcheckInstanceProver<E> for RelationR
+         } else {
+             self.compute_current_round_poly_from_state()
+         };
+-        if let Some(additional) = self.additional_round_polynomial() {
+-            if polynomial.coeffs.len() < additional.coeffs.len() {
+-                polynomial.coeffs.resize(additional.coeffs.len(), E::zero());
+-            }
+-            for (coefficient, addition) in polynomial.coeffs.iter_mut().zip(additional.coeffs) {
+-                *coefficient += addition;
+-            }
++        let additional = match self.device_add_poly.take() {
++            Some(additional) => Some(additional),
++            None => self.additional_round_polynomial(),
++        };
++        if let Some(additional) = additional {
++            add_coeffs(&mut polynomial, &additional);
+         }
++        self.check_device_poly(&polynomial);
+         polynomial
+     }
+ 
+     fn ingest_challenge(&mut self, _round: usize, r: E) {
+         let t_fold = Instant::now();
+         let _span = tracing::info_span!("RelationRangeImageProver::fold_round").entered();
+-        if let Some(additional) = &mut self.additional_relation_terms {
+-            additional.bind(r);
+-        }
+         if let Some(prev_norm_poly) = self.prev_norm_poly.take() {
+             self.prev_norm_claim = prev_norm_poly.evaluate(&r);
+         }
++        match self.device_ingest(r) {
++            DeviceFold::Skip => {
++                drop(_span);
++                self.finish_ingested_round(t_fold);
++                return;
++            }
++            DeviceFold::Cpu(tables) => self.pending_tables = tables,
++        }
++        if let Some(additional) = &mut self.additional_relation_terms {
++            additional.bind(r);
++        }
+ 
+         if matches!(self.relation_state, RelationRoundState::ReducedDense { .. }) {
+             self.ingest_reduced_dense_challenge(r);

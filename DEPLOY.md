@@ -40,6 +40,7 @@ static output is uploaded.
    selector shows **GPU** selected with no "GPU unavailable" line; Generate Proof on SHA-256
    → proof row badge `GPU`, Verify Proof → `Valid`; switch to **CPU only** and repeat.
    In a browser without WebGPU the selector lands on CPU and shows the reason.
+   Console clean in an Incognito window (extensions inject styles and trip the CSP).
 
 ## First-time setup
 

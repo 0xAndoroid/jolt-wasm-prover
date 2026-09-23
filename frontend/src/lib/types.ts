@@ -21,6 +21,7 @@ export interface ProofSummary {
   totalMs: number
   commitMs?: number
   digitRangeMs?: number
+  stage2Ms?: number
 }
 
 export interface ProgramState {
@@ -88,6 +89,7 @@ export type WorkerResponse =
       gpuStatus: string
       gpuCommit: string
       gpuDigitRange: string
+      gpuStage2: string
       peakMemory: number | null
       elapsed: number
     }
