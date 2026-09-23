@@ -11,13 +11,17 @@ Orchestrator task c45196f3 · kanban #562 · playbook: vault `reference/feature-
 ## Playbook steps — Phase 1
 1. plan 1/1 — fable-medium: spec touches Rust mailbox + worker.js/gpu-proxy.js + React UI → planner writes `## Plan (phase 1)` below. [done]
    - implement ci 1/1 (fable-low, parallel): repo has NO CI (`gh pr view 10` → 0 checks); add `.github/workflows/ci.yml` (fmt --check, frontend typecheck+build) so "green CI" is a real gate. [done — PR #12 → 63a7f41]
-2. implement 1/1 — fable-high, worktree `webgpu-w3/gpu-in-product`. [running]
-3. review i/3 — fresh fable-medium each round. [pending]
-4. merge 1/1 — shell: CI green, squash, ff main, delete branch, wt remove. [pending]
-5. deploy 1/1 — skip: phase 2 owns the build + preview; production deploy is the user's. [pending]
+2. implement 1/1 — fable-high, worktree `webgpu-w3/gpu-in-product`. [done — PR #13 @9544174, fixes 390ec2a 5cfc1fb]
+3. review i/3 — fresh fable-medium each round. [done — 1/3: 2 fixed @390ec2a; 2/3: ZERO ISSUES (+1 test assertion 5cfc1fb)]
+4. merge 1/1 — shell: CI green, squash, ff main, delete branch, wt remove. [done — 29a140c]
+5. deploy 1/1 — skip: phase 2 owns the build + preview; production deploy is the user's. [skip]
 
-## Playbook steps — Phase 2
-(filled when phase 1 merges)
+## Playbook steps — Phase 2 (deployment readiness)
+1. plan 1/1 — skip: spec is explicit (build + WebKit pass + DEPLOY.md), one lane.
+2. implement 1/1 — fable-high, worktree `webgpu-w3/deploy-readiness`: full W1+W2 wasm build, frontend build, Playwright headless WebKit pass both modes 2^18 + 2^20 (verify=true, byte-identical), 375/1440 screenshots, DEPLOY.md + build-pages.sh refreshed for the webgpu feature set, CSP/_headers check. Preview deploy: skip — DEPLOY.md marks no preview path (user rule). [running]
+3. review i/3 — fresh fable-medium. [pending]
+4. merge 1/1 — shell. [pending]
+5. deploy 1/1 — skip: production `wrangler pages deploy` is the user's; exact command in the report. [pending]
 
 ## Playbook steps — Phase 3
 (filled when phase 2 merges)

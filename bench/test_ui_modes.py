@@ -19,6 +19,7 @@ import time
 from playwright.sync_api import sync_playwright
 
 RADIO = '[role=radiogroup] [role=radio]'
+PANEL = '[role=tabpanel][data-state=active]'
 CHECKED = f'{RADIO}[aria-checked="true"]'
 SHA_RE = re.compile(r"Proof SHA-256: ([0-9a-f]{64})")
 
@@ -71,15 +72,27 @@ def checked_label(page):
 
 
 def prove(page):
-    seen = len(SHA_RE.findall(page.locator(".output").inner_text()))
-    page.locator(".prove-btn").click()
+    seen = len(SHA_RE.findall(page.locator(f"{PANEL} .output").inner_text()))
+    page.locator(f"{PANEL} .prove-btn").click()
     page.wait_for_function(
-        "(n) => (document.querySelector('.output')?.innerText.match(/Proof SHA-256: [0-9a-f]{64}/g) || []).length > n",
+        f"(n) => (document.querySelector('{PANEL} .output')?.innerText.match(/Proof SHA-256: [0-9a-f]{{64}}/g) || []).length > n",
         arg=seen,
     )
-    sha = SHA_RE.findall(page.locator(".output").inner_text())[-1]
-    mode = page.locator("[data-proof-mode]").last.get_attribute("data-proof-mode")
+    sha = SHA_RE.findall(page.locator(f"{PANEL} .output").inner_text())[-1]
+    mode = page.locator(f"{PANEL} [data-proof-mode]").get_attribute("data-proof-mode")
     return sha, mode
+
+
+def verify(page, label):
+    page.locator(f"{PANEL} .verify-btn").click()
+    # case-sensitive on purpose: the failure text is "Invalid"
+    page.wait_for_function(f"() => document.querySelector('{PANEL}')?.innerText.includes('Valid')")
+    check("Invalid" not in page.locator(PANEL).inner_text(), f"{label}: proof verified in the UI")
+
+
+def select_tab(page, name):
+    page.get_by_role("tab", name=name).click()
+    page.wait_for_selector(f"{PANEL} .prove-btn")
 
 
 def no_overflow(page):
@@ -122,12 +135,24 @@ def main():
         check(page.evaluate("() => localStorage.getItem('jolt-prover-mode')") is None, "default mode leaves localStorage untouched")
         sha_gpu, mode = prove(page)
         check(mode == "gpu", f"first proof ran in GPU mode (badge {mode})")
+        verify(page, "SHA-256 GPU")
+        select_tab(page, "Keccak Chain")
+        keccak_gpu, mode = prove(page)
+        check(mode == "gpu", f"Keccak Chain proof ran in GPU mode (badge {mode})")
+        verify(page, "Keccak Chain GPU")
 
         page.locator(RADIO, has_text="CPU only").click()
         page.wait_for_function(f"() => document.querySelector('{CHECKED}')?.innerText.includes('CPU')")
+        keccak_cpu, mode = prove(page)
+        check(mode == "cpu", f"Keccak Chain proof ran in CPU mode (badge {mode})")
+        check(keccak_cpu == keccak_gpu, f"Keccak Chain CPU proof bytes == GPU proof bytes ({keccak_cpu[:16]})")
+        verify(page, "Keccak Chain CPU")
+        select_tab(page, "SHA-256")
         sha_cpu, mode = prove(page)
-        check(mode == "cpu", f"second proof ran in CPU mode (badge {mode})")
-        check(sha_cpu == sha_gpu, f"CPU proof bytes == GPU proof bytes ({sha_cpu[:16]})")
+        check(mode == "cpu", f"second SHA-256 proof ran in CPU mode (badge {mode})")
+        check(sha_cpu == sha_gpu, f"SHA-256 CPU proof bytes == GPU proof bytes ({sha_cpu[:16]})")
+        verify(page, "SHA-256 CPU")
+        shoot(page, args.shots, "webkit-cpu")
         check(page.evaluate("() => localStorage.getItem('jolt-prover-mode')") == "cpu", "choice persisted as 'cpu'")
 
         # A fresh page in the same context stands in for a reload: WebKit crashes when a
@@ -141,7 +166,7 @@ def main():
         wait_ready(page)
         sha_gpu2, mode = prove(page)
         check(mode == "gpu" and sha_gpu2 == sha_gpu, f"GPU re-enabled without reload, proof identical ({mode})")
-        shoot(page, args.shots, "webkit")
+        shoot(page, args.shots, "webkit-gpu")
         page.close()
         browser.close()
 

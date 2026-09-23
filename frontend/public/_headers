@@ -10,3 +10,9 @@
 
 /worker.js
   Cache-Control: no-cache
+
+/gpu-proxy.js
+  Cache-Control: no-cache
+
+/wgsl/*
+  Cache-Control: no-cache
