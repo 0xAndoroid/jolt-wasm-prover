@@ -15,6 +15,7 @@ WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compile
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
 # ... with the experimental WebGPU harness compiled in (see README "WebGPU (experimental)")
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu
+# ... plus the trace-commit device seam (W1 path; needs ./setup-wasm-deps.sh first): --features webgpu,trace-commit-device
 
 # Build native preprocessing generator (needs the `jolt` CLI from the pinned jolt rev on PATH)
 cargo build --release --features native

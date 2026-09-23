@@ -33,10 +33,6 @@ pub fn set_unavailable() {
     STATE.store(STATE_UNAVAILABLE, Ordering::SeqCst);
 }
 
-pub fn is_enabled() -> bool {
-    STATE.load(Ordering::SeqCst) == STATE_ENABLED
-}
-
 /// What a prove run learned about the GPU before doing any field work.
 #[derive(Clone, Debug, Default)]
 pub struct GpuReport {

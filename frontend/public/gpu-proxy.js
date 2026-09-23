@@ -127,32 +127,35 @@ async function runOp(op, args, regions, ret) {
             const entries = [{ binding: 0, resource: { buffer: uniformBuffer } }];
             const temps = [];
             const readbacks = [];
-            for (let i = 0; i < nbind; i++) {
-                const r = regions[i];
-                let buf;
-                if (r.flags & REGION.HANDLE) {
-                    // ptr is a handle here, not a wasm address: a readback would land at address `handle`.
-                    if (r.flags & (REGION.UPLOAD | REGION.READBACK)) throw new Error(`binding ${i}: handle regions cannot be uploaded or read back`);
-                    buf = getHandle(r.ptr);
-                } else {
-                    buf = storageBuffer(r.len);
-                    temps.push(buf);
-                    if (r.flags & REGION.UPLOAD) upload(buf, 0, r.ptr, r.len);
+            try {
+                for (let i = 0; i < nbind; i++) {
+                    const r = regions[i];
+                    let buf;
+                    if (r.flags & REGION.HANDLE) {
+                        // ptr is a handle here, not a wasm address: a readback would land at address `handle`.
+                        if (r.flags & (REGION.UPLOAD | REGION.READBACK)) throw new Error(`binding ${i}: handle regions cannot be uploaded or read back`);
+                        buf = getHandle(r.ptr);
+                    } else {
+                        buf = storageBuffer(r.len);
+                        temps.push(buf);
+                        if (r.flags & REGION.UPLOAD) upload(buf, 0, r.ptr, r.len);
+                    }
+                    if (r.flags & REGION.READBACK) readbacks.push({ buf, ptr: r.ptr, len: r.len });
+                    entries.push({ binding: i + 1, resource: { buffer: buf } });
                 }
-                if (r.flags & REGION.READBACK) readbacks.push({ buf, ptr: r.ptr, len: r.len });
-                entries.push({ binding: i + 1, resource: { buffer: buf } });
+                const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries });
+                const enc = device.createCommandEncoder();
+                const pass = enc.beginComputePass();
+                pass.setPipeline(pipeline);
+                pass.setBindGroup(0, bindGroup);
+                pass.dispatchWorkgroups(wx, wy, wz);
+                pass.end();
+                device.queue.submit([enc.finish()]);
+                for (const rb of readbacks) await readback(rb.buf, rb.ptr, rb.len);
+                if (readbacks.length === 0) await device.queue.onSubmittedWorkDone();
+            } finally {
+                for (const t of temps) t.destroy();
             }
-            const bindGroup = device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries });
-            const enc = device.createCommandEncoder();
-            const pass = enc.beginComputePass();
-            pass.setPipeline(pipeline);
-            pass.setBindGroup(0, bindGroup);
-            pass.dispatchWorkgroups(wx, wy, wz);
-            pass.end();
-            device.queue.submit([enc.finish()]);
-            for (const rb of readbacks) await readback(rb.buf, rb.ptr, rb.len);
-            if (readbacks.length === 0) await device.queue.onSubmittedWorkDone();
-            for (const t of temps) t.destroy();
             return;
         }
         default:
