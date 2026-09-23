@@ -1,4 +1,5 @@
 pub mod engine;
+pub mod gpu;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_tracing;
@@ -40,6 +41,23 @@ mod wasm {
         use jolt_inlines_secp256k1 as _;
         use jolt_inlines_sha2 as _;
         Ok(())
+    }
+
+    /// Address of the GPU mailbox for `gpu-proxy.js`; 0 when the crate was
+    /// built without the `webgpu` feature.
+    #[wasm_bindgen]
+    pub fn gpu_mailbox_ptr() -> u32 {
+        crate::gpu::mailbox_ptr()
+    }
+
+    #[wasm_bindgen]
+    pub fn set_gpu_enabled() {
+        crate::gpu::set_enabled()
+    }
+
+    #[wasm_bindgen]
+    pub fn set_gpu_unavailable() {
+        crate::gpu::set_unavailable()
     }
 
     #[wasm_bindgen]
@@ -201,6 +219,26 @@ mod wasm {
         #[wasm_bindgen(getter)]
         pub fn prove_ms(&self) -> f64 {
             self.out.timings.prove_ms
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn gpu_status(&self) -> String {
+            self.out.gpu.status.clone()
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn gpu_selftest_ms(&self) -> f64 {
+            self.out.gpu.selftest_ms
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn gpu_selftest_mismatches(&self) -> u32 {
+            self.out.gpu.selftest_mismatches
+        }
+
+        #[wasm_bindgen(getter)]
+        pub fn gpu_roundtrip_us(&self) -> f64 {
+            self.out.gpu.roundtrip_us
         }
     }
 

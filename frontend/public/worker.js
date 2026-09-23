@@ -5,6 +5,9 @@ import init, {
     clear_trace,
     WasmProver,
     WasmVerifier,
+    gpu_mailbox_ptr,
+    set_gpu_enabled,
+    set_gpu_unavailable,
 } from '/pkg/jolt_wasm_prover.js';
 
 // Akita backend kernels recurse deeply on rayon workers (64 MiB stacks
@@ -15,12 +18,42 @@ const SCHEDULES_URL = '/akita_schedules.bin';
 
 let wasmExports = null;
 let scheduleArtifacts = null;
+let gpuProxy = null;
 const provers = {};
 
 async function fetchBytes(url) {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`fetch ${url}: ${r.status}`);
     return new Uint8Array(await r.arrayBuffer());
+}
+
+// The prover blocks its threads, so the GPUDevice lives in gpu-proxy.js and
+// talks to Rust through a mailbox in the shared wasm memory (src/gpu/).
+// Resolves to the proxy's ready/unavailable report; never throws.
+async function initGpu() {
+    const mailboxPtr = gpu_mailbox_ptr();
+    if (mailboxPtr === 0) {
+        set_gpu_unavailable();
+        return { status: 'unavailable', reason: 'wasm built without the webgpu feature' };
+    }
+    if (typeof navigator.gpu === 'undefined') {
+        set_gpu_unavailable();
+        return { status: 'unavailable', reason: 'navigator.gpu missing (WebGPU unsupported or insecure context)' };
+    }
+    gpuProxy = new Worker('/gpu-proxy.js', { type: 'module' });
+    const report = await new Promise((resolve) => {
+        gpuProxy.onmessage = (e) => resolve(e.data);
+        gpuProxy.onerror = (e) => resolve({ type: 'unavailable', reason: e.message || 'gpu-proxy failed to load' });
+        gpuProxy.postMessage({ type: 'init', memory: wasmExports.memory, mailboxPtr });
+    });
+    if (report.type !== 'ready') {
+        gpuProxy.terminate();
+        gpuProxy = null;
+        set_gpu_unavailable();
+        return { status: 'unavailable', reason: report.reason };
+    }
+    set_gpu_enabled();
+    return { status: 'ready', adapter: report.adapter, features: report.features, limits: report.limits };
 }
 
 self.onmessage = async (e) => {
@@ -40,7 +73,8 @@ self.onmessage = async (e) => {
                 scheduleArtifacts = schedules;
                 await initThreadPool(data.numThreads);
                 init_tracing();
-                self.postMessage({ type: 'init-done' });
+                const gpu = data.gpu === true ? await initGpu() : { status: 'disabled' };
+                self.postMessage({ type: 'init-done', gpu });
                 break;
             }
 
@@ -101,6 +135,10 @@ self.onmessage = async (e) => {
                     traceMs: result.trace_ms,
                     setupMs: result.setup_ms,
                     proveMs: result.prove_ms,
+                    gpuStatus: result.gpu_status,
+                    gpuSelftestMs: result.gpu_selftest_ms,
+                    gpuSelftestMismatches: result.gpu_selftest_mismatches,
+                    gpuRoundtripUs: result.gpu_roundtrip_us,
                     peakMemory,
                     elapsed,
                 });

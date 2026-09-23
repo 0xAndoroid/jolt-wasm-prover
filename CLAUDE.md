@@ -13,6 +13,9 @@ WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compile
 
 # Build WASM package (outputs to pkg/). Stable toolchain + RUSTC_BOOTSTRAP for build-std.
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
+# ... with the experimental WebGPU harness compiled in (see README "WebGPU (experimental)")
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu
+# ... plus the trace-commit device seam (W1 path; needs ./setup-wasm-deps.sh first): --features webgpu,trace-commit-device
 
 # Build native preprocessing generator (needs the `jolt` CLI from the pinned jolt rev on PATH)
 cargo build --release --features native
@@ -48,15 +51,24 @@ node bench.mjs            # sha2 demo via the React UI (default 3 runs)
 node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js directly
 ```
 
+WebGPU harness (Python Playwright, `uv run --with playwright python -m playwright install webkit chromium` once; the node Playwright's WebKit has no WebGPU):
+
+```bash
+uv run --with playwright python bench/bench_webgpu.py --iters 17 --runs 3 --gpu both   # gpu on vs off: proofs must be byte-identical, verify=true
+uv run --with playwright python bench/test_fp128_wgsl.py                               # fp128.wgsl vs Python ints mod p, 100k vectors
+```
+
 `bench.mjs` outputs JSON to stdout; per-run timings go to stderr. sha2-chain iteration counts map to padded trace lengths: 17 → 2^16, 69 → 2^18, 278 → 2^20, 556 → 2^21 — the wasm32 ceiling (2^22 needs a one-hot polynomial with 2^32 coefficients; see README "Protocol"). `bench-chain.mjs` reports the trace / Akita setup / prove split per run.
 
-**server.mjs caches compressed responses in memory with no mtime check — restart it after every wasm rebuild or you test stale bytes.**
+**server.mjs caches compressed responses in memory with no mtime check — restart it after every wasm rebuild or you test stale bytes.** It serves `frontend/dist/`, so edits to `frontend/public/` (worker.js, gpu-proxy.js, wgsl/) need `cd frontend && npm run build` before the restart.
 
 ## Architecture
 
 - `src/lib.rs` — `#[wasm_bindgen]` exports: `WasmProver`, `WasmVerifier`, tracing (`init_inlines` export kept as a no-op — inline registration is inventory-based link-time ctors and worker.js no longer calls it)
 - `src/engine.rs` — the prove/verify pipeline shared by wasm and native: decode the Akita schedule bundle + `JoltProgramPreprocessing` (bincode2), trace via `TracerBackend::trace_compact`, derive `ProverConfig`, build the shape-exact Akita setup with `jolt_prover::akita::preprocessing::preprocess_full` (the "setup" phase, per proof), prove via `jolt_prover::prove` over `JoltAkitaBackend::optimized()`, return proof + program IO + the verifier preprocessing for that shape
 - `src/trace_commit_reference.rs` — `CpuReferenceDevice`, the CPU oracle for the stage-0 trace-commit device ABI (`docs/trace-commit-device.md`); feature `trace-commit-device`
+- `src/gpu/` — WebGPU harness behind the `webgpu` cargo feature: `mailbox.rs` (`#[repr(C)]` static in shared wasm memory; Rust fills op/args/regions, `Atomics.notify`s the doorbell and `Atomics.wait`s on `status`), `selftest.rs` (2^20 `a·b+c` vs `AkitaField`, 200 NOP round trips). `engine::prove` runs `gpu::preflight()` before the phase clock and reports `gpu_status` etc.; `disabled`/`unavailable` never touch the mailbox
+- `frontend/public/gpu-proxy.js` — dedicated Worker owning the `GPUDevice`; mirrors the mailbox word layout by hand (keep in sync with `mailbox.rs`); ops NOP/CREATE_BUFFER/UPLOAD/DESTROY/RUN; shaders from `frontend/public/wgsl/` (`fp128.wgsl` library prepended to every kernel). `worker.js` spawns it when `init` carries `gpu: true`
 - `src/wasm_tracing.rs` — Chrome Trace Format layer for `tracing`, outputs Perfetto-compatible JSON (per-thread tids)
 - `preprocessing/generate.rs` — native binary: compiles guests through `jolt-host` (the `jolt` CLI), writes `{name}.elf`, `{name}_program.bin`, and `akita_schedules.bin` to `frontend/public/`. Guest memory/trace parameters live in its `GUESTS` table (heap sizes must match the guests' `#[jolt::provable(heap_size = ..)]`)
 - `preprocessing/test_roundtrip.rs` — native binary: full prove+verify from the shipped bytes, same code path as the browser (catches everything except 32-bit-isms)
@@ -70,6 +82,7 @@ node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js
 - **default** (no features) — WASM library build (`cdylib`)
 - **`native`** — enables the preprocessing binaries (`jolt-host` guest compilation)
 - **`trace-commit-device`** — `engine::install_trace_commit_device` + `CpuReferenceDevice`; needs the patched `jolt-akita` from `./setup-wasm-deps.sh` (patch 0006), so it is off by default to keep pinned-rev native builds working
+- **`webgpu`** — compiles the GPU mailbox + self-test into the wasm build; without it `gpu_mailbox_ptr()` returns 0 and worker.js reports `unavailable`
 
 ## Key Dependencies
 
