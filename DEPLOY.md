@@ -57,15 +57,15 @@ frontend/dist/
 ├── index.html
 ├── _headers, _redirects  ← COOP/COEP + CSP + cache rules; /pkg → /pkg/jolt_wasm_prover.js
 ├── assets/               ← Vite-bundled JS/CSS (hashed filenames)
-├── pkg/                  ← jolt_wasm_prover.js, jolt_wasm_prover_bg.wasm (WASM_SIZE), snippets/
+├── pkg/                  ← jolt_wasm_prover.js, jolt_wasm_prover_bg.wasm (22.4 MiB, 25 MiB cap), snippets/
 ├── worker.js             ← prover Web Worker (rayon thread pool)
 ├── gpu-proxy.js          ← module Worker owning the GPUDevice
 ├── wgsl/                 ← fp128 library, commit/ and digit_range/ kernels
-├── *.bin, *.elf          ← preprocessing artifacts + guest ELFs (~ARTIFACT_SIZE)
+├── *.bin, *.elf          ← preprocessing artifacts + guest ELFs (~2.3 MB)
 └── favicon.png, jolt_alpha.png, og-image.png
 ```
 
-Total ~DIST_SIZE; the per-file cap is 25 MiB (`build-pages.sh` enforces it), 20k files.
+Total ~26 MB; the per-file cap is 25 MiB (`build-pages.sh` enforces it), 20k files.
 
 ## Headers
 
