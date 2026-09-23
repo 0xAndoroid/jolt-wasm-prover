@@ -2,9 +2,9 @@
 
 Stage-8 `digit_range_prove`, four b=8 direct-leaf instances (rounds 24/21/20/19, trace 2^18),
 run as dependent WebGPU rounds under headless WebKit (Apple GPU, MacBook). CPU-WASM baseline
-for the same four instances: **≈500 ms**. Kill rule for W2: save ≥420 ms.
+for the same four instances: **≈500 ms**. Kill rule for W2: save ≥425 ms (15 % of the 2.83 s prover).
 
-## Verdict: GO (marginal) — saves ≈425–440 ms, margin +5…+20 ms over the 420 ms bar
+## Verdict: GO (marginal) — projected saving ≈420–425 ms sits on the 425 ms bar (margin −5…0 ms)
 
 | | ms |
 |---|---|
@@ -16,7 +16,9 @@ for the same four instances: **≈500 ms**. Kill rule for W2: save ≥420 ms.
 | **projected in-prover wall** | **≈75 (packed) … ≈80 (i8)** |
 | saving vs 500 ms CPU | ≈420–425 |
 
-Margin is 1–5 % of the bar: compute is not the risk (30 ms), the 84 dependent round trips are.
+The projection lands on the bar, not above it: compute is not the risk (30 ms), the 84 dependent round
+trips (≈21 ms gaps + ≈17 ms extrapolated mailbox) are. GO rests on the lever below or on the mailbox
+costing <100 µs per round (W0 measured a 70–150 µs NOP round trip; 2 × 100 µs here is the conservative end).
 Lever if the transcript allows it: run the four instances in lockstep (one submit + one 320 B
 readback per round index) → 24 trips instead of 84, ≈ −27 ms, saving ≈450 ms. Sequential
 transcripts (instance i+1 after instance i) keep 84 trips.
@@ -69,7 +71,7 @@ claim 0, and the final claim eq(τ,r)·Q(final). PASS on all three full runs.
 
 ## Open risks
 
-- Margin +5…+20 ms is inside run-to-run noise (one 87 ms outlier at load1 ≈ 7.4). Re-measure inside
+- Margin −5…0 ms is inside run-to-run noise (one 87 ms outlier at load1 ≈ 7.4). Re-measure inside
   the real mailbox before committing W2 effort; the decision flips at ~0.45 ms per round trip.
 - WebKit dependent gap 0.22–0.25 ms is the floor of this box; other GPUs/browsers may be 2–4× worse.
 - Memory: 2^20 trace (rounds 26/23/22/21) needs i8 64 MiB + tables 192 MiB per instance; 2^21
@@ -84,5 +86,5 @@ claim 0, and the final claim eq(τ,r)·Q(final). PASS on all three full runs.
 uv run --with playwright --with numpy python bench/proto-w2/digit_range_proto.py --shape small --host fixed --source packed
 uv run --with playwright --with numpy python bench/proto-w2/digit_range_proto.py --set full --host hash --source packed --floor-iters 84 --mulbench --out out.json
 ```
-Files: `fp128.wgsl` (from w0-harness), `dr_common.wgsl`, `round0.wgsl`, `lut.wgsl`, `round1.wgsl`,
+Files: `fp128.wgsl` (verbatim copy of `frontend/public/wgsl/fp128.wgsl` from w0-harness), `dr_common.wgsl`, `round0.wgsl`, `lut.wgsl`, `round1.wgsl`,
 `field.wgsl`, `reduce.wgsl`, `nop.wgsl`, `mulbench.wgsl`, `harness.html`, `digit_range_proto.py`.

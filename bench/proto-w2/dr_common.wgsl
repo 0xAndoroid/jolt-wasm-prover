@@ -11,14 +11,13 @@ struct Params {
   ppt: u32,          // units per thread
   packed: u32,       // 0: digits as i8 bytes, 1: 3-bit packed (w+4), 8 digits per 24 bits
   src_mode: u32,     // field kernel: 0 = fold prev table, 1 = materialize from octets via LUT2f
-  case_c: u32,       // 1: inner < ppt -> per-pair e_in*e_out (no per-thread e_out mul)
+  _pad: u32,
   r: vec4<u32>,      // current fold challenge (field kernel: r_{k-1}; lut kernel: r0)
   r_aux: vec4<u32>,  // lut kernel: r1
 }
 
 const WG: u32 = 256u;
 const ZERO4: vec4<u32> = vec4<u32>(0u, 0u, 0u, 0u);
-const ONE4: vec4<u32> = vec4<u32>(1u, 0u, 0u, 0u);
 
 fn fp_small(k: u32) -> vec4<u32> { return vec4<u32>(k, 0u, 0u, 0u); }
 
@@ -140,35 +139,24 @@ fn wg_reduce_store(acc: array<vec4<u32>, 5>, lid: u32, wg: u32) {
   if (lid < 5u) { partials[wg * 5u + lid] = red[lid * WG]; }
 }
 
-// ---------- generic thread -> units mapping (see README "eq weighting") ----------
-struct Map { unit0: u32, stride: u32, count: u32, e_out_idx: u32 }
+// ---------- thread -> units mapping ----------
+// A workgroup covers WG*ppt consecutive units, split into blocks of blk = min(inner, WG*ppt) units that share
+// one e_out; each thread walks ppt units of one block with stride tpb, so it multiplies by e_out once at the end.
+// The harness guarantees inner >= ppt (so tpb >= 1).
+struct Map { unit0: u32, stride: u32 }
 fn map_units(lid: u32, wg: u32) -> Map {
   let wg_units = WG * params.ppt;
-  let inner = 1u << params.inner_bits;
-  var m: Map;
-  if (params.case_c == 1u) {
-    m.unit0 = wg * wg_units + lid; m.stride = WG; m.count = params.ppt; m.e_out_idx = 0u;
-  } else {
-    let blk = min(inner, wg_units);
-    let nblk = wg_units / blk;
-    let tpb = WG / nblk;
-    let b = lid / tpb; let lane = lid % tpb;
-    m.unit0 = wg * wg_units + b * blk + lane; m.stride = tpb; m.count = params.ppt;
-    m.e_out_idx = m.unit0 >> params.inner_bits;
-  }
-  return m;
+  let blk = min(1u << params.inner_bits, wg_units);
+  let nblk = wg_units / blk;
+  let tpb = WG / nblk;
+  let b = lid / tpb; let lane = lid % tpb;
+  return Map(wg * wg_units + b * blk + lane, tpb);
 }
 fn e_in_of(unit: u32) -> vec4<u32> { return eq[params.off_first + (unit & ((1u << params.inner_bits) - 1u))]; }
 fn e_out_of(unit: u32) -> vec4<u32> { return eq[params.off_second + (unit >> params.inner_bits)]; }
-fn weight_of(unit: u32) -> vec4<u32> {
-  let e = e_in_of(unit);
-  return select(e, fp128_mul(e, e_out_of(unit)), params.case_c == 1u);
-}
 fn finish_thread(acc: ptr<function, array<vec4<u32>, 5>>, m: Map) {
-  if (params.case_c == 0u) {
-    let eo = e_out_of(m.unit0);
-    for (var c: u32 = 0u; c < 5u; c++) { (*acc)[c] = fp128_mul((*acc)[c], eo); }
-  }
+  let eo = e_out_of(m.unit0);
+  for (var c: u32 = 0u; c < 5u; c++) { (*acc)[c] = fp128_mul((*acc)[c], eo); }
 }
 fn accumulate(acc: ptr<function, array<vec4<u32>, 5>>, L: vec4<u32>, Rt: vec4<u32>, w: vec4<u32>) {
   let co = entry_coeffs(L, fp128_sub(Rt, L));

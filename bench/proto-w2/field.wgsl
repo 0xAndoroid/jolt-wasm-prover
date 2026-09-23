@@ -13,7 +13,7 @@ fn main(@builtin(local_invocation_id) l: vec3<u32>, @builtin(workgroup_id) w: ve
   let m = map_units(lid, wg);
   var acc: array<vec4<u32>, 5>;
   for (var c: u32 = 0u; c < 5u; c++) { acc[c] = ZERO4; }
-  for (var i: u32 = 0u; i < m.count; i++) {
+  for (var i: u32 = 0u; i < params.ppt; i++) {
     let j = m.unit0 + m.stride * i;
     if (j >= params.n_units) { break; }
     var L: vec4<u32>; var Rt: vec4<u32>;
@@ -27,7 +27,7 @@ fn main(@builtin(local_invocation_id) l: vec3<u32>, @builtin(workgroup_id) w: ve
       let cls = octet_classes(j);
       L = lut[cls & 0xFFu]; Rt = lut[cls >> 8u];
     }
-    accumulate(&acc, L, Rt, weight_of(j));
+    accumulate(&acc, L, Rt, e_in_of(j));
   }
   if (m.unit0 < params.n_units) { finish_thread(&acc, m); }
   wg_reduce_store(acc, lid, wg);

@@ -48,10 +48,10 @@ window.result = (async () => {
   const mk = (size, usage) => device.createBuffer({ size: Math.max(16, size), usage });
   const dummies = []; for (let b = 0; b <= 8; b++) dummies.push(mk(16, ST));
   const mkBG = (slots) => device.createBindGroup({ layout: bgl, entries: Array.from({ length: 9 }, (_, b) => ({ binding: b, resource: { buffer: slots[b] || dummies[b] } })) });
-  const paramsBuf = (p) => { // Params struct: 8 u32 + 2 vec4
+  const paramsBuf = (p) => { // Params struct: 7 u32 + pad + 2 vec4
     const buf = mk(64, GPUBufferUsage.UNIFORM | CD);
     const a = new Uint32Array(16);
-    [a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]] = [p.n_units, p.inner_bits, p.off_first, p.off_second, p.ppt, p.packed, p.src_mode, p.case_c];
+    [a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]] = [p.n_units, p.inner_bits, p.off_first, p.off_second, p.ppt, p.packed, p.src_mode];
     device.queue.writeBuffer(buf, 0, a);
     return buf;
   };
@@ -113,7 +113,7 @@ window.result = (async () => {
     for (let k = 0; k < R; k++) {
       const e = inst.eq_rounds[k]; // {inner_bits, off_first, off_second}
       const inner = 1 << e.inner_bits;
-      const base = { inner_bits: e.inner_bits, off_first: e.off_first, off_second: e.off_second, packed: inst.packed ? 1 : 0, case_c: 0 };
+      const base = { inner_bits: e.inner_bits, off_first: e.off_first, off_second: e.off_second, packed: inst.packed ? 1 : 0 };
       let steps = [];
       if (k === 0) {
         const units = n / 8; let ppt = Math.max(1, Math.min(8, Math.floor(units / (256 * 1024)))); ppt = Math.min(ppt, inner / 4);
@@ -131,15 +131,15 @@ window.result = (async () => {
         else if (k === 3) { units = n / 16; src_mode = 1; slots = { 1: digitsBuf, 2: bufEq, 3: partials, 5: TA, 6: LUT2f }; }
         else { units = n >> (k + 1); src_mode = 0; const srcT = (k % 2 === 0) ? TA : TB, dstT = (k % 2 === 0) ? TB : TA; slots = { 2: bufEq, 3: partials, 4: srcT, 5: dstT }; }
         let ppt = Math.max(1, Math.min(8, Math.floor(units / (256 * 1024))));
-        const case_c = inner < ppt ? 1 : 0;
+        if (inner < ppt) throw new Error(`round ${k}: inner ${inner} < ppt ${ppt}`);
         const wgs = Math.ceil(units / (256 * ppt));
-        steps.push({ kind: 'field', p: { ...base, n_units: units, ppt, src_mode, case_c }, wgs, slots, dstT: slots[5] });
+        steps.push({ kind: 'field', p: { ...base, n_units: units, ppt, src_mode }, wgs, slots, dstT: slots[5] });
         plan.push({ steps, wgs });
       }
       const pl = plan[k];
       pl.k = k;
       for (const s of pl.steps) { s.params = paramsBuf(s.p); s.bg = mkBG({ 0: s.params, ...s.slots }); }
-      const rp = paramsBuf({ n_units: pl.wgs, inner_bits: 0, off_first: 0, off_second: 0, ppt: 1, packed: 0, src_mode: 0, case_c: 0 });
+      const rp = paramsBuf({ n_units: pl.wgs, inner_bits: 0, off_first: 0, off_second: 0, ppt: 1, packed: 0, src_mode: 0 });
       pl.reduceBG = mkBG({ 0: rp, 3: partials, 8: outBuf });
       pl.evalStep = pl.steps[pl.steps.length - 1];
     }
@@ -178,13 +178,13 @@ window.result = (async () => {
     const instWall = performance.now() - tInst0;
     const ts = await readTimestamps();
     for (const b of [bufI8, bufPacked, bufEq, bufLut0, TA, TB, LUT1, LUT2f, partials]) b.destroy();
-    return { rounds: R, packed: inst.packed, fetch_ms: +fetchMs.toFixed(1), upload, plan: plan.map((p) => ({ k: p.k, steps: p.steps.map((s) => ({ kind: s.kind, wgs: s.wgs, ppt: s.p.ppt, case_c: s.p.case_c, units: s.p.n_units })) })),
+    return { rounds: R, packed: inst.packed, fetch_ms: +fetchMs.toFixed(1), upload, plan: plan.map((p) => ({ k: p.k, steps: p.steps.map((s) => ({ kind: s.kind, wgs: s.wgs, ppt: s.p.ppt, units: s.p.n_units })) })),
       msgs, challenges: rs.map((r) => Array.from(r)), round_wall_ms: roundWall, host_ms: hostMs, inst_wall_ms: +instWall.toFixed(2), ts, dumps };
   }
 
   // ---------- dependent round-trip floor ----------
   async function floor(iters) {
-    const p = paramsBuf({ n_units: 7, inner_bits: 0, off_first: 0, off_second: 0, ppt: 1, packed: 0, src_mode: 0, case_c: 0 });
+    const p = paramsBuf({ n_units: 7, inner_bits: 0, off_first: 0, off_second: 0, ppt: 1, packed: 0, src_mode: 0 });
     const bg = mkBG({ 0: p, 8: outBuf });
     const walls = [];
     const t0 = performance.now();
@@ -207,7 +207,7 @@ window.result = (async () => {
 
   // ---------- fp128 mul throughput ----------
   async function mulbench(nElems, k, reps) {
-    const p = paramsBuf({ n_units: nElems, inner_bits: 0, off_first: 0, off_second: 0, ppt: k, packed: 0, src_mode: 0, case_c: 0 });
+    const p = paramsBuf({ n_units: nElems, inner_bits: 0, off_first: 0, off_second: 0, ppt: k, packed: 0, src_mode: 0 });
     const ob = mk(nElems * 16, ST | CS);
     const bg = mkBG({ 0: p, 8: ob });
     const times = [];
