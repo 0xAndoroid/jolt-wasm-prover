@@ -1,5 +1,5 @@
 diff --git a/crates/jolt-akita/src/lib.rs b/crates/jolt-akita/src/lib.rs
-index de3f80a..a1222f6 100644
+index de3f80a..8af68a5 100644
 --- a/crates/jolt-akita/src/lib.rs
 +++ b/crates/jolt-akita/src/lib.rs
 @@ -48,7 +48,10 @@ pub use native_batching::{
@@ -8,8 +8,8 @@ index de3f80a..a1222f6 100644
  pub use scheme::{AkitaScheme, TraceOneHotCommitment};
 -pub use trace_onehot::{no_selected_row, TraceOneHotRows, TracePackedOneHot};
 +pub use trace_onehot::{
-+    no_selected_row, set_trace_commit_device, TraceCommitDevice, TraceCommitJob,
-+    TraceCommitShape, TraceOneHotRows, TracePackedOneHot,
++    no_selected_row, set_trace_commit_device, TraceCommitDevice, TraceCommitJob, TraceCommitShape,
++    TraceOneHotRows, TracePackedOneHot,
 +};
  
  /// Jolt↔Akita basis-order bridging, exposed so benchmarks measuring the raw
@@ -68,9 +68,10 @@ index 1d2255f..68be7fb 100644
              blocks_per_column * plan.num_positions_per_block,
 diff --git a/crates/jolt-akita/src/trace_onehot/device.rs b/crates/jolt-akita/src/trace_onehot/device.rs
 new file mode 100644
+index 0000000..eec2495
 --- /dev/null
 +++ b/crates/jolt-akita/src/trace_onehot/device.rs
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,214 @@
 +//! Device seam for the stage-0 packed one-hot trace commit.
 +//!
 +//! An installed [`TraceCommitDevice`] receives the flat trace selectors and
@@ -141,9 +142,9 @@ new file mode 100644
 +/// Installs the process-wide trace commit device. Every later trace commit
 +/// offers its job to `device` first. Fails once a device is installed.
 +pub fn set_trace_commit_device(device: Arc<dyn TraceCommitDevice>) -> Result<(), AkitaError> {
-+    DEVICE.set(device).map_err(|_| {
-+        AkitaError::InvalidSetup("trace commit device already installed".to_string())
-+    })
++    DEVICE
++        .set(device)
++        .map_err(|_| AkitaError::InvalidSetup("trace commit device already installed".to_string()))
 +}
 +
 +pub(super) fn installed_trace_commit_device() -> Option<&'static dyn TraceCommitDevice> {
@@ -204,7 +205,9 @@ new file mode 100644
 +        .try_for_each(|(task, (hot, masks))| {
 +            let row_start = task * EXTRACT_ROWS_PER_TASK;
 +            source.rows.fill_rows(row_start, hot);
-+            source.rows.fill_committed_digit_zero_masks(row_start, masks);
++            source
++                .rows
++                .fill_committed_digit_zero_masks(row_start, masks);
 +            match hot
 +                .iter()
 +                .find(|&&hot| hot != NO_SELECTED_ROW && usize::from(hot) >= source.one_hot_k)
@@ -284,17 +287,17 @@ new file mode 100644
 +        .map(Some)
 +}
 diff --git a/crates/jolt-akita/src/trace_onehot/kernels.rs b/crates/jolt-akita/src/trace_onehot/kernels.rs
-index 61b98ca..532cf3f 100644
+index 61b98ca..98f1758 100644
 --- a/crates/jolt-akita/src/trace_onehot/kernels.rs
 +++ b/crates/jolt-akita/src/trace_onehot/kernels.rs
-@@ -22,6 +22,7 @@ use jolt_field::ExtField;
- use rayon::prelude::*;
+@@ -23,6 +23,7 @@ use rayon::prelude::*;
  
  use super::commit::commit_packed;
-+use super::device::installed_trace_commit_device;
  use super::decomposition::decompose_fold_packed;
++use super::device::installed_trace_commit_device;
  use super::opening::opening_fold_packed;
  use super::source::{TracePackedOneHot, TracePackedOneHotBatchView, TracePackedOneHotView};
+ use super::traversal::coefficient_packing_partials_packed;
 @@ -63,7 +64,13 @@ impl ExternalInnerCommitmentOperation<AkitaField> for TracePackedOneHotCommitOpe
                  .par_iter()
                  .map(|source| {
@@ -311,7 +314,7 @@ index 61b98ca..532cf3f 100644
                  .collect()
          )
 diff --git a/crates/jolt-akita/src/trace_onehot/mod.rs b/crates/jolt-akita/src/trace_onehot/mod.rs
-index 4aa88cf..940b46d 100644
+index 4aa88cf..58c5dcb 100644
 --- a/crates/jolt-akita/src/trace_onehot/mod.rs
 +++ b/crates/jolt-akita/src/trace_onehot/mod.rs
 @@ -22,6 +22,7 @@ const _: () = assert!(K256_ROW_BATCH <= i16::MAX as usize);
@@ -322,34 +325,33 @@ index 4aa88cf..940b46d 100644
  mod kernels;
  mod opening;
  mod source;
-@@ -30,6 +31,9 @@ mod traversal;
+@@ -30,6 +31,7 @@ mod traversal;
  #[cfg(test)]
  mod tests;
  
-+pub use device::{
-+    set_trace_commit_device, TraceCommitDevice, TraceCommitJob, TraceCommitShape,
-+};
++pub use device::{set_trace_commit_device, TraceCommitDevice, TraceCommitJob, TraceCommitShape};
  pub use source::{no_selected_row, TraceOneHotRows, TracePackedOneHot};
  
  #[cfg(test)]
 diff --git a/crates/jolt-akita/src/trace_onehot/tests.rs b/crates/jolt-akita/src/trace_onehot/tests.rs
-index 6188a99..36fb545 100644
+index 6188a99..fb72b28 100644
 --- a/crates/jolt-akita/src/trace_onehot/tests.rs
 +++ b/crates/jolt-akita/src/trace_onehot/tests.rs
-@@ -21,7 +21,12 @@ use akita_types::{
+@@ -21,8 +21,13 @@ use akita_types::{
  use jolt_field::{One, Ring};
  use std::sync::atomic::{AtomicUsize, Ordering};
  
 +use super::commit::commit_packed_rows;
  use super::source::{TracePackedOneHotBatchView, TracePackedOneHotView};
 +use super::traversal::validate_block_geometry;
+ use crate::AkitaField;
 +use akita_error::AkitaError;
 +use akita_prover::compute::CommitInnerPlan;
 +use jolt_field::{CanonicalEncoding, Zero};
- use crate::AkitaField;
  
  #[derive(Debug)]
-@@ -532,3 +537,135 @@ fn coefficient_packing_rejects_invalid_selector() {
+ struct TestRows {
+@@ -532,3 +537,138 @@ fn coefficient_packing_rejects_invalid_selector() {
      .expect_err("selector outside K must reject");
      assert!(error.to_string().contains("outside K=16"));
  }
@@ -470,7 +472,10 @@ index 6188a99..36fb545 100644
 +
 +    let cpu = commit(None);
 +    assert_eq!(cpu.coeffs().len(), num_blocks * plan.n_a * D);
-+    assert!(cpu.coeffs().iter().any(|coefficient| !coefficient.is_zero()));
++    assert!(cpu
++        .coeffs()
++        .iter()
++        .any(|coefficient| !coefficient.is_zero()));
 +    assert_eq!(commit(Some(&NaiveDevice { decline: false })), cpu);
 +    assert_eq!(commit(Some(&NaiveDevice { decline: true })), cpu);
 +    assert!(matches!(

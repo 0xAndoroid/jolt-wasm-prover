@@ -61,7 +61,7 @@ Math per committed `(t, c)`: `ring = t / (D/K)`, `r = t mod (D/K)`,
 Reference accumulation (`CpuReferenceDevice`, GPU-shaped): per output ring,
 separate positive and negative sums as `lo: u128` + 32-bit wrap counter, fold
 with `2^128 ≡ C (mod p)`, then `pos − neg mod p`. Max additions per
-coefficient = `P·D/K` (2^17 at 2^21), so a `u32` wrap counter is exact.
+coefficient = `P·D/K` (2^18 at 2^21), so a `u32` wrap counter is exact.
 
 ## Qualification and fallback
 
