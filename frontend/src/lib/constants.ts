@@ -17,3 +17,6 @@ export const PROGRAM_FILES: Record<ProgramName, ProgramFiles> = {
 export const CACHE_BUST = 'v=3'
 
 export const SHA2_MAX_BYTES = 2048
+
+// 'gpu' | 'cpu'; written only when the user clicks the mode selector.
+export const MODE_STORAGE_KEY = 'jolt-prover-mode'

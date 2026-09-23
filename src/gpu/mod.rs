@@ -27,6 +27,7 @@ mod selftest;
 pub mod trace_commit;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Mutex;
 
 /// `performance.now()` (falls back to `Date.now()`), shared by the drivers.
 #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
@@ -43,9 +44,14 @@ const STATE_ENABLED: u32 = 2;
 
 static STATE: AtomicU32 = AtomicU32::new(STATE_DISABLED);
 
-/// The proxy reported `ready`: `preflight` may enter the mailbox.
+/// The proxy reported `ready`: `selftest` may enter the mailbox.
 pub fn set_enabled() {
     STATE.store(STATE_ENABLED, Ordering::SeqCst);
+}
+
+/// User chose CPU: the proxy stays alive, the devices decline every job.
+pub fn set_disabled() {
+    STATE.store(STATE_DISABLED, Ordering::SeqCst);
 }
 
 /// JS asked for the GPU but the proxy found no adapter (or the feature is
@@ -84,7 +90,7 @@ pub fn digit_range_enabled() -> bool {
 }
 
 /// What a prove run learned about the GPU before doing any field work.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct GpuReport {
     /// `disabled` | `unavailable` | `ok` | `error: …`
     pub status: String,
@@ -101,23 +107,78 @@ pub struct GpuReport {
     pub digit_range: String,
 }
 
-/// Self-test + NOP latency probe; only touches the mailbox when enabled.
-pub fn preflight() -> GpuReport {
-    match STATE.load(Ordering::SeqCst) {
-        STATE_UNAVAILABLE => GpuReport {
-            status: "unavailable".into(),
+/// The session's one self-test result (`selftest`), reused by every prove.
+static LAST: Mutex<Option<GpuReport>> = Mutex::new(None);
+
+fn state_report() -> Option<GpuReport> {
+    let status = match STATE.load(Ordering::SeqCst) {
+        STATE_UNAVAILABLE => "unavailable",
+        STATE_ENABLED => return None,
+        _ => "disabled",
+    };
+    Some(GpuReport {
+        status: status.into(),
+        ..Default::default()
+    })
+}
+
+/// Self-test + NOP latency probe, run once per session (the first call
+/// while enabled enters the mailbox, later calls return the cached report).
+/// The devices are installed on the first passing run.
+pub fn selftest() -> GpuReport {
+    if let Some(report) = state_report() {
+        return report;
+    }
+    let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(report) = last.as_ref() {
+        return report.clone();
+    }
+    let report = selftest_enabled();
+    *last = Some(report.clone());
+    report
+}
+
+/// What a prove reports about the GPU; never touches the mailbox.
+pub fn status_report() -> GpuReport {
+    if let Some(report) = state_report() {
+        return report;
+    }
+    if mailbox_is_dead() {
+        return GpuReport {
+            status: "error: gpu proxy dead".into(),
             ..Default::default()
-        },
-        STATE_ENABLED => preflight_enabled(),
-        _ => GpuReport {
-            status: "disabled".into(),
+        };
+    }
+    LAST.lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_else(|| GpuReport {
+            status: "error: selftest not run".into(),
             ..Default::default()
-        },
+        })
+}
+
+/// An op timed out this session: every later mailbox call is refused.
+pub fn mailbox_is_dead() -> bool {
+    #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
+    {
+        mailbox::is_dead()
+    }
+    #[cfg(not(all(target_arch = "wasm32", feature = "webgpu")))]
+    {
+        false
     }
 }
 
+pub fn set_op_timeout_ms(ms: u32) {
+    #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
+    mailbox::set_timeout_ms(ms);
+    #[cfg(not(all(target_arch = "wasm32", feature = "webgpu")))]
+    let _ = ms;
+}
+
 #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
-fn preflight_enabled() -> GpuReport {
+fn selftest_enabled() -> GpuReport {
     match selftest::run() {
         Ok(report) => {
             #[cfg(feature = "trace-commit-device")]
@@ -138,7 +199,7 @@ fn preflight_enabled() -> GpuReport {
 }
 
 #[cfg(not(all(target_arch = "wasm32", feature = "webgpu")))]
-fn preflight_enabled() -> GpuReport {
+fn selftest_enabled() -> GpuReport {
     GpuReport {
         status: "unavailable".into(),
         ..Default::default()

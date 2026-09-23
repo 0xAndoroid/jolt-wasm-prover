@@ -4,6 +4,25 @@ export type LoadState = 'idle' | 'loading' | 'ready'
 
 export type AppStatus = 'loading' | 'ready' | 'proving' | 'error'
 
+export type ProveMode = 'gpu' | 'cpu'
+
+// worker.js `initGpu()` report: 'ok' | 'disabled' | 'unavailable' | 'error: …'
+export interface GpuInfo {
+  status: string
+  reason?: string
+  adapter?: { vendor?: string; architecture?: string; device?: string; description?: string }
+  selftestMs?: number
+  roundtripUs?: number
+}
+
+export interface ProofSummary {
+  mode: ProveMode
+  proveMs: number
+  totalMs: number
+  commitMs?: number
+  digitRangeMs?: number
+}
+
 export interface ProgramState {
   loadState: LoadState
   proofBytes: Uint8Array | null
@@ -12,6 +31,7 @@ export interface ProgramState {
   // verifier preprocessing for each proof and verification consumes it.
   verifierPreprocessingBytes: Uint8Array | null
   verifyResult: { valid: boolean; elapsed: number } | null
+  lastProof: ProofSummary | null
 }
 
 export interface ProgramFiles {
@@ -21,7 +41,8 @@ export interface ProgramFiles {
 
 // Messages sent to the worker
 export type WorkerRequest =
-  | { type: 'init'; data: { numThreads: number; cacheBust?: string } }
+  | { type: 'init'; data: { numThreads: number; cacheBust?: string; gpu?: boolean } }
+  | { type: 'set-gpu'; data: { enabled: boolean } }
   | {
       type: 'load-program'
       data: {
@@ -49,7 +70,8 @@ export type WorkerRequest =
 
 // Messages received from the worker
 export type WorkerResponse =
-  | { type: 'init-done' }
+  | { type: 'init-done'; gpu: GpuInfo }
+  | { type: 'gpu-status'; gpu: GpuInfo }
   | { type: 'program-loaded'; program: ProgramName }
   | {
       type: 'prove-done'
@@ -63,6 +85,9 @@ export type WorkerResponse =
       traceMs: number
       setupMs: number
       proveMs: number
+      gpuStatus: string
+      gpuCommit: string
+      gpuDigitRange: string
       peakMemory: number | null
       elapsed: number
     }
@@ -74,4 +99,4 @@ export type WorkerResponse =
     }
   | { type: 'trace'; trace: string }
   | { type: 'trace-cleared' }
-  | { type: 'error'; error: string }
+  | { type: 'error'; error: string; gpu?: GpuInfo }

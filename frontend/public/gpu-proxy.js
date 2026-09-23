@@ -19,7 +19,9 @@ const W = {
     ERROR_BYTES: 256,
 };
 const MAX_REGIONS = 8;
-const OP = { NOP: 1, CREATE_BUFFER: 2, UPLOAD: 3, DESTROY: 4, RUN: 5, RUN_SEQ: 6, DOWNLOAD: 7 };
+const OP = { NOP: 1, CREATE_BUFFER: 2, UPLOAD: 3, DESTROY: 4, RUN: 5, RUN_SEQ: 6, DOWNLOAD: 7, ALLOC: 8, UPLOAD_MULTI: 9 };
+// RUN_SEQ args[RUN_SEQ_COPY..] = [srcRegion, dstRegion, dstByteOffset, byteLen]: a copy after the passes (byteLen 0 = none).
+const RUN_SEQ_COPY = 28;
 const STATUS = { IDLE: 0, BUSY: 1, DONE: 2, ERROR: 3 };
 const REGION = { UPLOAD: 1, READBACK: 2, HANDLE: 4 };
 // Index = shader id in the RUN op (src/gpu/selftest.rs, src/gpu/trace_commit.rs);
@@ -47,6 +49,8 @@ let uniformBuffer = null;
 // One 64 B uniform buffer per pass of a RUN_SEQ (writeBuffer between passes would race).
 const uniformPool = [];
 let uncapturedError = null;
+// Test hook: stop serving the mailbox so the prover's op deadline fires.
+let hung = false;
 
 const i32 = () => new Int32Array(memory.buffer);
 const u32 = () => new Uint32Array(memory.buffer);
@@ -222,6 +226,8 @@ async function runOp(op, args, regions, ret) {
                     pass.dispatchWorkgroups(wx);
                     pass.end();
                 }
+                const copyLen = args[RUN_SEQ_COPY + 3];
+                if (copyLen) enc.copyBufferToBuffer(resolve(args[RUN_SEQ_COPY]), 0, resolve(args[RUN_SEQ_COPY + 1]), args[RUN_SEQ_COPY + 2], copyLen);
                 device.queue.submit([enc.finish()]);
                 for (const rb of readbacks) await readback(rb.buf, rb.ptr, rb.len);
                 if (readbacks.length === 0) await device.queue.onSubmittedWorkDone();
@@ -233,6 +239,31 @@ async function runOp(op, args, regions, ret) {
         case OP.DOWNLOAD: {
             const r = regions[0];
             await readback(getHandle(args[0]), r.ptr, r.len);
+            return;
+        }
+        case OP.ALLOC: {
+            // args = [nDestroy, handles..., nCreate, sizes...]; ret = the new handles.
+            let a = 1;
+            for (const end = a + args[0]; a < end; a++) {
+                getHandle(args[a]).destroy();
+                handles.delete(args[a]);
+            }
+            const nc = args[a++];
+            if (nc > ret.length) throw new Error(`alloc: ${nc} handles exceed the RET slots`);
+            for (let i = 0; i < nc; i++, a++) {
+                const h = nextHandle++;
+                handles.set(h, storageBuffer(args[a]));
+                ret[i] = h;
+            }
+            return;
+        }
+        case OP.UPLOAD_MULTI: {
+            // args = [n, {handle, byteOffset, region}...]
+            for (let i = 0, a = 1; i < args[0]; i++, a += 3) {
+                const r = regions[args[a + 2]];
+                upload(getHandle(args[a]), args[a + 1], r.ptr, r.len);
+            }
+            await device.queue.onSubmittedWorkDone();
             return;
         }
         default:
@@ -296,6 +327,7 @@ async function loop() {
             continue;
         }
         seen = cur;
+        if (hung) return;
         await serve();
     }
 }
@@ -336,6 +368,7 @@ async function init(data) {
 }
 
 self.onmessage = async (e) => {
+    if (e.data.type === 'hang') hung = true;
     if (e.data.type !== 'init') return;
     try {
         self.postMessage(await init(e.data));

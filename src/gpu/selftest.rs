@@ -110,8 +110,14 @@ pub fn run() -> Result<GpuReport, GpuError> {
             Region::readback(&mut out),
         ],
     );
-    mailbox::call(OP_DESTROY, &[handle], &[])?;
-    run?;
+    let destroy = mailbox::call(OP_DESTROY, &[handle], &[]);
+    if let Err(e) = run.and(destroy) {
+        if mailbox::is_dead() {
+            // The proxy may still write `out`; leaking it keeps that write harmless.
+            std::mem::forget(out);
+        }
+        return Err(e);
+    }
     let selftest_ms = now_ms() - t1;
 
     let mut mismatches = 0u32;

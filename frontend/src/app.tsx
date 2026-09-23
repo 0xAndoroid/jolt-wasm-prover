@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { StatusBadge } from '@/components/status-badge'
+import { ModeSelector } from '@/components/mode-selector'
 import { Sha2Inputs } from '@/components/sha2-inputs'
 import { KeccakInputs } from '@/components/keccak-inputs'
 import { ProgramPanel } from '@/components/program-panel'
@@ -13,6 +14,10 @@ export function App() {
     wasmReady,
     programStates,
     outputLogs,
+    gpu,
+    mode,
+    modeReason,
+    setMode,
     proveSha2,
     proveKeccak,
     verify,
@@ -26,12 +31,20 @@ export function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-3 px-4 py-3">
           <img src="/favicon.png" alt="Jolt" className="h-6 w-6" />
           <span className="text-sm font-semibold font-mono tracking-tight">
             Jolt WASM Prover
           </span>
-          <StatusBadge status={status} className="ml-auto" />
+          <StatusBadge status={status} className="ml-auto sm:order-last sm:ml-0" />
+          <ModeSelector
+            mode={mode}
+            gpuAvailable={gpu !== null && (gpu.status === 'ok' || gpu.status === 'disabled')}
+            reason={modeReason}
+            disabled={status === 'proving' || status === 'loading'}
+            onChange={setMode}
+            className="basis-full sm:ml-auto sm:basis-auto"
+          />
         </div>
       </header>
 
