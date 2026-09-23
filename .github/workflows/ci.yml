@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # `npm run lint` is not gated yet: main has pre-existing eslint errors.
+      - run: npm ci && npm run build
+        working-directory: frontend
+
+  rust-fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Reads rust-toolchain.toml. Only rustfmt runs here: clippy/build would
+      # fetch and compile the pinned a16z/jolt + akita git graph (tens of
+      # minutes), too slow for a PR gate.
+      - uses: dtolnay/rust-toolchain@master
+      - run: cargo fmt --all -- --check
+
+  python-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m py_compile bench/*.py bench/proto/*.py
