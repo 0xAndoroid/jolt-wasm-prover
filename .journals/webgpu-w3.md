@@ -11,13 +11,17 @@ Orchestrator task c45196f3 · kanban #562 · playbook: vault `reference/feature-
 ## Playbook steps — Phase 1
 1. plan 1/1 — fable-medium: spec touches Rust mailbox + worker.js/gpu-proxy.js + React UI → planner writes `## Plan (phase 1)` below. [done]
    - implement ci 1/1 (fable-low, parallel): repo has NO CI (`gh pr view 10` → 0 checks); add `.github/workflows/ci.yml` (fmt --check, frontend typecheck+build) so "green CI" is a real gate. [done — PR #12 → 63a7f41]
-2. implement 1/1 — fable-high, worktree `webgpu-w3/gpu-in-product`. [running]
-3. review i/3 — fresh fable-medium each round. [pending]
-4. merge 1/1 — shell: CI green, squash, ff main, delete branch, wt remove. [pending]
-5. deploy 1/1 — skip: phase 2 owns the build + preview; production deploy is the user's. [pending]
+2. implement 1/1 — fable-high, worktree `webgpu-w3/gpu-in-product`. [done — PR #13 @9544174, fixes 390ec2a 5cfc1fb]
+3. review i/3 — fresh fable-medium each round. [done — 1/3: 2 fixed @390ec2a; 2/3: ZERO ISSUES (+1 test assertion 5cfc1fb)]
+4. merge 1/1 — shell: CI green, squash, ff main, delete branch, wt remove. [done — 29a140c]
+5. deploy 1/1 — skip: phase 2 owns the build + preview; production deploy is the user's. [skip]
 
-## Playbook steps — Phase 2
-(filled when phase 1 merges)
+## Playbook steps — Phase 2 (deployment readiness)
+1. plan 1/1 — skip: spec is explicit (build + WebKit pass + DEPLOY.md), one lane.
+2. implement 1/1 — fable-high, worktree `webgpu-w3/deploy-readiness`: full W1+W2 wasm build, frontend build, Playwright headless WebKit pass both modes 2^18 + 2^20 (verify=true, byte-identical), 375/1440 screenshots, DEPLOY.md + build-pages.sh refreshed for the webgpu feature set, CSP/_headers check. Preview deploy: skip — DEPLOY.md marks no preview path (user rule). [running]
+3. review i/3 — fresh fable-medium. [pending]
+4. merge 1/1 — shell. [pending]
+5. deploy 1/1 — skip: production `wrangler pages deploy` is the user's; exact command in the report. [pending]
 
 ## Playbook steps — Phase 3
 (filled when phase 2 merges)
@@ -77,3 +81,14 @@ Inherently sequential: the g RUN_SEQ rounds — round k's params carry challenge
 - Deviation: `init.gpu` is `stored !== 'cpu'` (no `'gpu' in navigator` check in the page) — the worker reports the reason (`navigator.gpu missing…` / `requestAdapter returned null`) so the UI can show it.
 - Test: `bench/test_ui_modes.py` uses a fresh page in the same context instead of `page.reload()` (second 4 GB wasm memory in one page crashes WebKit).
 - Numbers (2^18, WebKit, 8 threads): prove on 2.31 s / off 3.71 s warm; both verify, proof bytes identical; parity 6 rounds ok; dead-proxy time-to-error 2.1 s with a 2 s deadline, then a CPU prove verified in the same session.
+
+## Implementation notes (phase 2)
+- Branch `webgpu-w3/deploy-readiness`; ledger `.audit/webgpu-w3.tsv` (phase2 rows). No deploy was run; `frontend/dist/` (26 MB, incl. `pkg/`) is ready in the worktree.
+- **Blocker found and fixed:** the full-feature wasm (`webgpu,trace-commit-device,digit-range-device`) was 56.9 MB — code 21.9 + data 1.5 + a 33.4 MB `name` custom section — over the 25 MiB Pages per-file cap (live jolt.rs serves a 20.6 MB pre-Akita build). `-C strip=symbols` in the wasm32 rustflags drops the name section → 23.47 MB (22.4 MiB, 89 % of the cap); code/data sizes unchanged. Headroom is thin: the next feature that adds ~2.7 MB of code needs a different answer (split module, wasm-opt, or Pages → R2/Workers assets).
+- `scripts/build-pages.sh` now gates the shipped `pkg/` on the feature set (`gpu_mailbox_ptr` export, the two device install strings in the wasm), checks `gpu-proxy.js`/`wgsl/` landed in dist, enforces the 25 MiB cap; `--wasm` runs setup-wasm-deps + the wasm build.
+- `_headers`: CSP already identical to `server.mjs` (checked by parsing both), so the local pass exercises the production policy; added `no-cache` for `/gpu-proxy.js` and `/wgsl/*` (mailbox layout mirrored by hand, must never mix deploys). Google Fonts/CF insights unchanged.
+- DEPLOY.md rewritten (93 lines): redeploy checklist incl. optional `--branch preview` deploy, stale nightly/arkworks/21 MB/22 MB-artifact claims removed. Artifacts are ~2.3 MB now.
+- Browser pass on the stripped build, headless WebKit: bench 2^18 GPU 2.67 s / CPU 4.02 s, 2^20 GPU 5.81 s / CPU 10.60 s (loaded host: a nextest run in parallel), verify=true ×8, proofs byte-identical, peak 3.2 GB (no 4 GB wall at 2^20). `test_ui_modes.py` extended to both tabs (SHA-256 + Keccak Chain prove + verify in GPU and CPU mode, SHA equal across modes): 30/30 checks.
+- Screenshots 375/1440 GPU+CPU: `/tmp/webgpu-w3-p2-{375,1440}.png`, `/tmp/webgpu-w3-p2-cpu-{375,1440}.png` — selector legible, selected segment obvious, reason line on CPU-only (chromium), no horizontal overflow.
+- Non-issue: WebKit logs `Refused to apply a stylesheet … style-src` only around `page.screenshot` — Playwright's injected screenshot stylesheet, not the app.
+- Byte-level code equality stripped vs unstripped NOT shown (sections re-hash after the full rebuild); functional equivalence is the browser pass above.

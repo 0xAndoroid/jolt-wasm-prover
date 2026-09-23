@@ -129,17 +129,17 @@ uv run --with playwright python bench/proto/commit_proto.py --shape full        
 
 ### Cloudflare Pages
 
-Output directory: `frontend/dist/` (with `pkg/` copied in).
+Output directory: `frontend/dist/` (with `pkg/` copied in). The shipped wasm is the full browser feature set; `scripts/build-pages.sh` refuses a `pkg/` built without it. Checklist: DEPLOY.md.
 
 ```bash
-RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
-cd frontend && npm run build && cd ..
-cp -r pkg/ frontend/dist/pkg/
-npx wrangler pages deploy frontend/dist/ --project-name <project-name>
+./setup-wasm-deps.sh
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device
+./scripts/build-pages.sh          # npm ci + vite build + pkg copy + 25 MiB per-file check (`--wasm` runs the two lines above first)
+npx wrangler pages deploy frontend/dist --project-name=jolt-wasm-prover   # add --branch preview for a preview URL
 ```
 
 Required files in `frontend/public/` (copied to `dist/` by Vite):
-- `_headers` — COOP/COEP, CSP, security headers (includes `cloudflareinsights.com` for CF analytics beacon)
+- `_headers` — COOP/COEP, CSP, security headers (includes `cloudflareinsights.com` for CF analytics beacon); same set as `server.mjs`, keep them in sync. `no-cache` on `/pkg/*`, `/worker.js`, `/gpu-proxy.js`, `/wgsl/*`
 - `_redirects` — `/pkg/` → `/pkg/jolt_wasm_prover.js` redirect (needed by `wasm-bindgen-rayon`'s `workerHelpers.js` which does `import('../../..')`)
 
 ### Local (`server.mjs`)

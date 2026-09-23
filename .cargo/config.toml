@@ -15,5 +15,9 @@ rustflags = [
   # thread stacks are sized separately by worker.js (`thread_stack_size`).
   "-C", "link-arg=-zstack-size=33554432",
   "-C", "opt-level=3",
+  # The `name` custom section is 33 MB on the full-feature build and pushes the
+  # wasm past Cloudflare Pages' 25 MiB per-file cap (code + data are ~23 MB).
+  # Drop it for the shipped artifact; a profiling build removes this flag.
+  "-C", "strip=symbols",
   "-A", "long_running_const_eval",
 ]
