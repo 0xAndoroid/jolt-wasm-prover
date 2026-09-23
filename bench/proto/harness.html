@@ -48,7 +48,7 @@ window.result = (async () => {
   const bufRes = mk(nCoef * 16, ST | CS);
   const bufMap = mk(nCoef * 16, GPUBufferUsage.MAP_READ | CD);
   const bufParams = mk(32, GPUBufferUsage.UNIFORM | CD);
-  device.queue.writeBuffer(bufParams, 0, new Uint32Array([P.positions, P.colcap_vec2, P.chunk, P.num_chunks, P.blocks, P.colcap, 0, 0]));
+  device.queue.writeBuffer(bufParams, 0, new Uint32Array([P.positions, P.colcap_vec2, P.chunk, P.num_chunks, P.blocks, P.colcap, P.part_mode, 0]));
 
   // Upload timing: writeBuffer + queue flush, wall clock.
   const timedUpload = async (buf, data) => {

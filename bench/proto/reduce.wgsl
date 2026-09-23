@@ -42,29 +42,56 @@ fn fold(v: ptr<function, array<u32, 5>>) {
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let idx = gid.x;
   let stride = P.colcap * P.blocks * 512u;
-  var L: array<u32, 8>;
-  for (var k = 0u; k < 8u; k++) { L[k] = 0u; }
-  for (var ch = 0u; ch < P.num_chunks; ch++) {
-    let base = (ch * stride + idx) * 2u;
-    let lo = PART[base];
-    let hi = PART[base + 1u];
-    L[0] += lo.x; L[1] += hi.x; L[2] += lo.y; L[3] += hi.y;
-    L[4] += lo.z; L[5] += hi.z; L[6] += lo.w; L[7] += hi.w;
-  }
-  // digits -> 160-bit value (L[k] + carry never overflows: L[k] <= 2^32 - 2^16, carry < 2^16)
-  var d: array<u32, 8>;
-  var t = L[0];
-  for (var k = 0u; k < 8u; k++) {
-    d[k] = t & 0xFFFFu;
-    let carry = t >> 16u;
-    if (k < 7u) { t = L[k + 1u] + carry; } else { t = carry; }
-  }
   var v: array<u32, 5>;
-  v[0] = d[0] | (d[1] << 16u);
-  v[1] = d[2] | (d[3] << 16u);
-  v[2] = d[4] | (d[5] << 16u);
-  v[3] = d[6] | (d[7] << 16u);
-  v[4] = t;
+  if (P.part_mode == 0u) {
+    var L: array<u32, 8>;
+    for (var k = 0u; k < 8u; k++) { L[k] = 0u; }
+    for (var ch = 0u; ch < P.num_chunks; ch++) {
+      let base = (ch * stride + idx) * 2u;
+      let lo = PART[base];
+      let hi = PART[base + 1u];
+      L[0] += lo.x; L[1] += hi.x; L[2] += lo.y; L[3] += hi.y;
+      L[4] += lo.z; L[5] += hi.z; L[6] += lo.w; L[7] += hi.w;
+    }
+    // digits -> 160-bit value (L[k] + carry never overflows: L[k] <= 2^32 - 2^16, carry < 2^16)
+    var d: array<u32, 8>;
+    var t = L[0];
+    for (var k = 0u; k < 8u; k++) {
+      d[k] = t & 0xFFFFu;
+      let carry = t >> 16u;
+      if (k < 7u) { t = L[k + 1u] + carry; } else { t = carry; }
+    }
+    v[0] = d[0] | (d[1] << 16u);
+    v[1] = d[2] | (d[3] << 16u);
+    v[2] = d[4] | (d[5] << 16u);
+    v[3] = d[6] | (d[7] << 16u);
+    v[4] = t;
+  } else {
+    // (acc, carry) partials: limb k total = hi[k] * 2^32 + lo[k]
+    var lo = vec4<u32>(0u);
+    var hi = vec4<u32>(0u);
+    for (var ch = 0u; ch < P.num_chunks; ch++) {
+      let base = (ch * stride + idx) * 2u;
+      let a = PART[base];
+      lo += a;
+      hi += vec4<u32>(lo < a) + PART[base + 1u];
+    }
+    v[0] = lo.x;
+    var s = lo.y + hi.x;
+    var c = u32(s < hi.x);
+    v[1] = s;
+    s = lo.z + hi.y;
+    var c2 = u32(s < hi.y);
+    s += c;
+    c = c2 + u32(s < c);
+    v[2] = s;
+    s = lo.w + hi.z;
+    c2 = u32(s < hi.z);
+    s += c;
+    c = c2 + u32(s < c);
+    v[3] = s;
+    v[4] = hi.w + c;
+  }
   fold(&v);
   fold(&v);
   // now v < 2^128 + 2^32 (limb 4 in {0,1}); one conditional subtract of p

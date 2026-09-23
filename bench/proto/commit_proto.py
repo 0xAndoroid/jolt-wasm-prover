@@ -1,7 +1,7 @@
 """Standalone WebGPU prototype of the Akita one-hot trace commit accumulate.
 
     uv run --with playwright --with numpy python bench/proto/commit_proto.py \
-        [--shape small|full] [--variant v1|v2b|v3|v4|v5] [--chunk N] [--repeat N] [--spot N] [--seed S]
+        [--shape small|full] [--variant v1|v2b|v3|...|v11] [--chunk N] [--repeat N] [--spot N] [--seed S]
 
 Launches Playwright's headless WebKit, serves bench/proto/harness.html + shaders + data via
 page.route on http://localhost:7777, runs prep -> main -> reduce, verifies against a Python
@@ -13,6 +13,9 @@ from pathlib import Path
 import numpy as np
 from playwright.sync_api import sync_playwright
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gen_variants import VARIANTS as GEN_VARIANTS  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
 C = 0xFFFFA7F7
 P = (1 << 128) - C
@@ -23,13 +26,9 @@ SHAPES = {
     "small": dict(T=8192, cols=8, colcap=8, blocks=4, positions=64),
     "full": dict(T=262144, cols=57, colcap=64, blocks=4, positions=2048),
 }
-VARIANTS = {
-    "v1": dict(file="commit_accumulate_v1.wgsl", chunked=False),
-    "v2b": dict(file="commit_accumulate_v2b.wgsl", chunked=True, cols=8),
-    "v3": dict(file="commit_accumulate_v3.wgsl", chunked=True, cols=4),
-    "v4": dict(file="commit_accumulate_v4.wgsl", chunked=True, cols=8),
-    "v5": dict(file="commit_accumulate_v5.wgsl", chunked=True, cols=4),
-}
+VARIANTS = {"v1": dict(file="commit_accumulate_v1.wgsl", chunked=False, cols=1, mode=0)}
+for _name, (_cols, _cpt, _scheme) in GEN_VARIANTS.items():
+    VARIANTS[_name] = dict(file=f"commit_accumulate_{_name}.wgsl", chunked=True, cols=_cols, mode=1 if _scheme == "lazycarry" else 0)
 
 
 def gen_data(shape, seed):
@@ -105,7 +104,7 @@ def main():
     chunk = min(args.chunk, pos) if var["chunked"] else pos
     num_chunks = pos // chunk
     assert pos % chunk == 0 and colcap % 8 == 0
-    params = dict(positions=pos, colcap_vec2=colcap // 8, chunk=chunk, num_chunks=num_chunks, blocks=blocks, colcap=colcap)
+    params = dict(positions=pos, colcap_vec2=colcap // 8, chunk=chunk, num_chunks=num_chunks, blocks=blocks, colcap=colcap, part_mode=var["mode"])
     dispatch = [num_chunks, colcap // var["cols"], blocks] if var["chunked"] else [512 // 64, colcap, blocks]
     constants = {"CHUNK": chunk} if var["chunked"] else {}
 

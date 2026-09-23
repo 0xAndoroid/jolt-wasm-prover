@@ -41,7 +41,8 @@ fn main(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid
     workgroupBarrier();
     let row0 = (b * P.positions + q) * 32u;
     for (var r = 0u; r < 32u; r++) {{
-      let hbase = (row0 + r) * row_u32 + g * (COLS / 4u);
+      let hbase = (row0 + r) * row_u32 + (g * COLS) / 4u;
+      let cshift0 = ((g * COLS) % 4u) * 8u;   // 0 unless COLS < 4
 {words}
       let sbase = i - r * 16u;
 {cols_code}
@@ -53,22 +54,36 @@ fn main(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid
 """
 
 
-def build(name, title, cols, cpt):
+SCHEMES = {
+    # inner add for one staged coefficient x (vec4<u32>), and how the two accumulators map to PART digits
+    "digits": dict(add="lo{a} += x & vec4<u32>(0xFFFFu); hi{a} += x >> vec4<u32>(16u);",
+                   store="PART[o * 2u] = lo{a}; PART[o * 2u + 1u] = hi{a};"),
+    # lo holds the wrapping full-limb sum, hi the high-half sum; low digits = lo - (hi << 16) (exact mod 2^32)
+    "fullhi": dict(add="lo{a} += x; hi{a} += x >> vec4<u32>(16u);",
+                   store="PART[o * 2u] = lo{a} - (hi{a} << vec4<u32>(16u)); PART[o * 2u + 1u] = hi{a};"),
+    # lo = wrapping limb sum, hi = carry count per limb; PART mode 1 (reduce.wgsl handles (acc, carry) pairs)
+    "lazycarry": dict(add="let t{a} = lo{a} + x; hi{a} += vec4<u32>(t{a} < x); lo{a} = t{a};",
+                      store="PART[o * 2u] = lo{a}; PART[o * 2u + 1u] = hi{a};"),
+}
+
+
+def build(name, title, cols, cpt, scheme="digits"):
+    sch = SCHEMES[scheme]
     step = 512 // cpt
     acc = []
     for c in range(cols):
         for t in range(cpt):
             acc.append(f"  var lo{c}_{t} = vec4<u32>(0u);\n  var hi{c}_{t} = vec4<u32>(0u);")
-    words = "\n".join(f"      let w{k} = HOT[hbase + {k}u];" for k in range(cols // 4))
+    words = "\n".join(f"      let w{k} = HOT[hbase + {k}u];" for k in range(max(1, cols // 4)))
     cols_code = []
     for c in range(cols):
         body = ["          let j0 = (sbase - code) & 1023u;"]
         for t in range(cpt):
             j = "j0" if t == 0 else f"((j0 + {t * step}u) & 1023u)"
-            body.append(f"          {{ let x = S[{j}]; lo{c}_{t} += x & vec4<u32>(0xFFFFu); hi{c}_{t} += x >> vec4<u32>(16u); }}")
+            body.append("          { let x = S[" + j + "]; " + sch["add"].format(a=f"{c}_{t}") + " }")
         body = "\n".join(body)
         cols_code.append(f"""      {{
-        let code = (w{c // 4} >> {(c % 4) * 8}u) & 0xFFu;
+        let code = (w{c // 4} >> (cshift0 + {(c % 4) * 8}u)) & 0xFFu;
         if (code < 16u) {{
 {body}
         }}
@@ -77,13 +92,27 @@ def build(name, title, cols, cpt):
     for c in range(cols):
         for t in range(cpt):
             store.append(f"  {{ let o = ((chunk * P.colcap + cbase + {c}u) * P.blocks + b) * 512u + i + {t * step}u; "
-                         f"PART[o * 2u] = lo{c}_{t}; PART[o * 2u + 1u] = hi{c}_{t}; }}")
+                         + sch["store"].format(a=f"{c}_{t}") + " }")
     src = HEAD.format(title=title, cols=cols, cpt=cpt, acc_decl="\n".join(acc), words=words,
                       cols_code="\n".join(cols_code), store="\n".join(store))
     (HERE / f"{name}.wgsl").write_text(src)
 
 
-build("commit_accumulate_v2b", "V2b: 8 columns x 1 coefficient per thread (512 threads), 64 accumulator words.", 8, 1)
-build("commit_accumulate_v3", "V3: 4 columns x 1 coefficient per thread (512 threads), 32 accumulator words.", 4, 1)
-build("commit_accumulate_v4", "V4: 8 columns x 2 coefficients per thread (256 threads), 128 accumulator words.", 8, 2)
-build("commit_accumulate_v5", "V5: 4 columns x 2 coefficients per thread (256 threads), 64 accumulator words.", 4, 2)
+VARIANTS = {
+    # name: (cols per workgroup, coefficients per thread, scheme)
+    "v2b": (8, 1, "digits"),
+    "v3": (4, 1, "digits"),
+    "v4": (8, 2, "digits"),
+    "v5": (4, 2, "digits"),
+    "v6": (4, 2, "fullhi"),
+    "v7": (4, 2, "lazycarry"),
+    "v8": (4, 4, "digits"),
+    "v9": (2, 4, "digits"),
+    "v10": (2, 2, "digits"),
+    "v11": (2, 4, "fullhi"),
+}
+
+if __name__ == "__main__":
+    for name, (cols, cpt, scheme) in VARIANTS.items():
+        build(f"commit_accumulate_{name}", f"{name.upper()}: {cols} columns x {cpt} coefficients per thread "
+              f"({512 // cpt} threads), {cols * cpt * 8} accumulator words, scheme={scheme}.", cols, cpt, scheme)

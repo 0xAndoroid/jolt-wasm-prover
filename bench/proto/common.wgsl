@@ -10,7 +10,7 @@ struct Params {
   num_chunks: u32,   // positions / chunk
   blocks: u32,       // blocks_per_column
   colcap: u32,       // column_capacity
-  _pad0: u32,
+  part_mode: u32,    // 0: 16-bit digit partials; 1: (wrapping limb sum, carry count) partials
   _pad1: u32,
 }
 
