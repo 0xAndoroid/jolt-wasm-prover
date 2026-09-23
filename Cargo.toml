@@ -28,6 +28,9 @@ required-features = ["native"]
 [features]
 default = []
 native = []
+# Routes the stage-0 one-hot trace commit through `jolt_akita::TraceCommitDevice`
+# (patches/0006). Needs the patched checkouts from ./setup-wasm-deps.sh.
+trace-commit-device = []
 
 [dependencies]
 tracing = "0.1"
@@ -35,6 +38,7 @@ serde = { version = "1.0", features = ["derive"] }
 postcard = { version = "1.0.8", features = ["use-std"] }
 bincode = { version = "2", features = ["serde"] }
 serde_json = "1.0"
+rayon = "1"
 
 # One compiled prover proves exactly one protocol: `akita` selects the packed
 # lattice path (jolt-akita PCS over the Solinas fp128 field) and compiles the
@@ -66,6 +70,8 @@ tracing-subscriber = { version = "0.3", features = ["std"] }
 # compile against a jolt-prover built with `akita`.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 jolt-host = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
+sha2 = "0.11"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [profile.release]
 opt-level = 3

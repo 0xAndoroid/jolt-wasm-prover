@@ -148,6 +148,7 @@ git -C "$DEPS/arkworks-algebra" apply --verbose "$ROOT/patches/0002-arkworks-was
 git -C "$DEPS/jolt" apply --verbose "$ROOT/patches/0003-jolt-akita-wasm-pool.patch"
 git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0004-akita-wasm-instant.patch"
 git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0005-akita-types-wasm32-shift.patch"
+git -C "$DEPS/jolt" apply --verbose "$ROOT/patches/0006-jolt-akita-trace-commit-device.patch"
 
 block="$(mktemp)"
 write_local_block "$block"
