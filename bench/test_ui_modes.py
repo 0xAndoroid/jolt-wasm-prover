@@ -152,7 +152,6 @@ def main():
         check(mode == "cpu", f"ECDSA proof ran in CPU mode (badge {mode})")
         check(ecdsa_cpu == ecdsa_gpu, f"ECDSA CPU proof bytes == GPU proof bytes ({ecdsa_cpu[:16]})")
         verify(page, "ECDSA CPU")
-        sys.stderr.write(page.locator(f"{PANEL} .output").inner_text() + "\n")
         shoot(page, args.shots, "webkit-ecdsa")
         select_tab(page, "Keccak Chain")
         keccak_cpu, mode = prove(page)
