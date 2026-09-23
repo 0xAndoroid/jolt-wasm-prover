@@ -85,8 +85,8 @@ def prove(page):
 
 def verify(page, label):
     page.locator(f"{PANEL} .verify-btn").click()
-    # case-sensitive on purpose: the failure text is "Invalid"
-    page.wait_for_function(f"() => document.querySelector('{PANEL}')?.innerText.includes('Valid')")
+    # "Invalid" does not contain "Valid" (lowercase v); wait for either so a bad proof fails fast
+    page.wait_for_function(f"() => /Valid|Invalid/.test(document.querySelector('{PANEL}')?.innerText || '')")
     check("Invalid" not in page.locator(PANEL).inner_text(), f"{label}: proof verified in the UI")
 
 
