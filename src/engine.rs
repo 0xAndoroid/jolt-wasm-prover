@@ -74,6 +74,16 @@ pub fn install_trace_commit_device(
     jolt_akita::set_trace_commit_device(device).map_err(|e| format!("trace commit device: {e}"))
 }
 
+/// Routes the y-phase rounds of every later stage-1 digit-range sumcheck
+/// through `device` (`akita_prover::set_digit_range_device`); instances the
+/// device declines stay on the CPU prover. Only the browser installs one.
+#[cfg(all(feature = "digit-range-device", target_arch = "wasm32"))]
+pub fn install_digit_range_device(
+    device: Arc<dyn akita_prover::DigitRangeDevice>,
+) -> Result<(), String> {
+    akita_prover::set_digit_range_device(device).map_err(|e| format!("digit range device: {e}"))
+}
+
 /// `JOLT_TRACE_COMMIT_DEVICE=cpu-ref` installs the CPU reference device.
 #[cfg(all(feature = "trace-commit-device", not(target_arch = "wasm32")))]
 pub fn install_trace_commit_device_from_env() -> Result<(), String> {
@@ -196,6 +206,7 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
     #[cfg(target_arch = "wasm32")]
     {
         gpu.commit = crate::gpu::take_commit_report();
+        gpu.digit_range = crate::gpu::take_digit_range_report();
     }
 
     Ok(ProveOutput {

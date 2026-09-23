@@ -13,6 +13,11 @@ pub const OP_CREATE_BUFFER: u32 = 2;
 pub const OP_UPLOAD: u32 = 3;
 pub const OP_DESTROY: u32 = 4;
 pub const OP_RUN: u32 = 5;
+/// Several RUN passes in one trip: `args = [npasses, {shader, wx, nbind, region_idx…}…]`,
+/// region 0 = the packed per-pass 64 B uniform blocks.
+pub const OP_RUN_SEQ: u32 = 6;
+/// Copy a device buffer (`args = [handle, byte_len]`) into the READBACK region.
+pub const OP_DOWNLOAD: u32 = 7;
 
 pub const STATUS_IDLE: u32 = 0;
 pub const STATUS_BUSY: u32 = 1;

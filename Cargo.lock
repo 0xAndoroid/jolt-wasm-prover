@@ -1679,6 +1679,7 @@ dependencies = [
 name = "jolt-wasm-prover"
 version = "0.1.0"
 dependencies = [
+ "akita-prover",
  "bincode 2.0.1",
  "common",
  "console_error_panic_hook",

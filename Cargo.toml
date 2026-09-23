@@ -34,6 +34,10 @@ trace-commit-device = []
 # Experimental GPU offload harness: mailbox transport to the gpu-proxy.js
 # Worker plus the fp128 self-test. Off by default; native builds ignore it.
 webgpu = []
+# Routes the stage-1 digit-range sumcheck rounds through
+# `akita_prover::DigitRangeDevice` (patches/0007). Pulls `akita-prover` in as a
+# direct dependency for the seam types; needs the patched checkouts.
+digit-range-device = ["dep:akita-prover"]
 
 [dependencies]
 tracing = "0.1"
@@ -54,6 +58,7 @@ jolt-program = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401
 tracer = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
 common = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["std"] }
 jolt-field = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", default-features = false, features = ["solinas"] }
+akita-prover = { git = "https://github.com/LayerZero-Labs/akita.git", rev = "252abb895046cc1d5b9955a26a2ad2318148ac26", optional = true }
 
 jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["host"] }
 jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["host"] }

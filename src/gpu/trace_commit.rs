@@ -302,7 +302,7 @@ impl WebGpuTraceCommit {
 
 impl TraceCommitDevice for WebGpuTraceCommit {
     fn commit_accumulate(&self, job: &TraceCommitJob<'_>) -> Option<Result<Vec<u32>, AkitaError>> {
-        (super::is_enabled() && qualifies(&job.shape)).then(|| {
+        (super::is_enabled() && super::commit_enabled() && qualifies(&job.shape)).then(|| {
             self.commit(job)
                 .map_err(|e| AkitaError::InvalidInput(format!("webgpu trace commit: {e}")))
         })

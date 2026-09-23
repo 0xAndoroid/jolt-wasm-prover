@@ -7,7 +7,10 @@ import init, {
     WasmVerifier,
     gpu_mailbox_ptr,
     set_gpu_enabled,
+    set_gpu_commit_enabled,
+    set_gpu_digit_range_enabled,
     set_gpu_unavailable,
+    set_digit_range_parity_rounds,
 } from '/pkg/jolt_wasm_prover.js';
 
 // Akita backend kernels recurse deeply on rayon workers (64 MiB stacks
@@ -73,7 +76,11 @@ self.onmessage = async (e) => {
                 scheduleArtifacts = schedules;
                 await initThreadPool(data.numThreads);
                 init_tracing();
-                const gpu = data.gpu === true ? await initGpu() : { status: 'disabled' };
+                // gpu: true | false | 'w1' (GPU on, digit-range rounds on the CPU) | 'w2' (GPU on, trace commit on the CPU).
+                const gpu = data.gpu ? await initGpu() : { status: 'disabled' };
+                set_gpu_commit_enabled(data.gpu !== 'w2');
+                set_gpu_digit_range_enabled(data.gpu !== 'w1');
+                set_digit_range_parity_rounds(data.parityRounds ?? 0);
                 self.postMessage({ type: 'init-done', gpu });
                 break;
             }
@@ -140,6 +147,7 @@ self.onmessage = async (e) => {
                     gpuSelftestMismatches: result.gpu_selftest_mismatches,
                     gpuRoundtripUs: result.gpu_roundtrip_us,
                     gpuCommit: result.gpu_commit,
+                    gpuDigitRange: result.gpu_digit_range,
                     peakMemory,
                     elapsed,
                 });
