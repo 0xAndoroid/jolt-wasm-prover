@@ -24,6 +24,10 @@ use jolt_prover::ProverConfig;
 use jolt_witness::{JoltVmWitnessConfig, JoltVmWitnessInputs, TraceBackend};
 use tracer::execution_backend::TracerBackend;
 
+#[cfg(feature = "trace-commit-device")]
+#[path = "trace_commit_reference.rs"]
+pub mod trace_commit_reference;
+
 pub type F = AkitaField;
 pub type Pcs = AkitaScheme;
 pub type Vc = AkitaVc;
@@ -58,6 +62,28 @@ pub fn decode_program_preprocessing(bytes: &[u8]) -> Result<JoltProgramPreproces
 
 pub fn decode_verifier_preprocessing(bytes: &[u8]) -> Result<VerifierPrep, String> {
     decode(bytes, "verifier preprocessing")
+}
+
+/// Routes every later stage-0 trace commit in this process through `device`
+/// (`jolt_akita::set_trace_commit_device`); the CPU kernels remain the
+/// fallback for shapes the device declines.
+#[cfg(feature = "trace-commit-device")]
+pub fn install_trace_commit_device(
+    device: Arc<dyn jolt_akita::TraceCommitDevice>,
+) -> Result<(), String> {
+    jolt_akita::set_trace_commit_device(device).map_err(|e| format!("trace commit device: {e}"))
+}
+
+/// `JOLT_TRACE_COMMIT_DEVICE=cpu-ref` installs the CPU reference device.
+#[cfg(all(feature = "trace-commit-device", not(target_arch = "wasm32")))]
+pub fn install_trace_commit_device_from_env() -> Result<(), String> {
+    match std::env::var("JOLT_TRACE_COMMIT_DEVICE").as_deref() {
+        Ok("cpu-ref") => {
+            install_trace_commit_device(Arc::new(trace_commit_reference::CpuReferenceDevice))
+        }
+        Ok(other) => Err(format!("unknown JOLT_TRACE_COMMIT_DEVICE={other:?}")),
+        Err(_) => Ok(()),
+    }
 }
 
 /// Everything a prover needs that is independent of the concrete trace.

@@ -174,7 +174,7 @@ branch resolution.
 
 The repo builds everywhere from the pinned upstream revs, and native binaries
 are fully functional. Proving on `wasm32` additionally needs five small fixes
-that are not upstream yet, shipped in `patches/`:
+that are not upstream yet, plus one device seam, shipped in `patches/`:
 
 1. `0001-jolt-coefflut-u64.patch` — `CoeffLut::saturated()` in
    `jolt-kernels` computes `len * len` in `usize`; at the 65536-entry table
@@ -196,6 +196,12 @@ that are not upstream yet, shipped in `patches/`:
 5. `0005-akita-types-wasm32-shift.patch` — `akita-types` computes
    `1usize << 52` as the exact-f64 integer bound; that constant overflows
    `usize` on 32-bit targets (compile error E0080). The fix makes it `u64`.
+6. `0006-jolt-akita-trace-commit-device.patch` — not a wasm32 fix: adds
+   `jolt_akita::TraceCommitDevice`, a process-global seam that lets the
+   stage-0 one-hot trace commit run on an external device (WebGPU) with the
+   CPU kernels as fallback. No behaviour change unless a device is installed.
+   The root crate uses it behind the `trace-commit-device` feature; contract
+   in [docs/trace-commit-device.md](docs/trace-commit-device.md).
 
 `./setup-wasm-deps.sh` clones the three upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in

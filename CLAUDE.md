@@ -23,6 +23,12 @@ cargo run --release --features native --bin generate-preprocessing
 # Roundtrip test: full native prove+verify from the serialized artifacts
 cargo run --release --features native --bin test-roundtrip
 
+# Trace-commit device seam (patches/0006, needs ./setup-wasm-deps.sh first):
+# `trace-commit-device` compiles the seam glue; JOLT_TRACE_COMMIT_DEVICE=cpu-ref
+# routes stage 0 through the CPU reference device (docs/trace-commit-device.md)
+JOLT_TRACE_COMMIT_DEVICE=cpu-ref cargo run --release --features native,trace-commit-device --bin test-roundtrip
+RUST_LOG=jolt_akita=info cargo run --release --features native,trace-commit-device --bin test-roundtrip  # prints the stage-0 shape + extraction time
+
 # Clippy / format (root package only — the guest crates are riscv-only and
 # their jolt-sdk host glue does not compile against an akita jolt-prover)
 cargo clippy --all --all-targets --message-format=short -q   # root workspace; guests/ is its own workspace
@@ -50,6 +56,7 @@ node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js
 
 - `src/lib.rs` — `#[wasm_bindgen]` exports: `WasmProver`, `WasmVerifier`, tracing (`init_inlines` export kept as a no-op — inline registration is inventory-based link-time ctors and worker.js no longer calls it)
 - `src/engine.rs` — the prove/verify pipeline shared by wasm and native: decode the Akita schedule bundle + `JoltProgramPreprocessing` (bincode2), trace via `TracerBackend::trace_compact`, derive `ProverConfig`, build the shape-exact Akita setup with `jolt_prover::akita::preprocessing::preprocess_full` (the "setup" phase, per proof), prove via `jolt_prover::prove` over `JoltAkitaBackend::optimized()`, return proof + program IO + the verifier preprocessing for that shape
+- `src/trace_commit_reference.rs` — `CpuReferenceDevice`, the CPU oracle for the stage-0 trace-commit device ABI (`docs/trace-commit-device.md`); feature `trace-commit-device`
 - `src/wasm_tracing.rs` — Chrome Trace Format layer for `tracing`, outputs Perfetto-compatible JSON (per-thread tids)
 - `preprocessing/generate.rs` — native binary: compiles guests through `jolt-host` (the `jolt` CLI), writes `{name}.elf`, `{name}_program.bin`, and `akita_schedules.bin` to `frontend/public/`. Guest memory/trace parameters live in its `GUESTS` table (heap sizes must match the guests' `#[jolt::provable(heap_size = ..)]`)
 - `preprocessing/test_roundtrip.rs` — native binary: full prove+verify from the shipped bytes, same code path as the browser (catches everything except 32-bit-isms)
@@ -62,6 +69,7 @@ node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js
 
 - **default** (no features) — WASM library build (`cdylib`)
 - **`native`** — enables the preprocessing binaries (`jolt-host` guest compilation)
+- **`trace-commit-device`** — `engine::install_trace_commit_device` + `CpuReferenceDevice`; needs the patched `jolt-akita` from `./setup-wasm-deps.sh` (patch 0006), so it is off by default to keep pinned-rev native builds working
 
 ## Key Dependencies
 

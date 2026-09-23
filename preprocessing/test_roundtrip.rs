@@ -16,6 +16,14 @@ fn load(dir: &Path, name: &str) -> Vec<u8> {
     std::fs::read(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"))
 }
 
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
 fn roundtrip(dir: &Path, schedules: &[u8], name: &str, inputs: &[u8]) {
     println!("[{name}] loading artifacts...");
     let program_bytes = load(dir, &format!("{name}_program.bin"));
@@ -42,6 +50,12 @@ fn roundtrip(dir: &Path, schedules: &[u8], name: &str, inputs: &[u8]) {
         out.verifier_preprocessing_bytes.len(),
     );
 
+    println!(
+        "[{name}] sha256 proof {} verifier-preprocessing {}",
+        sha256_hex(&out.proof_bytes),
+        sha256_hex(&out.verifier_preprocessing_bytes)
+    );
+
     let verifier_prep = engine::decode_verifier_preprocessing(&out.verifier_preprocessing_bytes)
         .expect("verifier prep");
     let start = Instant::now();
@@ -56,6 +70,16 @@ use jolt_inlines_secp256k1 as _;
 use jolt_inlines_sha2 as _;
 
 fn main() {
+    #[cfg(feature = "trace-commit-device")]
+    engine::install_trace_commit_device_from_env().expect("trace commit device");
+    if std::env::var_os("RUST_LOG").is_some() {
+        use tracing_subscriber::fmt::format::FmtSpan;
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .with_span_events(FmtSpan::CLOSE)
+            .with_writer(std::io::stderr)
+            .init();
+    }
     let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
     let schedules = load(&public_dir, "akita_schedules.bin");
 
@@ -64,7 +88,10 @@ fn main() {
     roundtrip(&public_dir, &schedules, "sha2", &inputs);
 
     let mut inputs = postcard::to_allocvec(&[5u8; 32]).expect("serialize");
-    inputs.extend_from_slice(&postcard::to_allocvec(&100u32).expect("serialize"));
+    // 17 → 2^16, 69 → 2^18 (default 100), 278 → 2^20, 556 → 2^21 padded cycles.
+    let iters =
+        std::env::var("SHA2_CHAIN_ITERS").map_or(100u32, |v| v.parse().expect("SHA2_CHAIN_ITERS"));
+    inputs.extend_from_slice(&postcard::to_allocvec(&iters).expect("serialize"));
     roundtrip(&public_dir, &schedules, "sha2_chain", &inputs);
 
     println!("All roundtrips passed!");

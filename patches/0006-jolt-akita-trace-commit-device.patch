@@ -1,0 +1,492 @@
+diff --git a/crates/jolt-akita/src/lib.rs b/crates/jolt-akita/src/lib.rs
+index de3f80a..8af68a5 100644
+--- a/crates/jolt-akita/src/lib.rs
++++ b/crates/jolt-akita/src/lib.rs
+@@ -48,7 +48,10 @@ pub use native_batching::{
+ };
+ pub use schedule_registry::PrecommittedScheduleParams;
+ pub use scheme::{AkitaScheme, TraceOneHotCommitment};
+-pub use trace_onehot::{no_selected_row, TraceOneHotRows, TracePackedOneHot};
++pub use trace_onehot::{
++    no_selected_row, set_trace_commit_device, TraceCommitDevice, TraceCommitJob, TraceCommitShape,
++    TraceOneHotRows, TracePackedOneHot,
++};
+ 
+ /// Jolt↔Akita basis-order bridging, exposed so benchmarks measuring the raw
+ /// backend use the exact transform the adapter uses.
+diff --git a/crates/jolt-akita/src/trace_onehot/commit.rs b/crates/jolt-akita/src/trace_onehot/commit.rs
+index 1d2255f..68be7fb 100644
+--- a/crates/jolt-akita/src/trace_onehot/commit.rs
++++ b/crates/jolt-akita/src/trace_onehot/commit.rs
+@@ -4,6 +4,7 @@ use akita_prover::compute::CommitInnerPlan;
+ use akita_prover::{CommitInnerWitness, ComputeBackendSetup, CpuBackend};
+ use rayon::prelude::*;
+ 
++use super::device::{commit_on_device, TraceCommitDevice};
+ use super::source::TracePackedOneHot;
+ use super::traversal::{
+     flush_deferred_rank, flush_wide, row_is_committed, trace_block_part_range,
+@@ -19,6 +20,7 @@ pub(super) fn commit_packed<const D: usize>(
+     prepared: &<CpuBackend as ComputeBackendSetup<AkitaField>>::PreparedSetup,
+     source: &TracePackedOneHot,
+     plan: CommitInnerPlan,
++    device: Option<&dyn TraceCommitDevice>,
+ ) -> Result<CommitInnerWitness<AkitaField>, AkitaError> {
+     let _span = tracing::info_span!(
+         "TracePackedOneHot::commit_inner",
+@@ -48,10 +50,30 @@ pub(super) fn commit_packed<const D: usize>(
+         .shared_matrix()
+         .ring_view::<D>(plan.n_a, active_cols)?;
+     let a_rows = a_view.rows().collect::<Vec<_>>();
+-    let max_per_ring = (D / source.one_hot_k).max(1);
+     drop(_prepare_span);
++    commit_packed_rows::<D>(source, plan, &a_rows, segment_rings, num_blocks, device)
++}
++
++/// Commits `source` against the digit-zero setup rows `a_rows[a][position * num_digits_inner]`,
++/// on `device` when one is given and accepts the shape, else on the CPU kernels.
++pub(super) fn commit_packed_rows<const D: usize>(
++    source: &TracePackedOneHot,
++    plan: CommitInnerPlan,
++    a_rows: &[&[CyclotomicRing<AkitaField, D>]],
++    segment_rings: usize,
++    num_blocks: usize,
++    device: Option<&dyn TraceCommitDevice>,
++) -> Result<CommitInnerWitness<AkitaField>, AkitaError> {
++    let max_per_ring = (D / source.one_hot_k).max(1);
+ 
+     let rows = if segment_rings >= plan.num_positions_per_block {
++        if let Some(device) = device {
++            if let Some(rows) =
++                commit_on_device::<D>(device, source, plan, a_rows, segment_rings, num_blocks)?
++            {
++                return Ok(CommitInnerWitness::from_rows(rows));
++            }
++        }
+         let blocks_per_column = segment_rings / plan.num_positions_per_block;
+         debug_assert_eq!(
+             blocks_per_column * plan.num_positions_per_block,
+diff --git a/crates/jolt-akita/src/trace_onehot/device.rs b/crates/jolt-akita/src/trace_onehot/device.rs
+new file mode 100644
+index 0000000..eec2495
+--- /dev/null
++++ b/crates/jolt-akita/src/trace_onehot/device.rs
+@@ -0,0 +1,214 @@
++//! Device seam for the stage-0 packed one-hot trace commit.
++//!
++//! An installed [`TraceCommitDevice`] receives the flat trace selectors and
++//! the digit-zero plane of the setup matrix and returns the committed rings
++//! as canonical little-endian limbs. `commit_packed` keeps the CPU kernels
++//! when no device is installed, when the device declines the shape, or when
++//! the shape is not block-aligned (`segment_rings < positions_per_block`,
++//! `K > D`).
++
++use std::sync::{Arc, OnceLock};
++
++use akita_algebra::CyclotomicRing;
++use akita_error::AkitaError;
++use akita_prover::compute::CommitInnerPlan;
++use jolt_field::CanonicalEncoding;
++use rayon::prelude::*;
++
++use super::source::TracePackedOneHot;
++use super::NO_SELECTED_ROW;
++use crate::AkitaField;
++
++/// Geometry of one trace commit, all counts in their natural units.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct TraceCommitShape {
++    pub one_hot_k: usize,
++    pub ring_dimension: usize,
++    /// Trace rows `T`.
++    pub num_rows: usize,
++    /// Semantic columns `C`; columns `C..column_capacity` are padding.
++    pub num_columns: usize,
++    pub column_capacity: usize,
++    pub n_a: usize,
++    pub positions_per_block: usize,
++    pub num_digits_inner: usize,
++    /// Rings per column segment: `num_rows * one_hot_k / ring_dimension`.
++    pub segment_rings: usize,
++    /// `segment_rings / positions_per_block`.
++    pub blocks_per_column: usize,
++    /// `column_capacity * blocks_per_column`.
++    pub num_blocks: usize,
++}
++
++/// Inputs of one trace commit in device-friendly flat layouts.
++pub struct TraceCommitJob<'a> {
++    pub shape: TraceCommitShape,
++    /// `num_rows * num_columns` row-major selected one-hot rows. Zero means
++    /// "no committed entry" unless bit `column` of that row's mask is set.
++    pub hot: &'a [u8],
++    /// One committed-digit-zero mask per trace row.
++    pub masks: &'a [u64],
++    /// Digit-zero plane of the setup matrix as canonical LE u32 limbs:
++    /// `((a * positions_per_block + q) * ring_dimension + i) * 4 + limb`.
++    pub a_plane: &'a [u32],
++}
++
++pub trait TraceCommitDevice: Send + Sync {
++    /// `None` declines the shape and the CPU kernels run instead.
++    /// `Some(Ok(limbs))` carries `num_blocks * n_a * ring_dimension * 4`
++    /// canonical LE u32 limbs indexed
++    /// `((block * n_a + a) * ring_dimension + i) * 4 + limb` with
++    /// `block = column * blocks_per_column + trace_block`; padding columns
++    /// are zero.
++    fn commit_accumulate(&self, job: &TraceCommitJob<'_>) -> Option<Result<Vec<u32>, AkitaError>>;
++}
++
++static DEVICE: OnceLock<Arc<dyn TraceCommitDevice>> = OnceLock::new();
++
++/// Installs the process-wide trace commit device. Every later trace commit
++/// offers its job to `device` first. Fails once a device is installed.
++pub fn set_trace_commit_device(device: Arc<dyn TraceCommitDevice>) -> Result<(), AkitaError> {
++    DEVICE
++        .set(device)
++        .map_err(|_| AkitaError::InvalidSetup("trace commit device already installed".to_string()))
++}
++
++pub(super) fn installed_trace_commit_device() -> Option<&'static dyn TraceCommitDevice> {
++    DEVICE.get().map(Arc::as_ref)
++}
++
++const EXTRACT_ROWS_PER_TASK: usize = 1 << 10;
++
++/// Offers the commit to `device`; `Ok(None)` means the CPU kernels must run.
++/// Returned rows follow `CommitInnerWitness::from_rows` layout:
++/// `rows[column * blocks_per_column + trace_block][a]`.
++pub(super) fn commit_on_device<const D: usize>(
++    device: &dyn TraceCommitDevice,
++    source: &TracePackedOneHot,
++    plan: CommitInnerPlan,
++    a_rows: &[&[CyclotomicRing<AkitaField, D>]],
++    segment_rings: usize,
++    num_blocks: usize,
++) -> Result<Option<Vec<Vec<CyclotomicRing<AkitaField, D>>>>, AkitaError> {
++    if source.one_hot_k > D || segment_rings < plan.num_positions_per_block {
++        return Ok(None);
++    }
++    let shape = TraceCommitShape {
++        one_hot_k: source.one_hot_k,
++        ring_dimension: D,
++        num_rows: source.rows.num_rows(),
++        num_columns: source.rows.num_columns(),
++        column_capacity: source.column_capacity,
++        n_a: plan.n_a,
++        positions_per_block: plan.num_positions_per_block,
++        num_digits_inner: plan.num_digits_inner,
++        segment_rings,
++        blocks_per_column: segment_rings / plan.num_positions_per_block,
++        num_blocks,
++    };
++    let _span = tracing::info_span!(
++        "trace_onehot_commit_device",
++        one_hot_k = shape.one_hot_k,
++        ring_dimension = D,
++        num_rows = shape.num_rows,
++        num_columns = shape.num_columns,
++        column_capacity = shape.column_capacity,
++        n_a = shape.n_a,
++        positions_per_block = shape.positions_per_block,
++        num_digits_inner = shape.num_digits_inner,
++        blocks_per_column = shape.blocks_per_column,
++        num_blocks = shape.num_blocks,
++    )
++    .entered();
++
++    let extract_span = tracing::info_span!("trace_onehot_commit_device_extract").entered();
++    let num_columns = shape.num_columns;
++    let mut hot = vec![NO_SELECTED_ROW; shape.num_rows * num_columns];
++    let mut masks = vec![0u64; shape.num_rows];
++    hot.par_chunks_mut(EXTRACT_ROWS_PER_TASK * num_columns)
++        .zip(masks.par_chunks_mut(EXTRACT_ROWS_PER_TASK))
++        .enumerate()
++        .try_for_each(|(task, (hot, masks))| {
++            let row_start = task * EXTRACT_ROWS_PER_TASK;
++            source.rows.fill_rows(row_start, hot);
++            source
++                .rows
++                .fill_committed_digit_zero_masks(row_start, masks);
++            match hot
++                .iter()
++                .find(|&&hot| hot != NO_SELECTED_ROW && usize::from(hot) >= source.one_hot_k)
++            {
++                Some(hot) => Err(AkitaError::InvalidInput(format!(
++                    "trace one-hot row {hot} is outside K={}",
++                    source.one_hot_k
++                ))),
++                None => Ok(()),
++            }
++        })?;
++    let mut a_plane = vec![0u32; plan.n_a * plan.num_positions_per_block * D * 4];
++    a_plane
++        .par_chunks_exact_mut(D * 4)
++        .enumerate()
++        .for_each(|(index, limbs)| {
++            let a = index / plan.num_positions_per_block;
++            let position = index % plan.num_positions_per_block;
++            let ring = &a_rows[a][position * plan.num_digits_inner];
++            for (limbs, coefficient) in limbs.chunks_exact_mut(4).zip(ring.coefficients()) {
++                let [lo, hi] = coefficient.to_limbs();
++                limbs[0] = lo as u32;
++                limbs[1] = (lo >> 32) as u32;
++                limbs[2] = hi as u32;
++                limbs[3] = (hi >> 32) as u32;
++            }
++        });
++    drop(extract_span);
++
++    let job = TraceCommitJob {
++        shape,
++        hot: &hot,
++        masks: &masks,
++        a_plane: &a_plane,
++    };
++    let Some(limbs) = device.commit_accumulate(&job) else {
++        tracing::info!(?shape, "trace commit device declined the shape");
++        return Ok(None);
++    };
++    let limbs = limbs?;
++    let expected = num_blocks * plan.n_a * D * 4;
++    if limbs.len() != expected {
++        return Err(AkitaError::InvalidSize {
++            expected,
++            actual: limbs.len(),
++        });
++    }
++    let _convert_span = tracing::info_span!("trace_onehot_commit_device_convert").entered();
++    limbs
++        .par_chunks_exact(plan.n_a * D * 4)
++        .map(|block| {
++            block
++                .chunks_exact(D * 4)
++                .map(|ring| {
++                    let coefficients = ring
++                        .chunks_exact(4)
++                        .map(|limbs| {
++                            let value = u128::from(limbs[0])
++                                | u128::from(limbs[1]) << 32
++                                | u128::from(limbs[2]) << 64
++                                | u128::from(limbs[3]) << 96;
++                            AkitaField::from_u128_checked(value).ok_or_else(|| {
++                                AkitaError::InvalidInput(format!(
++                                    "trace commit device returned non-canonical coefficient {value:#x}"
++                                ))
++                            })
++                        })
++                        .collect::<Result<Vec<_>, _>>()?;
++                    let coefficients: [AkitaField; D] = coefficients
++                        .try_into()
++                        .map_err(|_| AkitaError::InvalidSetup("ring dimension mismatch".to_string()))?;
++                    Ok(CyclotomicRing::from_coefficients(coefficients))
++                })
++                .collect::<Result<Vec<_>, AkitaError>>()
++        })
++        .collect::<Result<Vec<_>, _>>()
++        .map(Some)
++}
+diff --git a/crates/jolt-akita/src/trace_onehot/kernels.rs b/crates/jolt-akita/src/trace_onehot/kernels.rs
+index 61b98ca..98f1758 100644
+--- a/crates/jolt-akita/src/trace_onehot/kernels.rs
++++ b/crates/jolt-akita/src/trace_onehot/kernels.rs
+@@ -23,6 +23,7 @@ use rayon::prelude::*;
+ 
+ use super::commit::commit_packed;
+ use super::decomposition::decompose_fold_packed;
++use super::device::installed_trace_commit_device;
+ use super::opening::opening_fold_packed;
+ use super::source::{TracePackedOneHot, TracePackedOneHotBatchView, TracePackedOneHotView};
+ use super::traversal::coefficient_packing_partials_packed;
+@@ -63,7 +64,13 @@ impl ExternalInnerCommitmentOperation<AkitaField> for TracePackedOneHotCommitOpe
+                 .par_iter()
+                 .map(|source| {
+                     let source = source.payload::<TracePackedOneHot>()?;
+-                    commit_packed::<D>(&CpuBackend::DEFAULT, prepared, source, *plan)
++                    commit_packed::<D>(
++                        &CpuBackend::DEFAULT,
++                        prepared,
++                        source,
++                        *plan,
++                        installed_trace_commit_device(),
++                    )
+                 })
+                 .collect()
+         )
+diff --git a/crates/jolt-akita/src/trace_onehot/mod.rs b/crates/jolt-akita/src/trace_onehot/mod.rs
+index 4aa88cf..58c5dcb 100644
+--- a/crates/jolt-akita/src/trace_onehot/mod.rs
++++ b/crates/jolt-akita/src/trace_onehot/mod.rs
+@@ -22,6 +22,7 @@ const _: () = assert!(K256_ROW_BATCH <= i16::MAX as usize);
+ 
+ mod commit;
+ mod decomposition;
++mod device;
+ mod kernels;
+ mod opening;
+ mod source;
+@@ -30,6 +31,7 @@ mod traversal;
+ #[cfg(test)]
+ mod tests;
+ 
++pub use device::{set_trace_commit_device, TraceCommitDevice, TraceCommitJob, TraceCommitShape};
+ pub use source::{no_selected_row, TraceOneHotRows, TracePackedOneHot};
+ 
+ #[cfg(test)]
+diff --git a/crates/jolt-akita/src/trace_onehot/tests.rs b/crates/jolt-akita/src/trace_onehot/tests.rs
+index 6188a99..fb72b28 100644
+--- a/crates/jolt-akita/src/trace_onehot/tests.rs
++++ b/crates/jolt-akita/src/trace_onehot/tests.rs
+@@ -21,8 +21,13 @@ use akita_types::{
+ use jolt_field::{One, Ring};
+ use std::sync::atomic::{AtomicUsize, Ordering};
+ 
++use super::commit::commit_packed_rows;
+ use super::source::{TracePackedOneHotBatchView, TracePackedOneHotView};
++use super::traversal::validate_block_geometry;
+ use crate::AkitaField;
++use akita_error::AkitaError;
++use akita_prover::compute::CommitInnerPlan;
++use jolt_field::{CanonicalEncoding, Zero};
+ 
+ #[derive(Debug)]
+ struct TestRows {
+@@ -532,3 +537,138 @@ fn coefficient_packing_rejects_invalid_selector() {
+     .expect_err("selector outside K must reject");
+     assert!(error.to_string().contains("outside K=16"));
+ }
++
++struct NaiveDevice {
++    decline: bool,
++}
++
++impl TraceCommitDevice for NaiveDevice {
++    fn commit_accumulate(&self, job: &TraceCommitJob<'_>) -> Option<Result<Vec<u32>, AkitaError>> {
++        if self.decline {
++            return None;
++        }
++        let shape = job.shape;
++        let d = shape.ring_dimension;
++        let rows_per_ring = d / shape.one_hot_k;
++        let mut out = vec![AkitaField::zero(); shape.num_blocks * shape.n_a * d];
++        for row in 0..shape.num_rows {
++            let ring = row / rows_per_ring;
++            let trace_block = ring / shape.positions_per_block;
++            let position = ring % shape.positions_per_block;
++            for column in 0..shape.num_columns {
++                let hot = job.hot[row * shape.num_columns + column];
++                if hot == 0 && job.masks[row] >> column & 1 == 0 {
++                    continue;
++                }
++                let shift = (row % rows_per_ring) * shape.one_hot_k + usize::from(hot);
++                let block = column * shape.blocks_per_column + trace_block;
++                for a in 0..shape.n_a {
++                    let a_base = (a * shape.positions_per_block + position) * d;
++                    let out = &mut out[(block * shape.n_a + a) * d..][..d];
++                    for (i, out) in out.iter_mut().enumerate() {
++                        let limbs = &job.a_plane[(a_base + (i + d - shift) % d) * 4..][..4];
++                        let value = AkitaField::from_u128_checked(
++                            u128::from(limbs[0])
++                                | u128::from(limbs[1]) << 32
++                                | u128::from(limbs[2]) << 64
++                                | u128::from(limbs[3]) << 96,
++                        )
++                        .unwrap();
++                        if i >= shift {
++                            *out += value;
++                        } else {
++                            *out -= value;
++                        }
++                    }
++                }
++            }
++        }
++        Some(Ok(out
++            .iter()
++            .flat_map(|coefficient| {
++                let [lo, hi] = coefficient.to_limbs();
++                [lo as u32, (lo >> 32) as u32, hi as u32, (hi >> 32) as u32]
++            })
++            .collect()))
++    }
++}
++
++struct TruncatingDevice;
++
++impl TraceCommitDevice for TruncatingDevice {
++    fn commit_accumulate(&self, _job: &TraceCommitJob<'_>) -> Option<Result<Vec<u32>, AkitaError>> {
++        Some(Ok(Vec::new()))
++    }
++}
++
++#[test]
++fn device_commit_matches_cpu_kernels() {
++    const D: usize = 512;
++    const POSITIONS: usize = 64;
++    let source = TracePackedOneHot::new(
++        16,
++        D,
++        8,
++        Arc::new(TestRows {
++            rows: 4096,
++            columns: 8,
++            k: 16,
++            committed_zero_column: Some(3),
++        }),
++    )
++    .unwrap();
++    let plan = CommitInnerPlan {
++        ring_dimension: D,
++        num_live_blocks: 16,
++        n_a: 2,
++        num_positions_per_block: POSITIONS,
++        num_digits_inner: 1,
++        log_basis_inner: 0,
++    };
++    let segment_rings = source.segment_ring_elems::<D>().unwrap();
++    let (_, num_blocks) = validate_block_geometry(segment_rings, 8, POSITIONS).unwrap();
++    let mut state = 0x9E37_79B9_7F4A_7C15u64;
++    let mut next = move || {
++        state ^= state << 13;
++        state ^= state >> 7;
++        state ^= state << 17;
++        state
++    };
++    let a_rows = (0..plan.n_a)
++        .map(|_| {
++            (0..POSITIONS)
++                .map(|_| {
++                    CyclotomicRing::<AkitaField, D>::from_coefficients(std::array::from_fn(|_| {
++                        AkitaField::from_u128_reduced(u128::from(next()) << 64 | u128::from(next()))
++                    }))
++                })
++                .collect::<Vec<_>>()
++        })
++        .collect::<Vec<_>>();
++    let a_rows = a_rows.iter().map(Vec::as_slice).collect::<Vec<_>>();
++    let commit = |device: Option<&dyn TraceCommitDevice>| {
++        commit_packed_rows::<D>(&source, plan, &a_rows, segment_rings, num_blocks, device)
++            .unwrap()
++            .inner_rows
++    };
++
++    let cpu = commit(None);
++    assert_eq!(cpu.coeffs().len(), num_blocks * plan.n_a * D);
++    assert!(cpu
++        .coeffs()
++        .iter()
++        .any(|coefficient| !coefficient.is_zero()));
++    assert_eq!(commit(Some(&NaiveDevice { decline: false })), cpu);
++    assert_eq!(commit(Some(&NaiveDevice { decline: true })), cpu);
++    assert!(matches!(
++        commit_packed_rows::<D>(
++            &source,
++            plan,
++            &a_rows,
++            segment_rings,
++            num_blocks,
++            Some(&TruncatingDevice)
++        ),
++        Err(AkitaError::InvalidSize { .. })
++    ));
++}
