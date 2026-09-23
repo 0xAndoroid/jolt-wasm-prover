@@ -153,8 +153,7 @@ mod tests {
         .expect("prover context");
         let inputs = [0xff; 11];
 
-        let out = engine::prove_unchecked(&ctx, &inputs).expect("prove");
-        assert!(out.panicked, "malformed input must panic the guest");
+        let out = engine::prove_inner(&ctx, &inputs, false).expect("prove");
         let prep = engine::decode_verifier_preprocessing(&out.verifier_preprocessing_bytes)
             .expect("verifier prep");
         let err = engine::verify(&prep, &out.proof_bytes, &out.io_bytes)

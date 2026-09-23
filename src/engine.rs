@@ -133,8 +133,6 @@ pub struct ProveOutput {
     pub verifier_preprocessing_bytes: Vec<u8>,
     pub unpadded_cycles: usize,
     pub padded_cycles: usize,
-    /// The guest hit its panic handler (`JoltDevice::panic`).
-    pub panicked: bool,
     pub timings: PhaseTimings,
     #[cfg(target_arch = "wasm32")]
     pub gpu: crate::gpu::GpuReport,
@@ -142,23 +140,24 @@ pub struct ProveOutput {
 
 /// A proof of a panicked execution is well-formed (the panic flag is public
 /// IO bound in the transcript) but attests a failed run, so the demo refuses
-/// it on both ends: here before spending the prove time, and again in
-/// [`verify`] for proofs produced elsewhere. jolt-sdk instead returns the flag
-/// to the caller (`io_device.panic`) and lets the application decide.
+/// it on both ends: here right after tracing, before spending the prove time,
+/// and again in [`verify`] for proofs produced elsewhere. jolt-sdk instead
+/// returns the flag to the caller (`io_device.panic`) and lets the application
+/// decide.
 #[tracing::instrument(skip_all, name = "engine::prove")]
 pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> {
-    let out = prove_unchecked(ctx, inputs)?;
-    if out.panicked {
-        return Err(PANICKED.to_string());
-    }
-    Ok(out)
+    prove_inner(ctx, inputs, true)
 }
 
 const PANICKED: &str = "guest execution panicked";
 
-/// [`prove`] without the panic rejection; the roundtrip test uses it to
-/// produce a panicked proof for [`verify`] to reject.
-pub(crate) fn prove_unchecked(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> {
+/// `reject_panic = false` lets the roundtrip test produce a panicked proof for
+/// [`verify`] to reject.
+pub(crate) fn prove_inner(
+    ctx: &ProverContext,
+    inputs: &[u8],
+    reject_panic: bool,
+) -> Result<ProveOutput, String> {
     let program_preprocessing = &ctx.program_preprocessing;
     let layout = &program_preprocessing.memory_layout;
     let memory_config = MemoryConfig {
@@ -182,6 +181,9 @@ pub(crate) fn prove_unchecked(ctx: &ProverContext, inputs: &[u8]) -> Result<Prov
             &program_preprocessing.bytecode,
         )
         .map_err(|e| format!("trace error: {e:?}"))?;
+    if reject_panic && trace_output.device.panic {
+        return Err(PANICKED.to_string());
+    }
     let unpadded_cycles = trace_output.trace.len();
     let trace_ms = clock.lap();
 
@@ -206,7 +208,6 @@ pub(crate) fn prove_unchecked(ctx: &ProverContext, inputs: &[u8]) -> Result<Prov
         .program_arc()
         .ok_or("full (non-committed) program preprocessing required")?;
     let public_io = trace_output.device.clone();
-    let panicked = public_io.panic;
     let witness = TraceBackend::<OwnedTrace>::from_compact(
         JoltVmWitnessConfig::new(
             config.trace_length.ilog2() as usize,
@@ -234,7 +235,6 @@ pub(crate) fn prove_unchecked(ctx: &ProverContext, inputs: &[u8]) -> Result<Prov
         verifier_preprocessing_bytes: encode(&prep.verifier, "verifier preprocessing")?,
         unpadded_cycles,
         padded_cycles: config.trace_length,
-        panicked,
         timings: PhaseTimings {
             trace_ms,
             setup_ms,
