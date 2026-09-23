@@ -110,9 +110,17 @@ VARIANTS = {
     "v9": (2, 4, "digits"),
     "v10": (2, 2, "digits"),
     "v11": (2, 4, "fullhi"),
+    "v12": (2, 8, "digits"),
+    "v13": (1, 8, "digits"),
+    "v14": (1, 4, "digits"),
 }
 
+BEST = "v9"
+
 if __name__ == "__main__":
+    cols, cpt, scheme = VARIANTS[BEST]
+    build("commit_accumulate", f"CHOSEN KERNEL (= {BEST}): {cols} columns x {cpt} coefficients per thread "
+          f"({512 // cpt} threads), {cols * cpt * 8} accumulator words, scheme={scheme}.", cols, cpt, scheme)
     for name, (cols, cpt, scheme) in VARIANTS.items():
         build(f"commit_accumulate_{name}", f"{name.upper()}: {cols} columns x {cpt} coefficients per thread "
               f"({512 // cpt} threads), {cols * cpt * 8} accumulator words, scheme={scheme}.", cols, cpt, scheme)

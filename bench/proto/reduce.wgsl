@@ -44,28 +44,38 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let stride = P.colcap * P.blocks * 512u;
   var v: array<u32, 5>;
   if (P.part_mode == 0u) {
-    var L: array<u32, 8>;
-    for (var k = 0u; k < 8u; k++) { L[k] = 0u; }
+    // 64-bit digit totals (Llo, Lhi): exact for any term count below 2^32.
+    var Llo: array<u32, 8>;
+    var Lhi: array<u32, 8>;
+    for (var k = 0u; k < 8u; k++) { Llo[k] = 0u; Lhi[k] = 0u; }
     for (var ch = 0u; ch < P.num_chunks; ch++) {
       let base = (ch * stride + idx) * 2u;
       let lo = PART[base];
       let hi = PART[base + 1u];
-      L[0] += lo.x; L[1] += hi.x; L[2] += lo.y; L[3] += hi.y;
-      L[4] += lo.z; L[5] += hi.z; L[6] += lo.w; L[7] += hi.w;
+      let dg = array<u32, 8>(lo.x, hi.x, lo.y, hi.y, lo.z, hi.z, lo.w, hi.w);
+      for (var k = 0u; k < 8u; k++) {
+        Llo[k] += dg[k];
+        Lhi[k] += u32(Llo[k] < dg[k]);
+      }
     }
-    // digits -> 160-bit value (L[k] + carry never overflows: L[k] <= 2^32 - 2^16, carry < 2^16)
+    // digit chain with a 64-bit running value t = (t_lo, t_hi); carry = t >> 16 fits in u32 (t_hi < 2^16)
     var d: array<u32, 8>;
-    var t = L[0];
+    var t_lo = Llo[0];
+    var t_hi = Lhi[0];
+    var carry = 0u;
     for (var k = 0u; k < 8u; k++) {
-      d[k] = t & 0xFFFFu;
-      let carry = t >> 16u;
-      if (k < 7u) { t = L[k + 1u] + carry; } else { t = carry; }
+      d[k] = t_lo & 0xFFFFu;
+      carry = (t_lo >> 16u) | (t_hi << 16u);
+      if (k < 7u) {
+        t_lo = Llo[k + 1u] + carry;
+        t_hi = Lhi[k + 1u] + u32(t_lo < carry);
+      }
     }
     v[0] = d[0] | (d[1] << 16u);
     v[1] = d[2] | (d[3] << 16u);
     v[2] = d[4] | (d[5] << 16u);
     v[3] = d[6] | (d[7] << 16u);
-    v[4] = t;
+    v[4] = carry;
   } else {
     // (acc, carry) partials: limb k total = hi[k] * 2^32 + lo[k]
     var lo = vec4<u32>(0u);

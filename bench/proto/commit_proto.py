@@ -1,7 +1,7 @@
 """Standalone WebGPU prototype of the Akita one-hot trace commit accumulate.
 
     uv run --with playwright --with numpy python bench/proto/commit_proto.py \
-        [--shape small|full] [--variant v1|v2b|v3|...|v11] [--chunk N] [--repeat N] [--spot N] [--seed S]
+        [--shape small|full] [--variant best|v1|v2b|...|v14] [--chunk N] [--repeat N] [--spot N] [--seed S]
 
 Launches Playwright's headless WebKit, serves bench/proto/harness.html + shaders + data via
 page.route on http://localhost:7777, runs prep -> main -> reduce, verifies against a Python
@@ -14,7 +14,7 @@ import numpy as np
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_variants import VARIANTS as GEN_VARIANTS  # noqa: E402
+from gen_variants import BEST, VARIANTS as GEN_VARIANTS  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 C = 0xFFFFA7F7
@@ -26,7 +26,8 @@ SHAPES = {
     "small": dict(T=8192, cols=8, colcap=8, blocks=4, positions=64),
     "full": dict(T=262144, cols=57, colcap=64, blocks=4, positions=2048),
 }
-VARIANTS = {"v1": dict(file="commit_accumulate_v1.wgsl", chunked=False, cols=1, mode=0)}
+VARIANTS = {"v1": dict(file="commit_accumulate_v1.wgsl", chunked=False, cols=1, mode=0),
+            "best": dict(file="commit_accumulate.wgsl", chunked=True, cols=GEN_VARIANTS[BEST][0], mode=0)}
 for _name, (_cols, _cpt, _scheme) in GEN_VARIANTS.items():
     VARIANTS[_name] = dict(file=f"commit_accumulate_{_name}.wgsl", chunked=True, cols=_cols, mode=1 if _scheme == "lazycarry" else 0)
 
@@ -91,8 +92,8 @@ def ref_coeff(A_ext, code, shape, c, b, i):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--shape", default="small", choices=SHAPES)
-    ap.add_argument("--variant", default="v2b", choices=VARIANTS)
-    ap.add_argument("--chunk", type=int, default=128)
+    ap.add_argument("--variant", default="best", choices=VARIANTS)
+    ap.add_argument("--chunk", type=int, default=64)
     ap.add_argument("--repeat", type=int, default=5)
     ap.add_argument("--spot", type=int, default=32, help="random coefficients checked at the full shape")
     ap.add_argument("--seed", type=int, default=1)
