@@ -136,5 +136,6 @@ pub fn run() -> Result<GpuReport, GpuError> {
         selftest_ms,
         selftest_mismatches: mismatches,
         roundtrip_us,
+        commit: String::new(),
     })
 }

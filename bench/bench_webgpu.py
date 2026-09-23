@@ -5,12 +5,13 @@
 #
 # Usage:
 #   node server.mjs &            # restart after every wasm rebuild (it caches)
-#   uv run --with playwright python bench/bench_webgpu.py --iters 17 --runs 3 --gpu both \
+#   uv run --with playwright python bench/bench_webgpu.py --iters 17,69 --runs 3 --gpu both \
 #       [--browser webkit|chromium|chromium-unsafe] [--threads 8] [--url http://localhost:8080]
 # Browsers once: uv run --with playwright python -m playwright install webkit chromium
 #
-# One JSON line per run on stdout, a summary object at the end; progress on
-# stderr. `chromium` (no --enable-unsafe-webgpu) has no WebGPU adapter and
+# One JSON line per run on stdout, a summary object at the end (per size:
+# warm-median prove seconds off/on, the on/off ratio and the GPU trace-commit
+# stage breakdown reported by the prover); progress on stderr. `chromium` (no --enable-unsafe-webgpu) has no WebGPU adapter and
 # exercises the CPU fallback (gpu_status "unavailable").
 
 import argparse
@@ -87,6 +88,7 @@ async ({ iters }) => {
         gpuSelftestMs: p.gpuSelftestMs,
         gpuSelftestMismatches: p.gpuSelftestMismatches,
         gpuRoundtripUs: p.gpuRoundtripUs,
+        gpuCommit: p.gpuCommit ? JSON.parse(p.gpuCommit) : null,
     };
 }
 """
@@ -103,7 +105,7 @@ def launch(p, browser):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--iters", type=int, default=17, help="sha2-chain iterations (17 -> 2^16 padded)")
+    ap.add_argument("--iters", default="17", help="comma-separated sha2-chain iteration counts (17 -> 2^16 padded, 69 -> 2^18, 278 -> 2^20, 556 -> 2^21)")
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--gpu", default="both", choices=["both", "on", "off"])
     ap.add_argument("--browser", default="webkit", choices=["webkit", "chromium", "chromium-unsafe"])
@@ -111,6 +113,7 @@ def main():
     ap.add_argument("--url", default=os.environ.get("BENCH_URL", "http://localhost:8080"))
     args = ap.parse_args()
     modes = {"both": [True, False], "on": [True], "off": [False]}[args.gpu]
+    iters_list = [int(x) for x in args.iters.split(",")]
 
     results = []
     with sync_playwright() as p:
@@ -125,60 +128,90 @@ def main():
             page.goto(args.url, wait_until="domcontentloaded")
             init = page.evaluate(SETUP_JS, {"threads": args.threads, "gpu": gpu})
             sys.stderr.write(f"gpu={label}: worker ready, init gpu={json.dumps(init)}\n")
-            for i in range(args.runs):
-                r = page.evaluate(RUN_JS, {"iters": args.iters})
-                if "error" in r:
-                    print(json.dumps({"gpu": label, "iters": args.iters, "run": i + 1, "error": r["error"]}))
-                    sys.stderr.write(f"gpu={label} run {i + 1}: ERROR {r['error']}\n")
-                    break
-                rec = {"gpu": label, "iters": args.iters, "run": i + 1, "log2Padded": r["paddedCycles"].bit_length() - 1, **r, "init": init}
-                results.append(rec)
-                print(json.dumps(rec), flush=True)
-                sys.stderr.write(
-                    f"gpu={label} run {i + 1}: total {r['totalSeconds']:.2f}s [trace {r['traceSeconds']:.2f} + setup {r['setupSeconds']:.2f} + prove {r['proveSeconds']:.2f}] "
-                    f"verify {r['verifySeconds']:.2f}s valid={r['valid']} sha={r['proofSha256'][:16]} peak {r['peakMB']:.0f} MB "
-                    f"gpu_status={r['gpuStatus']} selftest {r['gpuSelftestMs']:.0f} ms ({r['gpuSelftestMismatches']} mism) roundtrip {r['gpuRoundtripUs']:.0f} us\n"
-                )
+            for iters in iters_list:
+                for i in range(args.runs):
+                    r = page.evaluate(RUN_JS, {"iters": iters})
+                    if "error" in r:
+                        print(json.dumps({"gpu": label, "iters": iters, "run": i + 1, "error": r["error"]}))
+                        sys.stderr.write(f"gpu={label} iters={iters} run {i + 1}: ERROR {r['error']}\n")
+                        break
+                    rec = {"gpu": label, "iters": iters, "run": i + 1, "log2Padded": r["paddedCycles"].bit_length() - 1, **r, "init": init}
+                    results.append(rec)
+                    print(json.dumps(rec), flush=True)
+                    commit = r.get("gpuCommit")
+                    commit_str = (
+                        f" commit[pack {commit['pack_ms']:.1f} + upload {commit['upload_ms']:.1f} + gpu {commit['gpu_ms']:.1f}"
+                        f" + readback {commit['readback_ms']:.1f} = {commit['total_ms']:.1f} ms x{commit['calls']}]"
+                        if commit else ""
+                    )
+                    sys.stderr.write(
+                        f"gpu={label} 2^{rec['log2Padded']} run {i + 1}: total {r['totalSeconds']:.2f}s [trace {r['traceSeconds']:.2f} + setup {r['setupSeconds']:.2f} + prove {r['proveSeconds']:.2f}] "
+                        f"verify {r['verifySeconds']:.2f}s valid={r['valid']} sha={r['proofSha256'][:16]} peak {r['peakMB']:.0f} MB "
+                        f"gpu_status={r['gpuStatus']} selftest {r['gpuSelftestMs']:.0f} ms ({r['gpuSelftestMismatches']} mism) roundtrip {r['gpuRoundtripUs']:.0f} us{commit_str}\n"
+                    )
             page.evaluate(TEARDOWN_JS)
             page.close()
         browser.close()
 
-    summary = {"iters": args.iters, "browser": args.browser, "threads": args.threads, "modes": {}}
+    summary = {"iters": iters_list, "browser": args.browser, "threads": args.threads, "sizes": {}}
     ok = True
-    for gpu in modes:
-        label = "on" if gpu else "off"
-        rs = [r for r in results if r["gpu"] == label]
-        if len(rs) < args.runs:
-            ok = False
-        if not rs:
-            continue
-        warm = rs[1:] if len(rs) >= 2 else rs
-        summary["modes"][label] = {
-            "runs": len(rs),
-            "log2Padded": rs[0]["log2Padded"],
-            "coldTotalSeconds": round(rs[0]["totalSeconds"], 3),
-            "warmMedianTotalSeconds": round(statistics.median(r["totalSeconds"] for r in warm), 3),
-            "warmMedianProveSeconds": round(statistics.median(r["proveSeconds"] for r in warm), 3),
-            "verifySeconds": round(rs[0]["verifySeconds"], 3),
-            "allValid": all(r["valid"] for r in rs),
-            "proofSha256": sorted({r["proofSha256"] for r in rs}),
-            "gpuStatus": rs[0]["gpuStatus"],
-            "gpuSelftestMs": round(rs[0]["gpuSelftestMs"], 1),
-            "gpuRoundtripUs": round(rs[0]["gpuRoundtripUs"], 1),
-            "peakMB": round(max(r["peakMB"] for r in rs)),
-        }
-        # gpu=on must really have run the GPU path (plain chromium has no adapter and
-        # exercises the fallback); a quiet fall-through to the CPU is not a pass.
-        expected = "disabled" if not gpu else ("unavailable" if args.browser == "chromium" else "ok")
-        summary["modes"][label]["gpuStatusExpected"] = expected
-        gpu_ok = all(r["gpuStatus"] == expected and not r["gpuSelftestMismatches"] for r in rs)
-        ok = ok and summary["modes"][label]["allValid"] and len(summary["modes"][label]["proofSha256"]) == 1 and gpu_ok
-    if args.gpu == "both" and len(summary["modes"]) == 2:
-        same = summary["modes"]["on"]["proofSha256"] == summary["modes"]["off"]["proofSha256"]
-        summary["proofBytesIdentical"] = same
-        ok = ok and same
+    table = []
+    for iters in iters_list:
+        size = {}
+        for gpu in modes:
+            label = "on" if gpu else "off"
+            rs = [r for r in results if r["gpu"] == label and r["iters"] == iters]
+            if len(rs) < args.runs:
+                ok = False
+            if not rs:
+                continue
+            warm = rs[1:] if len(rs) >= 2 else rs
+            mode = {
+                "runs": len(rs),
+                "log2Padded": rs[0]["log2Padded"],
+                "coldProveSeconds": round(rs[0]["proveSeconds"], 3),
+                "coldTotalSeconds": round(rs[0]["totalSeconds"], 3),
+                "warmMedianTotalSeconds": round(statistics.median(r["totalSeconds"] for r in warm), 3),
+                "warmMedianProveSeconds": round(statistics.median(r["proveSeconds"] for r in warm), 3),
+                "verifySeconds": round(rs[0]["verifySeconds"], 3),
+                "allValid": all(r["valid"] for r in rs),
+                "proofSha256": sorted({r["proofSha256"] for r in rs}),
+                "gpuStatus": rs[0]["gpuStatus"],
+                "gpuSelftestMs": round(rs[0]["gpuSelftestMs"], 1),
+                "gpuRoundtripUs": round(rs[0]["gpuRoundtripUs"], 1),
+                "peakMB": round(max(r["peakMB"] for r in rs)),
+            }
+            commits = [r["gpuCommit"] for r in warm if r.get("gpuCommit")]
+            if commits:
+                mode["commitMs"] = {k: round(statistics.median(c[k] for c in commits), 2) for k in commits[0] if k != "calls"}
+                mode["commitCalls"] = commits[0]["calls"]
+            # gpu=on must really have run the GPU path (plain chromium has no adapter and
+            # exercises the fallback); a quiet fall-through to the CPU is not a pass.
+            expected = "disabled" if not gpu else ("unavailable" if args.browser == "chromium" else "ok")
+            mode["gpuStatusExpected"] = expected
+            gpu_ok = all(r["gpuStatus"] == expected and not r["gpuSelftestMismatches"] for r in rs)
+            size[label] = mode
+            ok = ok and mode["allValid"] and len(mode["proofSha256"]) == 1 and gpu_ok
+        if "on" in size and "off" in size:
+            size["proofBytesIdentical"] = size["on"]["proofSha256"] == size["off"]["proofSha256"]
+            size["proveRatioOnOff"] = round(size["on"]["warmMedianProveSeconds"] / size["off"]["warmMedianProveSeconds"], 3)
+            ok = ok and size["proofBytesIdentical"]
+        summary["sizes"][str(iters)] = size
+        if size:
+            log2 = next(iter(m["log2Padded"] for m in size.values() if isinstance(m, dict)))
+            off = size.get("off", {}).get("warmMedianProveSeconds")
+            on = size.get("on", {}).get("warmMedianProveSeconds")
+            table.append((log2, off, on, size.get("proveRatioOnOff"), size.get("on", {}).get("commitMs"), size.get("proofBytesIdentical")))
     summary["ok"] = ok
     print(json.dumps({"summary": summary}, indent=1))
+    fmt = lambda v: "-" if v is None else f"{v:.3f}"
+    sys.stderr.write("\nsize   prove off (s)  prove on (s)  on/off  sha equal  gpu commit stages (ms)\n")
+    for log2, off, on, ratio, commit, same in table:
+        stages = (
+            f"pack {commit['pack_ms']:.1f} upload {commit['upload_ms']:.1f} gpu {commit['gpu_ms']:.1f} readback {commit['readback_ms']:.1f} total {commit['total_ms']:.1f}"
+            if commit else "-"
+        )
+        sys.stderr.write(f"2^{log2:<4} {fmt(off):>13}  {fmt(on):>12}  {fmt(ratio):>6}  {str(same):>9}  {stages}\n")
     sys.exit(0 if ok else 1)
 
 

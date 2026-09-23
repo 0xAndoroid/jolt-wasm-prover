@@ -9,10 +9,10 @@ No Rust, no wasm. Numbers below: Apple M5 Max (40 GPU cores), Playwright headles
 uv run --with playwright --with numpy python bench/proto/commit_proto.py --shape full            # chosen kernel
 uv run --with playwright --with numpy python bench/proto/commit_proto.py --shape small --variant v9 --chunk 64   # exact, 16384 coefs
 uv run --with playwright --with numpy python bench/proto/commit_proto.py --shape stress --chunk 2048           # digit-accumulator bound
-uv run python bench/proto/gen_variants.py                                                          # rewrite commit_accumulate.wgsl
+uv run python bench/proto/gen_variants.py                                                          # rewrite frontend/public/wgsl/commit/commit_accumulate.wgsl
 ```
 
-Files: `common.wgsl` (Params, constants) · `prep.wgsl` · `commit_accumulate.wgsl` (chosen, generated) · `reduce.wgsl` ·
+Files: the shipped kernels live in `frontend/public/wgsl/commit/` (`common.wgsl` (Params, constants) · `prep.wgsl` · `commit_accumulate.wgsl` (chosen, generated) · `reduce.wgsl`; `src/gpu/trace_commit.rs` runs them in the prover) ·
 `commit_accumulate_v1.wgsl` (hand-written baseline) · `harness.html` · `commit_proto.py` · `gen_variants.py`.
 Variants v2b–v14 are not checked in: `--variant vN` builds the source in memory from `gen_variants.VARIANTS`.
 
@@ -66,6 +66,7 @@ gather (7.4e9 x 16 B = 118 GB, ~7 TB/s) is the floor of this formulation; ALU ad
 
 ## Data layouts (what W1 integration must produce / consume)
 
+- Every kernel binds the `Params` uniform at 0 and its storage buffers from 1 (prep: A, A2; main: A2, HOT, PART; reduce: PART, RES).
 - `A` (binding: storage): `positions x 512 x vec4<u32>` canonical fp128, little-endian limbs — `A[q*512 + i]`.
   The prep pass writes `A2` (2x size) from it; A2 never leaves the GPU.
 - `hot` (storage, `array<u32>` viewed as bytes): row-major, `column_capacity` bytes per row (64 at this shape →

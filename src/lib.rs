@@ -240,6 +240,12 @@ mod wasm {
         pub fn gpu_roundtrip_us(&self) -> f64 {
             self.out.gpu.roundtrip_us
         }
+
+        /// JSON stage breakdown of the GPU trace commits (empty if none ran).
+        #[wasm_bindgen(getter)]
+        pub fn gpu_commit(&self) -> String {
+            self.out.gpu.commit.clone()
+        }
     }
 
     #[wasm_bindgen]

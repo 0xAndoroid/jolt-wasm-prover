@@ -139,6 +139,7 @@ self.onmessage = async (e) => {
                     gpuSelftestMs: result.gpu_selftest_ms,
                     gpuSelftestMismatches: result.gpu_selftest_mismatches,
                     gpuRoundtripUs: result.gpu_roundtrip_us,
+                    gpuCommit: result.gpu_commit,
                     peakMemory,
                     elapsed,
                 });
