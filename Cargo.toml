@@ -31,6 +31,9 @@ native = []
 # Routes the stage-0 one-hot trace commit through `jolt_akita::TraceCommitDevice`
 # (patches/0006). Needs the patched checkouts from ./setup-wasm-deps.sh.
 trace-commit-device = []
+# Experimental GPU offload harness: mailbox transport to the gpu-proxy.js
+# Worker plus the fp128 self-test. Off by default; native builds ignore it.
+webgpu = []
 
 [dependencies]
 tracing = "0.1"
@@ -50,6 +53,7 @@ jolt-witness = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401
 jolt-program = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
 tracer = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
 common = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["std"] }
+jolt-field = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", default-features = false, features = ["solinas"] }
 
 jolt-inlines-sha2 = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["host"] }
 jolt-inlines-secp256k1 = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80", features = ["host"] }

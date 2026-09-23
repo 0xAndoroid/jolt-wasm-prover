@@ -82,10 +82,11 @@ Both set `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers
 src/lib.rs          WASM entry point — WasmProver, WasmVerifier, init_inlines
 src/engine.rs       Shared prove/verify pipeline (trace → config → Akita setup → prove; verify)
 src/wasm_tracing.rs Chrome Trace Format profiling (Perfetto-compatible)
+src/gpu/            WebGPU harness (feature `webgpu`): mailbox transport, self-test
 preprocessing/      Native binaries: artifact generation, roundtrip test
 guests/             RISC-V guest programs, own cargo workspace (compiled to ELF via the jolt CLI)
 frontend/           Vite + React + TypeScript + Tailwind frontend
-frontend/public/    Artifacts + worker.js
+frontend/public/    Artifacts, worker.js, gpu-proxy.js, wgsl/
 server.mjs          Production server with COOP/COEP headers
 ```
 
@@ -134,6 +135,35 @@ node bench-chain.mjs 278  # sha2-chain ladder through worker.js (per-phase split
 ```
 
 Both default to the Playwright-bundled Chromium; `PW_BROWSER=webkit` runs the bundled WebKit (Safari's engine), `PW_CHANNEL=chrome` selects system Chrome.
+
+## WebGPU (experimental)
+
+Feature-flagged harness for offloading Akita field work to the GPU. W0 ships
+the transport, an fp128 WGSL library, a correctness oracle and a bench — the
+prover itself still runs entirely on the CPU, so proofs are byte-identical
+with the GPU on or off.
+
+```bash
+# Build with the harness compiled in (default builds leave it out entirely)
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu
+
+# Oracle bench: gpu on vs off, proofs must match, verify must pass (needs node server.mjs)
+uv run --with playwright python bench/bench_webgpu.py --iters 17 --runs 3 --gpu both --browser webkit
+
+# fp128 WGSL vs Python big ints, 100k random vectors + edge cases (no server needed)
+uv run --with playwright python bench/test_fp128_wgsl.py
+```
+
+Browsers for the Python scripts: `uv run --with playwright python -m playwright install webkit chromium` (the node Playwright in `node_modules` bundles an older WebKit without WebGPU).
+
+How it works:
+
+- The prover blocks its Worker threads, and a blocked thread cannot service WebGPU promises. `frontend/public/gpu-proxy.js` is a separate dedicated Worker that owns the `GPUDevice`; it receives the shared `WebAssembly.Memory` and the address of a `#[repr(C)]` mailbox (`src/gpu/mailbox.rs`) via `postMessage`.
+- Rust (`gpu::call`) writes op, args and memory regions into the mailbox, bumps the doorbell with `Atomics.notify` and blocks in `Atomics.wait` until the proxy flips `status`. The proxy `Atomics.waitAsync`s on the doorbell, copies `upload` regions with `queue.writeBuffer`, runs the op, writes `readback` regions back through a staging buffer and never blocks. Ops: NOP, CREATE_BUFFER (persistent handle), UPLOAD, DESTROY, RUN (shader id, workgroups, ≤16 u32 params in a uniform, ≤8 bindings as handles or inline regions).
+- Shaders live in `frontend/public/wgsl/` (`fp128.wgsl` library + kernels); the proxy prepends the library to every kernel. WGSL has no 64-bit integers, so 32×32 products come from 16-bit halves and reduction uses 2^128 ≡ C (mod p) as wrapping `+C` folds.
+- `worker.js` spawns the proxy when the `init` message carries `gpu: true` and reports `gpu: {status, adapter, features, limits}` in `init-done`. Every prove then runs a GPU self-test (2^20 random `a·b + c` mul-adds vs `AkitaField` on the CPU) plus 200 NOP round trips and reports `gpu_status` (`disabled` | `unavailable` | `ok` | `error: …`), `gpu_selftest_ms`, `gpu_selftest_mismatches`, `gpu_roundtrip_us` (mean over the 200 NOPs — WebKit coarsens `performance.now()` to 1 ms). That preflight is the entire gpu=on overhead in W0.
+- Fallback: no `navigator.gpu`, no adapter, a proxy load failure or a wasm built without the feature all yield `gpu_status: unavailable` and the prove proceeds on the CPU unchanged. `gpu::call` is never entered unless the proxy reported ready.
+- Secure-context trap: `navigator.gpu` is undefined on `about:blank` and plain-http non-localhost origins; `http://localhost` is fine. Playwright's Chromium only exposes WebGPU with `--enable-unsafe-webgpu --use-angle=metal` (`--browser chromium-unsafe`); plain `--browser chromium` exercises the fallback.
 
 ## Protocol
 

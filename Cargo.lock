@@ -1684,6 +1684,7 @@ dependencies = [
  "console_error_panic_hook",
  "getrandom 0.2.17",
  "jolt-akita",
+ "jolt-field",
  "jolt-host",
  "jolt-inlines-keccak256",
  "jolt-inlines-secp256k1",

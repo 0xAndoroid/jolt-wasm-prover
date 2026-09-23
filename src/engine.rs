@@ -124,6 +124,7 @@ pub struct ProveOutput {
     pub unpadded_cycles: usize,
     pub padded_cycles: usize,
     pub timings: PhaseTimings,
+    pub gpu: crate::gpu::GpuReport,
 }
 
 #[tracing::instrument(skip_all, name = "engine::prove")]
@@ -139,6 +140,9 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
         heap_size: layout.heap_size,
         program_size: Some(layout.program_size),
     };
+
+    // Outside the phase clock: gpu=on overhead is exactly this preflight.
+    let gpu = crate::gpu::preflight();
 
     let mut clock = Clock::start();
     let trace_output = TracerBackend::new()
@@ -199,6 +203,7 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
             setup_ms,
             prove_ms,
         },
+        gpu,
     })
 }
 
