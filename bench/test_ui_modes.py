@@ -119,6 +119,7 @@ def main():
         page = open_page()
         check(checked_label(page).startswith("GPU"), f"default mode is GPU ({checked_label(page)})")
         check(page.locator("text=GPU unavailable").count() == 0, "no unavailability reason shown")
+        check(page.evaluate("() => localStorage.getItem('jolt-prover-mode')") is None, "default mode leaves localStorage untouched")
         sha_gpu, mode = prove(page)
         check(mode == "gpu", f"first proof ran in GPU mode (badge {mode})")
 
