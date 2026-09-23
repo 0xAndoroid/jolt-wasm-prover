@@ -141,20 +141,28 @@ Both default to the Playwright-bundled Chromium; `PW_BROWSER=webkit` runs the bu
 Feature-flagged offload of Akita field work to the GPU. W0 ships the
 transport, an fp128 WGSL library, a correctness oracle and a bench; W1 runs
 the stage-0 one-hot trace commit (`TracePackedOneHot::commit_inner`) on the
-GPU through the `trace-commit-device` seam. The commit is exact integer
-arithmetic, so proofs stay byte-identical with the GPU on or off.
+GPU through the `trace-commit-device` seam; W2 runs the first rounds of the
+stage-1 basis-8 digit-range sumchecks through the `digit-range-device` seam.
+Both are exact arithmetic on the prover's own tables, so proofs stay
+byte-identical with the GPU on or off.
 
 ```bash
 # Build with the harness compiled in (default builds leave it out entirely)
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu
 # ... plus the GPU trace commit (needs ./setup-wasm-deps.sh for patch 0006)
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device
+# ... plus the GPU digit-range rounds (patch 0007)
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device
 
 # Oracle bench: gpu on vs off, proofs must match, verify must pass. Needs node server.mjs, which
 # serves frontend/dist/: after editing worker.js, gpu-proxy.js or wgsl/ run `cd frontend && npm run build`
 # and restart the server (it caches responses). Prints the GPU commit stage breakdown and a final
 # off/on/ratio table per size.
 uv run --with playwright python bench/bench_webgpu.py --iters 17,69,278,556 --runs 4 --gpu both --browser webkit
+# --gpu all runs off / w1 (commit only) / on (W1+W2) / w2 (digit range only) and prints the W2 increment
+# (w1 − on); --parity N shadows the first N GPU digit-range rounds with the CPU prover and aborts on a mismatch
+uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 5 --gpu all
+uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 1 --gpu on --parity 6
 
 # Standalone kernel harness (WGSL vs Python reference, no server needed)
 uv run --with playwright python bench/proto/commit_proto.py --shape full
@@ -173,6 +181,8 @@ How it works:
 - `worker.js` spawns the proxy when the `init` message carries `gpu: true` and reports `gpu: {status, adapter, features, limits}` in `init-done`. Every prove then runs a GPU self-test (2^20 random `a·b + c` mul-adds vs `AkitaField` on the CPU; `a` goes through a persistent 256 MiB buffer — CREATE_BUFFER / UPLOAD / handle binding / DESTROY — `b`, `c` as 16 MiB inline uploads, the result as a 16 MiB readback) plus 200 NOP round trips and reports `gpu_status` (`disabled` | `unavailable` | `ok` | `error: …`), `gpu_selftest_ms`, `gpu_selftest_mismatches`, `gpu_roundtrip_us` (mean over the 200 NOPs — WebKit coarsens `performance.now()` to 1 ms). That preflight is the entire gpu=on overhead in W0.
 - Fallback: no `navigator.gpu`, no adapter, a proxy load failure or a wasm built without the feature all yield `gpu_status: unavailable` and the prove proceeds on the CPU unchanged. `gpu::call` is never entered unless the proxy reported ready.
 - Trace commit on the GPU (`src/gpu/trace_commit.rs`, features `webgpu,trace-commit-device`): `WebGpuTraceCommit` is installed as the `jolt_akita::TraceCommitDevice` the first time the preflight self-test passes, and declines (`None` → CPU kernels, bit-identical) whenever the GPU is toggled off or the shape is not the shipped K=16 / D=512 / n_a=1 / one inner digit / 64-column geometry. Per call: pack the hot indices + masks into one byte per (row, column) (rayon), UPLOAD A and the codes into persistent buffers keyed by (P, blocks), RUN `prep` (negacyclic rotation table A2), `commit_accumulate` (workgroups (P/CHUNK, 32, blocks), 128 threads, `CHUNK` as a pipeline override), `reduce` with RES read back inline; the seam validates length and canonical limbs before converting to rings. CHUNK is the smallest of 64..2048 that divides P and keeps the PART scratch `(P/CHUNK)·64·blocks·512·32 B` under 256 MiB (2^16/2^18 → 64, 2^20 → 128, 2^21 → 256). GPU memory at 2^21: A 64 MiB + A2 128 MiB + codes 128 MiB + PART 256 MiB. The stage split (pack / upload / gpu = prep + accumulate / readback = reduce + RES readback, ms) is logged to the console as `[gpu] trace commit …` and returned as `gpu_commit` JSON on the prove result; the tracing span is `trace_onehot_commit_gpu`.
+- Digit-range rounds on the GPU (`src/gpu/digit_range.rs`, features `webgpu,trace-commit-device,digit-range-device`): `WebGpuDigitRange` is installed as the `akita_prover::DigitRangeDevice` together with the trace-commit device and answers the basis-8 direct-leaf instances with ≥ 2^16 digits. Per instance: the packed digits go up once, then one RUN_SEQ mailbox op per round carries the challenge and the prover's own `GruenSplitEq` tables inline and reads the 5-coefficient round message back inline; rounds 0–2 histogram the packed digits (LUT0 host-side, LUT1 on the device), round 3 materialises the folded field table, rounds ≥ 4 fuse fold + eval; g = min(ring_bits, log2 n − 12) rounds run on the GPU (6 at every shipped size), then the folded table is downloaded and akita's `LowBasisRangeCheckProver` finishes the sumcheck on the CPU. Basis-16/32 instances and small b=8 instances never leave the CPU. Breakdown → `gpu_digit_range` JSON (`instances`, `gpu_rounds`, `ops`, `upload_ms`, `rounds_ms`, `download_ms`, `total_ms`) and a `[gpu] digit range …` console line per instance; `set_digit_range_parity_rounds(N)` (bench `--parity N`) shadows the first N rounds with the CPU prover.
+- W2 result (this MacBook, idle host, WebKit, 8 threads, warm median of 5, 2^18): CPU only 2.78 s, W1 2.01 s, W1+W2 1.57 s — the W2 increment over W1 is 0.447 s (16 % of the CPU prove), just over the 0.425 s (15 %) kill rule, so W2 is unparked behind the `digit-range-device` feature. The GPU work itself is ~41 ms for the three instances; the saving is bounded by the CPU time of the six ring rounds, not by the kernels. Under host load the same pairing read 0.26 s (superseded). Details in `.journals/webgpu-akita-w2.md`.
 - Secure-context trap: `navigator.gpu` is undefined on `about:blank` and plain-http non-localhost origins; `http://localhost` is fine. Playwright's Chromium only exposes WebGPU with `--enable-unsafe-webgpu --use-angle=metal` (`--browser chromium-unsafe`); plain `--browser chromium` exercises the fallback.
 
 ## Protocol
@@ -242,6 +252,15 @@ that are not upstream yet, plus one device seam, shipped in `patches/`:
    CPU kernels as fallback. No behaviour change unless a device is installed.
    The root crate uses it behind the `trace-commit-device` feature; contract
    in [docs/trace-commit-device.md](docs/trace-commit-device.md).
+7. `0007-akita-digit-range-device.patch` — not a wasm32 fix: adds
+   `akita_prover::DigitRangeDevice`, a process-global seam consulted on the
+   basis-8 direct leaf of the stage-1 digit-range sumcheck. A device answers
+   round messages from host-uploaded eq tables; `DeviceLeaf` wraps the CPU
+   prover so the transcript, the eq-factored driver and the verifier are
+   untouched, and resumes the CPU prover from the device's folded table
+   (`LowBasisRangeCheckProver::from_materialized`). No behaviour change
+   unless a device is installed. The root crate uses it behind the
+   `digit-range-device` feature (which adds `akita-prover` as a direct dependency).
 
 `./setup-wasm-deps.sh` clones the three upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in
