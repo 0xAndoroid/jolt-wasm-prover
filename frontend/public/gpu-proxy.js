@@ -131,6 +131,8 @@ async function runOp(op, args, regions, ret) {
                 const r = regions[i];
                 let buf;
                 if (r.flags & REGION.HANDLE) {
+                    // ptr is a handle here, not a wasm address: a readback would land at address `handle`.
+                    if (r.flags & (REGION.UPLOAD | REGION.READBACK)) throw new Error(`binding ${i}: handle regions cannot be uploaded or read back`);
                     buf = getHandle(r.ptr);
                 } else {
                     buf = storageBuffer(r.len);
@@ -174,11 +176,18 @@ async function serve() {
     try {
         device.pushErrorScope('validation');
         device.pushErrorScope('out-of-memory');
-        await runOp(op, args, regions, ret);
+        let thrown = null;
+        try {
+            await runOp(op, args, regions, ret);
+        } catch (e) {
+            thrown = e;
+        }
+        // Pop even when the op threw, or the scopes leak and swallow later errors.
         const oom = await device.popErrorScope();
         const validation = await device.popErrorScope();
         const err = validation || oom || uncapturedError;
         uncapturedError = null;
+        if (thrown) throw thrown;
         if (err) throw new Error(err.message);
     } catch (e) {
         writeError(e && e.message ? e.message : String(e));

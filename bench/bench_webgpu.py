@@ -167,8 +167,12 @@ def main():
             "gpuRoundtripUs": round(rs[0]["gpuRoundtripUs"], 1),
             "peakMB": round(max(r["peakMB"] for r in rs)),
         }
-        gpu_failed = any(str(r["gpuStatus"]).startswith("error") or r["gpuSelftestMismatches"] for r in rs)
-        ok = ok and summary["modes"][label]["allValid"] and len(summary["modes"][label]["proofSha256"]) == 1 and not gpu_failed
+        # gpu=on must really have run the GPU path (plain chromium has no adapter and
+        # exercises the fallback); a quiet fall-through to the CPU is not a pass.
+        expected = "disabled" if not gpu else ("unavailable" if args.browser == "chromium" else "ok")
+        summary["modes"][label]["gpuStatusExpected"] = expected
+        gpu_ok = all(r["gpuStatus"] == expected and not r["gpuSelftestMismatches"] for r in rs)
+        ok = ok and summary["modes"][label]["allValid"] and len(summary["modes"][label]["proofSha256"]) == 1 and gpu_ok
     if args.gpu == "both" and len(summary["modes"]) == 2:
         same = summary["modes"]["on"]["proofSha256"] == summary["modes"]["off"]["proofSha256"]
         summary["proofBytesIdentical"] = same

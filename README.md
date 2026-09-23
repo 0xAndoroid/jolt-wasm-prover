@@ -147,7 +147,9 @@ with the GPU on or off.
 # Build with the harness compiled in (default builds leave it out entirely)
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu
 
-# Oracle bench: gpu on vs off, proofs must match, verify must pass (needs node server.mjs)
+# Oracle bench: gpu on vs off, proofs must match, verify must pass. Needs node server.mjs, which
+# serves frontend/dist/: after editing worker.js, gpu-proxy.js or wgsl/ run `cd frontend && npm run build`
+# and restart the server (it caches responses).
 uv run --with playwright python bench/bench_webgpu.py --iters 17 --runs 3 --gpu both --browser webkit
 
 # fp128 WGSL vs Python big ints, 100k random vectors + edge cases (no server needed)

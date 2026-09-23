@@ -59,7 +59,7 @@ uv run --with playwright python bench/test_fp128_wgsl.py                        
 
 `bench.mjs` outputs JSON to stdout; per-run timings go to stderr. sha2-chain iteration counts map to padded trace lengths: 17 → 2^16, 69 → 2^18, 278 → 2^20, 556 → 2^21 — the wasm32 ceiling (2^22 needs a one-hot polynomial with 2^32 coefficients; see README "Protocol"). `bench-chain.mjs` reports the trace / Akita setup / prove split per run.
 
-**server.mjs caches compressed responses in memory with no mtime check — restart it after every wasm rebuild or you test stale bytes.**
+**server.mjs caches compressed responses in memory with no mtime check — restart it after every wasm rebuild or you test stale bytes.** It serves `frontend/dist/`, so edits to `frontend/public/` (worker.js, gpu-proxy.js, wgsl/) need `cd frontend && npm run build` before the restart.
 
 ## Architecture
 
