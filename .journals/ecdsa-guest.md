@@ -18,7 +18,12 @@ Branch `feat/ecdsa-inline-guest`, card 568, orchestrator task d03fb23b.
 ## Steps (playbook verbatim)
 1. plan 1/1 — skip: all Rust/worker plumbing exists; remaining work is one UI
    entry + roundtrip coverage + docs, plan is the findings list above.
-2. implement 1/1 — 
+2. implement 1/1 — done (Sep 23 17:10). Commits 40762cc (UI tab), 6fe2334
+   (test_ui_modes ECDSA), eb54547 (docs), 79ffa34 (roundtrip). Native
+   roundtrip: ecdsa 203,465 cycles, padded 2^18, prove 0.76 s, verify 0.012 s.
+   WebKit gate (macbook-home, wasm 22.4 MiB): ECDSA GPU 2.10 s / CPU 9.19 s,
+   proof SHA-256 501fd2b7… identical, verify VALID both; SHA-256 + Keccak +
+   Chromium + dead-proxy sections unchanged and green; no overflow 375/1440.
 3. review i/3 — 
 4. merge 1/1 — 
 5. deploy 1/1 — 
