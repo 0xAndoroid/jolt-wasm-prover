@@ -9,7 +9,7 @@ Four guest programs are included:
 | Program | Description | Guest crate |
 |---------|-------------|-------------|
 | **SHA-256** | Hash arbitrary input | `guests/sha2` |
-| **ECDSA** | secp256k1 ECDSA verification of one fixed signature ("hello world" vector) via the `jolt-inlines-secp256k1` inline; a proof that verifies means the signature is valid | `guests/secp256k1` |
+| **ECDSA** | secp256k1 ECDSA verification of one fixed signature (`jolt-inlines-secp256k1` inline) | `guests/secp256k1` |
 | **Keccak Chain** | Iterated Keccak-256 hashing | `guests/sha3-chain` |
 | **SHA-256 Chain** | Iterated SHA-256 (tunable trace length, for scale benchmarks) | `guests/sha2-chain` |
 
