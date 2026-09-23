@@ -1,6 +1,7 @@
 <!doctype html>
 <html><body><script>
-// Driven by commit_proto.py: fetches /config.json, /a.bin, /hot.bin, the shader sources, runs
+// Driven by commit_proto.py: fetches /config.json, /a.bin, /hot.bin, the shader sources
+// (frontend/public/wgsl/commit/, served under /), runs
 // prep -> main -> reduce, times everything, returns JSON + base64 result via window.result.
 const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
 const fetchBuf = async (p) => new Uint8Array(await (await fetch(p)).arrayBuffer());
@@ -61,7 +62,7 @@ window.result = (async () => {
   const uploadHot = await timedUpload(bufHot, HOT);
 
   const bg = (pl, entries) => device.createBindGroup({ layout: pl.getBindGroupLayout(0), entries: entries.map((b, i) => ({ binding: i, resource: { buffer: b } })) });
-  const bgPrep = bg(prep.pipeline, [bufA, bufA2]);
+  const bgPrep = bg(prep.pipeline, [bufParams, bufA, bufA2]);
   const bgMain = bg(main.pipeline, [bufParams, bufA2, bufHot, bufPart]);
   const bgReduce = bg(reduce.pipeline, [bufParams, bufPart, bufRes]);
   const disp = cfg.dispatch; // [x,y,z] for main

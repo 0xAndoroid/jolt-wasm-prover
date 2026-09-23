@@ -1,7 +1,9 @@
 // prep: A2[q][j] = A[q][j] for j < 512, p - A[q][j-512] for j >= 512.
 // rot(A[q], s)[i] == A2[q][(i - s) mod 1024] for 0 <= s < 512 (negacyclic wrap folded into the index).
-@group(0) @binding(0) var<storage, read> A: array<vec4<u32>>;
-@group(0) @binding(1) var<storage, read_write> A2: array<vec4<u32>>;
+// Binding 0 is the shared Params uniform (gpu-proxy.js binds it for every kernel); only `positions` is read.
+@group(0) @binding(0) var<uniform> P: Params;
+@group(0) @binding(1) var<storage, read> A: array<vec4<u32>>;
+@group(0) @binding(2) var<storage, read_write> A2: array<vec4<u32>>;
 
 fn neg_p(x: vec4<u32>) -> vec4<u32> {
   // p - x with borrow; x canonical (< p). x == 0 yields p (still 0 mod p, digits still < 2^16).
@@ -23,6 +25,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let idx = gid.x;                 // q * 1024 + j
   let q = idx >> 10u;
   let j = idx & 1023u;
+  if (q >= P.positions) { return; }
   if (j < 512u) {
     A2[idx] = A[q * 512u + j];
   } else {

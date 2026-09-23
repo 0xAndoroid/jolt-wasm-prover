@@ -22,14 +22,18 @@ const MAX_REGIONS = 8;
 const OP = { NOP: 1, CREATE_BUFFER: 2, UPLOAD: 3, DESTROY: 4, RUN: 5 };
 const STATUS = { IDLE: 0, BUSY: 1, DONE: 2, ERROR: 3 };
 const REGION = { UPLOAD: 1, READBACK: 2, HANDLE: 4 };
-// Index = shader id in the RUN op (src/gpu/selftest.rs). Every kernel is
-// compiled with fp128.wgsl prepended.
-const SHADERS = ['fp128_ops'];
+// Index = shader id in the RUN op (src/gpu/selftest.rs, src/gpu/trace_commit.rs);
+// each entry lists the sources concatenated into one module (library first).
+const SHADERS = [
+    ['fp128', 'fp128_ops'],
+    ['commit/common', 'commit/prep'],
+    ['commit/common', 'commit/commit_accumulate'],
+    ['commit/common', 'commit/reduce'],
+];
 
 let memory = null;
 let base = 0;
 let device = null;
-let fp128Source = '';
 const shaderSources = new Map();
 const pipelines = new Map();
 const handles = new Map();
@@ -47,14 +51,18 @@ async function fetchText(name) {
     return r.text();
 }
 
-function pipelineFor(id) {
-    let p = pipelines.get(id);
+// `chunk` != 0 sets the kernel's `CHUNK` override constant (commit_accumulate.wgsl);
+// pipelines are cached per (shader, chunk).
+function pipelineFor(id, chunk) {
+    const key = `${id}:${chunk}`;
+    let p = pipelines.get(key);
     if (p) return p;
-    const name = SHADERS[id];
-    if (name === undefined) throw new Error(`unknown shader id ${id}`);
-    const module = device.createShaderModule({ code: fp128Source + '\n' + shaderSources.get(name) });
-    p = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main' } });
-    pipelines.set(id, p);
+    const parts = SHADERS[id];
+    if (parts === undefined) throw new Error(`unknown shader id ${id}`);
+    const module = device.createShaderModule({ code: parts.map((n) => shaderSources.get(n)).join('\n') });
+    const constants = chunk ? { CHUNK: chunk } : {};
+    p = device.createComputePipeline({ layout: 'auto', compute: { module, entryPoint: 'main', constants } });
+    pipelines.set(key, p);
     return p;
 }
 
@@ -122,7 +130,7 @@ async function runOp(op, args, regions, ret) {
             const params = new Uint32Array(16);
             params.set(args.subarray(5, 5 + nparams));
             const nbind = args[21];
-            const pipeline = pipelineFor(shader);
+            const pipeline = pipelineFor(shader, args[22]);
             device.queue.writeBuffer(uniformBuffer, 0, params);
             const entries = [{ binding: 0, resource: { buffer: uniformBuffer } }];
             const temps = [];
@@ -239,13 +247,15 @@ async function init(data) {
         requiredLimits: {
             maxBufferSize: adapter.limits.maxBufferSize,
             maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+            maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
+            maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+            maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
         },
     });
     device.addEventListener('uncapturederror', (e) => { uncapturedError = e.error; });
     device.lost.then((info) => console.error('[gpu-proxy] device lost:', info.message));
     uniformBuffer = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-    fp128Source = await fetchText('fp128');
-    for (const name of SHADERS) shaderSources.set(name, await fetchText(name));
+    for (const name of new Set(SHADERS.flat())) shaderSources.set(name, await fetchText(name));
     const info = adapter.info || {};
     loop();
     return {

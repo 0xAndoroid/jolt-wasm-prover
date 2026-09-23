@@ -3,7 +3,8 @@
     uv run --with playwright --with numpy python bench/proto/commit_proto.py \
         [--shape small|full|stress] [--variant best|v1|v2b|...|v14] [--chunk N] [--repeat N] [--spot N] [--seed S]
 
-Launches Playwright's headless WebKit, serves bench/proto/harness.html + shaders + data via
+Launches Playwright's headless WebKit, serves bench/proto/harness.html + the shipped kernels
+(frontend/public/wgsl/commit/) + data via
 page.route on http://localhost:7777, runs prep -> main -> reduce, verifies against a Python
 big-int reference, prints one JSON summary line.
 """
@@ -17,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from gen_variants import BEST, VARIANTS as GEN_VARIANTS, source as gen_source  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
+KERNELS = HERE.parents[1] / "frontend" / "public" / "wgsl" / "commit"  # the shipped kernels (one copy in the repo)
 C = 0xFFFFA7F7
 P = (1 << 128) - C
 MASK32 = (1 << 32) - 1
@@ -141,9 +143,9 @@ def main():
         if path in files:
             ct, body = files[path]
             return r.fulfill(status=200, content_type=ct, body=body)
-        f = HERE / path.lstrip("/")
-        if f.is_file():
-            return r.fulfill(status=200, content_type=mimetypes.guess_type(f.name)[0] or "text/plain", body=f.read_bytes())
+        for f in (HERE / path.lstrip("/"), KERNELS / path.lstrip("/")):
+            if f.is_file():
+                return r.fulfill(status=200, content_type=mimetypes.guess_type(f.name)[0] or "text/plain", body=f.read_bytes())
         r.fulfill(status=404, body="nope")
 
     with sync_playwright() as p:
