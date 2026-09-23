@@ -159,8 +159,9 @@ RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --r
 # and restart the server (it caches responses). Prints the GPU commit stage breakdown and a final
 # off/on/ratio table per size.
 uv run --with playwright python bench/bench_webgpu.py --iters 17,69,278,556 --runs 4 --gpu both --browser webkit
-# --gpu all runs off / w1 (commit only) / on (W1+W2) / w2 (digit range only) and prints the W2 increment
-# (w1 − on); --parity N shadows the first N GPU digit-range rounds with the CPU prover and aborts on a mismatch
+# --gpu all runs off / w1 (commit only) / on (W1+W2+W3) / w2 (digit range only) / s2off (W1+W2) and prints the
+# W2 (w1 − s2off) and W3 (s2off − on) increments; --parity N shadows the first N GPU digit-range and stage-2 rounds
+# with the CPU prover and aborts on a mismatch
 uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 5 --gpu all
 uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 1 --gpu on --parity 6
 

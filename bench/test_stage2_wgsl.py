@@ -301,11 +301,10 @@ def run_instance(rng, log_domain, factored, addends=True):
         else:
             wflags = 0 if k == 0 else 6
         ppt = min(ppt_for(n_units), nf)
-        case_c = 1 if nf < ppt else 0
         wgs = -(-n_units // (WG * ppt))
         live_param = live_len if k <= 1 else len(w_prev)
         r_words = [int.from_bytes((r_prev or 0).to_bytes(16, "little")[i : i + 4], "little") for i in range(0, 16, 4)]
-        params = [n_units, nf.bit_length() - 1, off_first, off_second, ppt, bw, src_mode, case_c] + r_words + [live_param, src_w_off, dst_w_off, wflags]
+        params = [n_units, nf.bit_length() - 1, off_first, off_second, ppt, bw, src_mode, 0] + r_words + [live_param, src_w_off, dst_w_off, wflags]
         add_wgs = -(-n_pairs // WG)
         add_off = NT * wgs
         add_params = [n_pairs, 0, add_off, 0, 1, bw, src_mode, 0] + [0] * 4 + [live_len if k == 0 else len(w), 0, dst_w_off, 0]

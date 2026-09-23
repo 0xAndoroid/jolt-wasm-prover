@@ -393,8 +393,10 @@ impl Session {
                 }
             }
         };
-        let ppt = units_per_thread(n_units);
-        let case_c = u32::from(inner < ppt);
+        // A thread's units must share one E_second entry; with akita's split
+        // (E_first pops first) inner < 8 needs a 2^36 domain, so the clamp
+        // never fires on wasm32 and `max_wgs` stays a valid partials bound.
+        let ppt = units_per_thread(n_units).min(inner);
         let wgs = n_units.div_ceil(WG * ppt);
         let zero = [0u8; FIELD_BYTES];
         let r = input.prev.map_or(&zero, |p| p);
@@ -406,7 +408,7 @@ impl Session {
             ppt,
             self.bit_width,
             src_mode,
-            case_c,
+            0,
             0,
             0,
             0,

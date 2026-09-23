@@ -293,8 +293,10 @@ def main():
             ok = ok and size["proofBytesIdentical"]
         if "on" in size and "off" in size:
             size["proveRatioOnOff"] = round(size["on"]["warmMedianProveSeconds"] / size["off"]["warmMedianProveSeconds"], 3)
-        if "on" in size and "w1" in size:
-            size["w2IncrementSeconds"] = round(size["w1"]["warmMedianProveSeconds"] - size["on"]["warmMedianProveSeconds"], 3)
+        # `on` carries W3 too; the W2 increment is W1 vs W1+W2 (`s2off`), or vs `on` when s2off did not run.
+        w12 = size.get("s2off") or size.get("on")
+        if w12 and "w1" in size:
+            size["w2IncrementSeconds"] = round(size["w1"]["warmMedianProveSeconds"] - w12["warmMedianProveSeconds"], 3)
         if "on" in size and "s2off" in size:
             size["stage2IncrementSeconds"] = round(size["s2off"]["warmMedianProveSeconds"] - size["on"]["warmMedianProveSeconds"], 3)
         summary["sizes"][str(iters)] = size

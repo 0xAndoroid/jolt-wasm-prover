@@ -58,7 +58,7 @@ WebGPU harness (Python Playwright, `uv run --with playwright python -m playwrigh
 
 ```bash
 uv run --with playwright python bench/bench_webgpu.py --iters 17,69,278,556 --runs 4 --gpu both   # gpu on vs off: proofs byte-identical, verify=true; commit stage breakdown + off/on/ratio table
-uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 5 --gpu all                # off / w1 (commit only) / on (W1+W2+W3) / w2 (digit range only) / s2off (W1+W2, stage-2 device off); W2 increment = w1 − on, W3 increment = s2off − on
+uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 5 --gpu all                # off / w1 (commit only) / on (W1+W2+W3) / w2 (digit range only) / s2off (W1+W2, stage-2 device off); W2 increment = w1 − s2off, W3 increment = s2off − on
 uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 1 --gpu on --parity 6      # CPU shadow of the first 6 GPU digit-range rounds per instance; aborts on mismatch
 uv run --with playwright python bench/test_fp128_wgsl.py                                          # fp128.wgsl vs Python ints mod p, 100k vectors
 uv run --with playwright python bench/test_stage2_wgsl.py --log-domain 16                        # stage2/*.wgsl (fused fold+eval, factored/dense weights, additional cubic) vs a Python dense-fold reference

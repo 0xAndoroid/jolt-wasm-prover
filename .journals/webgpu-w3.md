@@ -27,7 +27,7 @@ Orchestrator task c45196f3 · kanban #562 · playbook: vault `reference/feature-
 1. plan 1/1 — done early as `plan p3 1/1` (e93207ea) → `.journals/webgpu-w3-p3-plan.md`: lever 1 stage-2 GO, lever 2 PARK (4–5 % ^18 reachable), lever 3 KILL by arithmetic (W1 wall 33 ms = 2.1 %). [done]
 2. implement 1/1 — fable-high, worktree `webgpu-w3/stage2-gpu`, units U0→U5 (RD then QF), patch 0008. [running]
    - bench (orchestrator lane, `--machine macbook-home`, self-guarded load1 < 3): idle `bench_webgpu.py --gpu all` 2^16–2^21 → kill-rule verdict. [pending]
-3. review i/3 — fresh fable-medium + one astra pass on the WGSL math. [pending]
+3. review i/3 — fresh fable-medium + one astra pass on the WGSL math. [1/3: 3 LOW fixed @2d67ec7; astra math pass clean; 2/3: 2 fixed — unreachable `case_c` kernel branch removed (host clamps ppt ≤ |E_first|; with akita's E_first-pops-first split inner < 8 needs a 2^36 domain), bench `w2IncrementSeconds` = w1 − s2off (was w1 − on, which since W3 included the stage-2 saving); error path proven with a sticky-failing cpu-ref (rounds ≥ 0 / ≥ 3 / tables) → clean `stage-2 proving failed` error, no proof, no panic]
 4. merge 1/1 — shell. [pending]
 5. deploy 1/1 — skip: production deploy is the user's. [pending]
 

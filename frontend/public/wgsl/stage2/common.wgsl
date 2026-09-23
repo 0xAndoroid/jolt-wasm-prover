@@ -14,7 +14,7 @@ struct Params {
   ppt: u32,          // units per thread (power of two)
   bit_width: u32,    // PackedSignedDigits two's-complement width
   src_mode: u32,     // witness: 0 compact eval (round 0), 1 compact fold + materialize (round 1), 2 field fold
-  case_c: u32,       // 1: inner < ppt -> per-pair full weight
+  _pad: u32,
   r: vec4<u32>,      // fold challenge r_{k-1} (src_mode 1, 2; dense P fold)
   live_len: u32,     // source witness length (digits for src_mode 0/1, W entries for 2); reads past it are 0
   src_w_off: u32,    // W offset in src[] (src_mode 2)
@@ -59,28 +59,20 @@ fn fold_digits(w0: i32, w1: i32) -> vec4<u32> {
 }
 
 // ---------- thread -> units mapping (blocks of units sharing one E_second entry) ----------
+// The host clamps ppt <= |E_first|, so a thread's ppt units always sit in one block.
 struct Map { unit0: u32, stride: u32, count: u32 }
 fn map_units(lid: u32, wg: u32) -> Map {
   let wg_units = WG * params.ppt;
-  let inner = 1u << params.inner_bits;
+  let blk = min(1u << params.inner_bits, wg_units);
+  let nblk = wg_units / blk;
+  let tpb = WG / nblk;
+  let b = lid / tpb; let lane = lid % tpb;
   var m: Map;
-  if (params.case_c == 1u) {
-    m.unit0 = wg * wg_units + lid; m.stride = WG; m.count = params.ppt;
-  } else {
-    let blk = min(inner, wg_units);
-    let nblk = wg_units / blk;
-    let tpb = WG / nblk;
-    let b = lid / tpb; let lane = lid % tpb;
-    m.unit0 = wg * wg_units + b * blk + lane; m.stride = tpb; m.count = params.ppt;
-  }
+  m.unit0 = wg * wg_units + b * blk + lane; m.stride = tpb; m.count = params.ppt;
   return m;
 }
 fn e_in_of(unit: u32) -> vec4<u32> { return aux[params.off_first + (unit & ((1u << params.inner_bits) - 1u))]; }
 fn e_out_of(unit: u32) -> vec4<u32> { return aux[params.off_second + (unit >> params.inner_bits)]; }
-fn weight_of(unit: u32) -> vec4<u32> {
-  let e = e_in_of(unit);
-  return select(e, fp128_mul(e, e_out_of(unit)), params.case_c == 1u);
-}
 
 // ---------- workgroup reduce of NT terms -> partials[wg*NT + t] ----------
 var<workgroup> red: array<vec4<u32>, 1536>; // 256 x 6

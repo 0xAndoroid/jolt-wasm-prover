@@ -90,7 +90,7 @@ fn main(@builtin(local_invocation_id) l: vec3<u32>, @builtin(workgroup_id) w: ve
     if (write_p) { dst[dst_p_off + 2u * j] = P0; dst[dst_p_off + 2u * j + 1u] = P1; }
     let dw = fp128_sub(R, L);
     let dp = fp128_sub(P1, P0);
-    let e = weight_of(j);
+    let e = e_in_of(j);
     acc[0] = fp128_add(acc[0], fp128_mul(q0, e));
     acc[1] = fp128_add(acc[1], fp128_mul(q1, e));
     acc[2] = fp128_add(acc[2], fp128_mul(q2, e));
@@ -98,7 +98,7 @@ fn main(@builtin(local_invocation_id) l: vec3<u32>, @builtin(workgroup_id) w: ve
     acc[4] = fp128_add(acc[4], fp128_add(fp128_mul(L, dp), fp128_mul(dw, P0)));
     acc[5] = fp128_add(acc[5], fp128_mul(dw, dp));
   }
-  if (params.case_c == 0u && m.unit0 < params.n_units) {
+  if (m.unit0 < params.n_units) {
     let eo = e_out_of(m.unit0);
     for (var t: u32 = 0u; t < 3u; t++) { acc[t] = fp128_mul(acc[t], eo); }
   }
