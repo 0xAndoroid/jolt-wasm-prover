@@ -1,0 +1,235 @@
+<!doctype html>
+<html><body><script>
+// Driven by digit_range_proto.py: fetches /config.json + data, runs the digit-range sumcheck rounds per
+// instance as a dependent chain (submit -> 80 B readback -> host challenge -> next round), returns JSON.
+const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+const fetchBuf = async (p) => new Uint8Array(await (await fetch(p)).arrayBuffer());
+const fetchText = async (p) => (await fetch(p)).text();
+const imul = Math.imul;
+const fmix = (x) => { x ^= x >>> 16; x = imul(x, 0x85EBCA6B); x ^= x >>> 13; x = imul(x, 0xC2B2AE35); x ^= x >>> 16; return x >>> 0; };
+// Cheap stand-in for the Blake2b grind: 4 lanes of murmur-style mixing over the 20 message words; top limb < 2^31 => < p.
+function hashChallenge(words) {
+  const h = [0x9E3779B9, 0x85EBCA6B, 0xC2B2AE35, 0x27D4EB2F];
+  for (let i = 0; i < words.length; i++) for (let k = 0; k < 4; k++) h[k] = fmix((h[k] ^ words[i] ^ imul(i * 4 + k, 0x9E3779B9)) >>> 0);
+  h[3] &= 0x7FFFFFFF;
+  return new Uint32Array(h);
+}
+
+window.result = (async () => {
+  const cfg = await (await fetch('/config.json')).json();
+  const adapter = await navigator.gpu.requestAdapter();
+  const hasTs = adapter.features.has('timestamp-query');
+  const L = adapter.limits;
+  const wantLimits = ['maxStorageBufferBindingSize', 'maxBufferSize', 'maxComputeWorkgroupStorageSize', 'maxComputeInvocationsPerWorkgroup', 'maxStorageBuffersPerShaderStage'];
+  const requiredLimits = {}; for (const k of wantLimits) requiredLimits[k] = L[k];
+  const device = await adapter.requestDevice({ requiredFeatures: hasTs ? ['timestamp-query'] : [], requiredLimits });
+  const errors = [];
+  device.addEventListener('uncapturederror', (e) => errors.push(String(e.error.message)));
+  const limits = {}; for (const k of wantLimits) limits[k] = L[k];
+
+  const lib = (await fetchText('/fp128.wgsl')) + '\n' + (await fetchText('/dr_common.wgsl')) + '\n';
+  const names = ['round0', 'lut', 'round1', 'field', 'reduce', 'nop', 'mulbench'];
+  const ST = GPUBufferUsage.STORAGE, CD = GPUBufferUsage.COPY_DST, CS = GPUBufferUsage.COPY_SRC;
+  const bglEntries = [{ binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } }];
+  for (let b = 1; b <= 8; b++) bglEntries.push({ binding: b, visibility: GPUShaderStage.COMPUTE, buffer: { type: [1, 2, 4, 6].includes(b) ? 'read-only-storage' : 'storage' } });
+  const bgl = device.createBindGroupLayout({ entries: bglEntries });
+  const layout = device.createPipelineLayout({ bindGroupLayouts: [bgl] });
+  const pipelines = {}, compileInfo = {};
+  for (const n of names) {
+    const t0 = performance.now();
+    const mod = device.createShaderModule({ code: lib + await fetchText('/' + n + '.wgsl') });
+    const info = await mod.getCompilationInfo();
+    const msgs = info.messages.map((m) => `${m.type} ${m.lineNum}:${m.linePos} ${m.message}`);
+    let err = null;
+    try { pipelines[n] = await device.createComputePipelineAsync({ layout, compute: { module: mod, entryPoint: 'main' } }); } catch (e) { err = String(e.message || e); }
+    compileInfo[n] = { ms: +(performance.now() - t0).toFixed(1), msgs, err };
+    if (err || msgs.some((m) => m.startsWith('error'))) return { error: 'pipeline ' + n + ' failed', compileInfo };
+  }
+  const mk = (size, usage) => device.createBuffer({ size: Math.max(16, size), usage });
+  const dummies = []; for (let b = 0; b <= 8; b++) dummies.push(mk(16, ST));
+  const mkBG = (slots) => device.createBindGroup({ layout: bgl, entries: Array.from({ length: 9 }, (_, b) => ({ binding: b, resource: { buffer: slots[b] || dummies[b] } })) });
+  const paramsBuf = (p) => { // Params struct: 8 u32 + 2 vec4
+    const buf = mk(64, GPUBufferUsage.UNIFORM | CD);
+    const a = new Uint32Array(16);
+    [a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7]] = [p.n_units, p.inner_bits, p.off_first, p.off_second, p.ppt, p.packed, p.src_mode, p.case_c];
+    device.queue.writeBuffer(buf, 0, a);
+    return buf;
+  };
+  const setR = (buf, r, r_aux) => { const a = new Uint32Array(8); a.set(r, 0); if (r_aux) a.set(r_aux, 4); device.queue.writeBuffer(buf, 32, a); };
+  const timedUpload = async (buf, data) => { const t0 = performance.now(); device.queue.writeBuffer(buf, 0, data); await device.queue.onSubmittedWorkDone(); return +(performance.now() - t0).toFixed(2); };
+  const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+
+  // ---------- timestamp bookkeeping ----------
+  const QN = 2048;
+  const qs = hasTs ? device.createQuerySet({ type: 'timestamp', count: QN }) : null;
+  const qBuf = hasTs ? mk(8 * QN, GPUBufferUsage.QUERY_RESOLVE | CS) : null;
+  const qMap = hasTs ? mk(8 * QN, GPUBufferUsage.MAP_READ | CD) : null;
+  let qi = 0; let passLog = [];
+  const pass = (enc, pl, bg, wgs, tag) => {
+    const desc = hasTs ? { timestampWrites: { querySet: qs, beginningOfPassWriteIndex: qi, endOfPassWriteIndex: qi + 1 } } : {};
+    const p = enc.beginComputePass(desc); p.setPipeline(pl); p.setBindGroup(0, bg); p.dispatchWorkgroups(wgs); p.end();
+    passLog.push({ tag, qi }); qi += 2;
+  };
+  const readTimestamps = async () => {
+    if (!hasTs) return null;
+    const enc = device.createCommandEncoder();
+    enc.resolveQuerySet(qs, 0, qi, qBuf, 0); enc.copyBufferToBuffer(qBuf, 0, qMap, 0, 8 * qi);
+    device.queue.submit([enc.finish()]);
+    await qMap.mapAsync(GPUMapMode.READ);
+    const ts = new BigUint64Array(qMap.getMappedRange().slice(0)); qMap.unmap();
+    const out = passLog.map((p) => ({ tag: p.tag, begin: Number(ts[p.qi]) / 1e6, end: Number(ts[p.qi + 1]) / 1e6 }));
+    qi = 0; passLog = [];
+    return out;
+  };
+  const outBuf = mk(80, ST | CS);
+  const mapBuf = mk(128, GPUBufferUsage.MAP_READ | CD);
+  const readback = async (nbytes) => {
+    await mapBuf.mapAsync(GPUMapMode.READ);
+    const u = new Uint32Array(mapBuf.getMappedRange().slice(0, nbytes)); mapBuf.unmap();
+    return u;
+  };
+
+  // ---------- one instance ----------
+  async function runInstance(inst) {
+    const R = inst.rounds, n = 1 << R;
+    const t00 = performance.now();
+    const i8 = await fetchBuf(inst.i8_url), packed = await fetchBuf(inst.packed_url);
+    const eqData = await fetchBuf(inst.eq_url);
+    const fetchMs = performance.now() - t00;
+    const bufI8 = mk(i8.byteLength, ST | CD), bufPacked = mk(packed.byteLength, ST | CD);
+    const upload = { i8_ms: await timedUpload(bufI8, i8), packed_ms: await timedUpload(bufPacked, packed), i8_bytes: i8.byteLength, packed_bytes: packed.byteLength };
+    const bufEq = mk(eqData.byteLength, ST | CD);
+    upload.eq_ms = await timedUpload(bufEq, eqData); upload.eq_bytes = eqData.byteLength;
+    const bufLut0 = mk(80 * 4, ST | CD); device.queue.writeBuffer(bufLut0, 0, new Int32Array(inst.lut0));
+    const digitsBuf = inst.packed ? bufPacked : bufI8;
+    const TA = mk((n / 8) * 16, ST | CS), TB = mk((n / 16) * 16, ST | CS);
+    const LUT1 = mk(256 * 5 * 16, ST), LUT2f = mk(256 * 16, ST);
+    const maxWg = 1 << 13;
+    const partials = mk(maxWg * 5 * 16, ST);
+    const dumpMap = inst.dump ? mk((n / 8) * 16, GPUBufferUsage.MAP_READ | CD) : null;
+
+    // Per-round plan (precreated: params buffers + bind groups; only r is written per round).
+    const plan = [];
+    for (let k = 0; k < R; k++) {
+      const e = inst.eq_rounds[k]; // {inner_bits, off_first, off_second}
+      const inner = 1 << e.inner_bits;
+      const base = { inner_bits: e.inner_bits, off_first: e.off_first, off_second: e.off_second, packed: inst.packed ? 1 : 0, case_c: 0 };
+      let steps = [];
+      if (k === 0) {
+        const units = n / 8; let ppt = Math.max(1, Math.min(8, Math.floor(units / (256 * 1024)))); ppt = Math.min(ppt, inner / 4);
+        const wgs = Math.ceil(units / (256 * ppt));
+        steps.push({ kind: 'round0', p: { ...base, n_units: units, ppt, src_mode: 0 }, wgs, slots: { 1: digitsBuf, 2: bufEq, 3: partials, 6: bufLut0 } });
+        plan.push({ steps, wgs });
+      } else if (k === 1) {
+        steps.push({ kind: 'lut', p: { ...base, n_units: 256, ppt: 1, src_mode: 0 }, wgs: 1, slots: { 7: LUT1 } });
+        const units = n / 4, blk = Math.min(inner, 2048), wgs = units / blk;
+        steps.push({ kind: 'round1', p: { ...base, n_units: units, ppt: 1, src_mode: 0 }, wgs, slots: { 1: digitsBuf, 2: bufEq, 3: partials, 6: LUT1 } });
+        plan.push({ steps, wgs });
+      } else {
+        let units, src_mode, slots;
+        if (k === 2) { units = n / 8; src_mode = 2; slots = { 1: digitsBuf, 2: bufEq, 3: partials, 6: LUT2f }; steps.push({ kind: 'lut', p: { ...base, n_units: 256, ppt: 1, src_mode: 1 }, wgs: 1, slots: { 7: LUT2f } }); }
+        else if (k === 3) { units = n / 16; src_mode = 1; slots = { 1: digitsBuf, 2: bufEq, 3: partials, 5: TA, 6: LUT2f }; }
+        else { units = n >> (k + 1); src_mode = 0; const srcT = (k % 2 === 0) ? TA : TB, dstT = (k % 2 === 0) ? TB : TA; slots = { 2: bufEq, 3: partials, 4: srcT, 5: dstT }; }
+        let ppt = Math.max(1, Math.min(8, Math.floor(units / (256 * 1024))));
+        const case_c = inner < ppt ? 1 : 0;
+        const wgs = Math.ceil(units / (256 * ppt));
+        steps.push({ kind: 'field', p: { ...base, n_units: units, ppt, src_mode, case_c }, wgs, slots, dstT: slots[5] });
+        plan.push({ steps, wgs });
+      }
+      const pl = plan[k];
+      pl.k = k;
+      for (const s of pl.steps) { s.params = paramsBuf(s.p); s.bg = mkBG({ 0: s.params, ...s.slots }); }
+      const rp = paramsBuf({ n_units: pl.wgs, inner_bits: 0, off_first: 0, off_second: 0, ppt: 1, packed: 0, src_mode: 0, case_c: 0 });
+      pl.reduceBG = mkBG({ 0: rp, 3: partials, 8: outBuf });
+      pl.evalStep = pl.steps[pl.steps.length - 1];
+    }
+    await device.queue.onSubmittedWorkDone();
+
+    // Dependent chain.
+    const rs = [], msgs = [], roundWall = [], hostMs = [], dumps = [];
+    const tInst0 = performance.now();
+    for (let k = 0; k < R; k++) {
+      const tr0 = performance.now();
+      const pl = plan[k];
+      const rPrev = k > 0 ? rs[k - 1] : new Uint32Array(4), r0 = rs[0] || rPrev, r1 = rs[1] || rPrev;
+      for (const s of pl.steps) { if (s.kind === 'lut') setR(s.params, r0, r1); else setR(s.params, rPrev); }
+      const enc = device.createCommandEncoder();
+      for (const s of pl.steps) pass(enc, pipelines[s.kind], s.bg, s.wgs, `r${k}:${s.kind}`);
+      pass(enc, pipelines.reduce, pl.reduceBG, 1, `r${k}:reduce`);
+      enc.copyBufferToBuffer(outBuf, 0, mapBuf, 0, 80);
+      const last = k === R - 1;
+      if (last) enc.copyBufferToBuffer(pl.evalStep.dstT, 0, mapBuf, 80, 32);
+      device.queue.submit([enc.finish()]);
+      const words = await readback(last ? 112 : 80);
+      const th0 = performance.now();
+      const msg = words.subarray(0, 20);
+      const r = inst.fixed_challenges ? new Uint32Array(inst.fixed_challenges[k]) : hashChallenge(msg);
+      rs.push(r); msgs.push(Array.from(msg));
+      if (last) dumps.push({ tag: 'final_table', b64: b64(new Uint8Array(words.buffer, 80, 32)) });
+      hostMs.push(performance.now() - th0);
+      roundWall.push(performance.now() - tr0);
+      if (inst.dump && k >= 3) {
+        const bytes = (n >> k) * 16; // table written this round = digits folded k times
+        const e2 = device.createCommandEncoder(); e2.copyBufferToBuffer(pl.evalStep.dstT, 0, dumpMap, 0, bytes); device.queue.submit([e2.finish()]);
+        await dumpMap.mapAsync(GPUMapMode.READ); const d = new Uint8Array(dumpMap.getMappedRange().slice(0, bytes)); dumpMap.unmap();
+        dumps.push({ tag: `table_in_r${k}`, b64: b64(d) });
+      }
+    }
+    const instWall = performance.now() - tInst0;
+    const ts = await readTimestamps();
+    for (const b of [bufI8, bufPacked, bufEq, bufLut0, TA, TB, LUT1, LUT2f, partials]) b.destroy();
+    return { rounds: R, packed: inst.packed, fetch_ms: +fetchMs.toFixed(1), upload, plan: plan.map((p) => ({ k: p.k, steps: p.steps.map((s) => ({ kind: s.kind, wgs: s.wgs, ppt: s.p.ppt, case_c: s.p.case_c, units: s.p.n_units })) })),
+      msgs, challenges: rs.map((r) => Array.from(r)), round_wall_ms: roundWall, host_ms: hostMs, inst_wall_ms: +instWall.toFixed(2), ts, dumps };
+  }
+
+  // ---------- dependent round-trip floor ----------
+  async function floor(iters) {
+    const p = paramsBuf({ n_units: 7, inner_bits: 0, off_first: 0, off_second: 0, ppt: 1, packed: 0, src_mode: 0, case_c: 0 });
+    const bg = mkBG({ 0: p, 8: outBuf });
+    const walls = [];
+    const t0 = performance.now();
+    let r = new Uint32Array(4);
+    for (let i = 0; i < iters; i++) {
+      const t1 = performance.now();
+      setR(p, r);
+      const enc = device.createCommandEncoder();
+      pass(enc, pipelines.nop, bg, 1, `nop${i}`);
+      enc.copyBufferToBuffer(outBuf, 0, mapBuf, 0, 80);
+      device.queue.submit([enc.finish()]);
+      const w = await readback(80);
+      r = hashChallenge(w.subarray(0, 20));
+      walls.push(performance.now() - t1);
+    }
+    const total = performance.now() - t0;
+    const ts = await readTimestamps();
+    return { iters, total_ms: +total.toFixed(2), per_iter_ms: +(total / iters).toFixed(3), walls, ts };
+  }
+
+  // ---------- fp128 mul throughput ----------
+  async function mulbench(nElems, k, reps) {
+    const p = paramsBuf({ n_units: nElems, inner_bits: 0, off_first: 0, off_second: 0, ppt: k, packed: 0, src_mode: 0, case_c: 0 });
+    const ob = mk(nElems * 16, ST | CS);
+    const bg = mkBG({ 0: p, 8: ob });
+    const times = [];
+    for (let i = 0; i < reps; i++) {
+      const enc = device.createCommandEncoder(); pass(enc, pipelines.mulbench, bg, nElems / 256, `mul${i}`); device.queue.submit([enc.finish()]);
+      await device.queue.onSubmittedWorkDone();
+    }
+    const ts = await readTimestamps();
+    const ms = ts ? ts.map((t) => t.end - t.begin) : [];
+    const mb = mk(16 * 64, GPUBufferUsage.MAP_READ | CD);
+    const enc = device.createCommandEncoder(); enc.copyBufferToBuffer(ob, 0, mb, 0, 16 * 64); device.queue.submit([enc.finish()]);
+    await mb.mapAsync(GPUMapMode.READ); const sample = Array.from(new Uint32Array(mb.getMappedRange().slice(0))); mb.unmap();
+    ob.destroy();
+    const med = ms.length ? median(ms) : null;
+    return { n: nElems, k, gpu_ms: ms, median_ms: med, gmul_s: med ? +((nElems * k) / (med * 1e6)).toFixed(2) : null, sample_first64: sample };
+  }
+
+  const result = { adapter: adapter.info ? `${adapter.info.vendor}/${adapter.info.architecture}/${adapter.info.device}` : null, hasTs, limits, compileInfo, instances: [] };
+  for (const inst of cfg.instances) result.instances.push(await runInstance(inst));
+  if (cfg.floor_iters) result.floor = await floor(cfg.floor_iters);
+  if (cfg.mulbench) result.mulbench = await mulbench(cfg.mulbench.n, cfg.mulbench.k, cfg.mulbench.reps || 5);
+  result.errors = errors;
+  return result;
+})().catch((e) => ({ error: String(e && e.stack || e) }));
+</script></body></html>
