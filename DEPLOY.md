@@ -30,7 +30,7 @@ static output is uploaded.
    uv run --with playwright python bench/test_ui_modes.py --shots /tmp/shots
    uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 1 --gpu both
    ```
-   Expect `test_ui_modes: all checks passed` (both tabs prove + verify in GPU and CPU mode,
+   Expect `test_ui_modes: all checks passed` (SHA-256, Keccak Chain and ECDSA tabs prove + verify in GPU and CPU mode,
    proof SHA-256 equal across modes) and `proofBytesIdentical` / `valid=True` from the bench.
 7. Optional preview: `npx wrangler pages deploy frontend/dist --project-name=jolt-wasm-prover --branch preview`
    → `https://preview.jolt-wasm-prover.pages.dev`. `_headers` applies there too, so the
