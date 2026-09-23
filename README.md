@@ -138,19 +138,26 @@ Both default to the Playwright-bundled Chromium; `PW_BROWSER=webkit` runs the bu
 
 ## WebGPU (experimental)
 
-Feature-flagged harness for offloading Akita field work to the GPU. W0 ships
-the transport, an fp128 WGSL library, a correctness oracle and a bench — the
-prover itself still runs entirely on the CPU, so proofs are byte-identical
-with the GPU on or off.
+Feature-flagged offload of Akita field work to the GPU. W0 ships the
+transport, an fp128 WGSL library, a correctness oracle and a bench; W1 runs
+the stage-0 one-hot trace commit (`TracePackedOneHot::commit_inner`) on the
+GPU through the `trace-commit-device` seam. The commit is exact integer
+arithmetic, so proofs stay byte-identical with the GPU on or off.
 
 ```bash
 # Build with the harness compiled in (default builds leave it out entirely)
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu
+# ... plus the GPU trace commit (needs ./setup-wasm-deps.sh for patch 0006)
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device
 
 # Oracle bench: gpu on vs off, proofs must match, verify must pass. Needs node server.mjs, which
 # serves frontend/dist/: after editing worker.js, gpu-proxy.js or wgsl/ run `cd frontend && npm run build`
-# and restart the server (it caches responses).
-uv run --with playwright python bench/bench_webgpu.py --iters 17 --runs 3 --gpu both --browser webkit
+# and restart the server (it caches responses). Prints the GPU commit stage breakdown and a final
+# off/on/ratio table per size.
+uv run --with playwright python bench/bench_webgpu.py --iters 17,69,278,556 --runs 4 --gpu both --browser webkit
+
+# Standalone kernel harness (WGSL vs Python reference, no server needed)
+uv run --with playwright python bench/proto/commit_proto.py --shape full
 
 # fp128 WGSL vs Python big ints, 100k random vectors + edge cases (no server needed)
 uv run --with playwright python bench/test_fp128_wgsl.py
@@ -165,6 +172,7 @@ How it works:
 - Shaders live in `frontend/public/wgsl/` (`fp128.wgsl` library + kernels); the proxy prepends the library to every kernel. WGSL has no 64-bit integers, so 32×32 products come from 16-bit halves and reduction uses 2^128 ≡ C (mod p) as wrapping `+C` folds.
 - `worker.js` spawns the proxy when the `init` message carries `gpu: true` and reports `gpu: {status, adapter, features, limits}` in `init-done`. Every prove then runs a GPU self-test (2^20 random `a·b + c` mul-adds vs `AkitaField` on the CPU; `a` goes through a persistent 256 MiB buffer — CREATE_BUFFER / UPLOAD / handle binding / DESTROY — `b`, `c` as 16 MiB inline uploads, the result as a 16 MiB readback) plus 200 NOP round trips and reports `gpu_status` (`disabled` | `unavailable` | `ok` | `error: …`), `gpu_selftest_ms`, `gpu_selftest_mismatches`, `gpu_roundtrip_us` (mean over the 200 NOPs — WebKit coarsens `performance.now()` to 1 ms). That preflight is the entire gpu=on overhead in W0.
 - Fallback: no `navigator.gpu`, no adapter, a proxy load failure or a wasm built without the feature all yield `gpu_status: unavailable` and the prove proceeds on the CPU unchanged. `gpu::call` is never entered unless the proxy reported ready.
+- Trace commit on the GPU (`src/gpu/trace_commit.rs`, features `webgpu,trace-commit-device`): `WebGpuTraceCommit` is installed as the `jolt_akita::TraceCommitDevice` the first time the preflight self-test passes, and declines (`None` → CPU kernels, bit-identical) whenever the GPU is toggled off or the shape is not the shipped K=16 / D=512 / n_a=1 / one inner digit / 64-column geometry. Per call: pack the hot indices + masks into one byte per (row, column) (rayon), UPLOAD A and the codes into persistent buffers keyed by (P, blocks), RUN `prep` (negacyclic rotation table A2), `commit_accumulate` (workgroups (P/CHUNK, 32, blocks), 128 threads, `CHUNK` as a pipeline override), `reduce` with RES read back inline, then a canonical-limb check. CHUNK is the smallest of 64..2048 that divides P and keeps the PART scratch `(P/CHUNK)·64·blocks·512·32 B` under 256 MiB (2^16/2^18 → 64, 2^20 → 128, 2^21 → 256). GPU memory at 2^21: A 64 MiB + A2 128 MiB + codes 128 MiB + PART 256 MiB. The stage split (pack / upload / gpu / readback / convert ms) is logged to the console as `[gpu] trace commit …` and returned as `gpu_commit` JSON on the prove result; the tracing span is `trace_onehot_commit_gpu`.
 - Secure-context trap: `navigator.gpu` is undefined on `about:blank` and plain-http non-localhost origins; `http://localhost` is fine. Playwright's Chromium only exposes WebGPU with `--enable-unsafe-webgpu --use-angle=metal` (`--browser chromium-unsafe`); plain `--browser chromium` exercises the fallback.
 
 ## Protocol

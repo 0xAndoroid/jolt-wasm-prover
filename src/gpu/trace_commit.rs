@@ -133,7 +133,7 @@ fn chunk_for(shape: &TraceCommitShape) -> Option<u32> {
         COLUMN_CAPACITY as u64 * shape.blocks_per_column as u64 * D as u64 * 32;
     let mut chunk = MIN_CHUNK;
     while chunk <= MAX_CHUNK {
-        if positions % u64::from(chunk) == 0
+        if positions.is_multiple_of(u64::from(chunk))
             && positions / u64::from(chunk) * part_bytes_per_chunk <= PART_BUDGET_BYTES
         {
             return Some(chunk);
