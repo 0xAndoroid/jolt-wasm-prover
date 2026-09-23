@@ -217,6 +217,8 @@ def main():
     rounds = args.rounds or ([24, 21, 20, 19] if args.set == "full" else [])
     if args.shape == "small":
         rounds = [12]
+    if not rounds:
+        ap.error("nothing to run: pass --rounds R ..., --set full or --shape small")
     exact = args.shape == "small"
     rng = np.random.default_rng(args.seed)
 

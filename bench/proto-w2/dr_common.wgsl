@@ -10,7 +10,7 @@ struct Params {
   off_second: u32,   // offset of this round's E_second table in eq[]
   ppt: u32,          // units per thread
   packed: u32,       // 0: digits as i8 bytes, 1: 3-bit packed (w+4), 8 digits per 24 bits
-  src_mode: u32,     // field kernel: 0 = fold prev table, 1 = materialize from octets via LUT2f
+  src_mode: u32,     // field kernel: 0 = fold prev table, 1 = materialize from octets via LUT2f, 2 = round 2 (LUT2f lookup, no table write); lut kernel: 0 = LUT1, 1 = LUT2f
   _pad: u32,
   r: vec4<u32>,      // current fold challenge (field kernel: r_{k-1}; lut kernel: r0)
   r_aux: vec4<u32>,  // lut kernel: r1
