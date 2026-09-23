@@ -13,6 +13,12 @@
 pub mod mailbox;
 #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
 mod selftest;
+#[cfg(all(
+    target_arch = "wasm32",
+    feature = "webgpu",
+    feature = "trace-commit-device"
+))]
+pub mod trace_commit;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -33,6 +39,13 @@ pub fn set_unavailable() {
     STATE.store(STATE_UNAVAILABLE, Ordering::SeqCst);
 }
 
+/// The installed `TraceCommitDevice` is a process-wide `OnceLock`, but the GPU
+/// toggle is per prove call: the device consults this on every job so a
+/// `gpu=false` run after a `gpu=true` run really stays on the CPU.
+pub fn is_enabled() -> bool {
+    STATE.load(Ordering::SeqCst) == STATE_ENABLED
+}
+
 /// What a prove run learned about the GPU before doing any field work.
 #[derive(Clone, Debug, Default)]
 pub struct GpuReport {
@@ -43,6 +56,9 @@ pub struct GpuReport {
     /// Mean NOP mailbox round trip over 200 calls, microseconds (browser
     /// clocks are ~1 ms coarse, so a per-call median is meaningless).
     pub roundtrip_us: f64,
+    /// JSON stage breakdown of the GPU trace commits in this prove
+    /// (`trace_commit::CommitBreakdown`); empty when none ran.
+    pub commit: String,
 }
 
 /// Self-test + NOP latency probe; only touches the mailbox when enabled.
@@ -63,7 +79,13 @@ pub fn preflight() -> GpuReport {
 #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
 fn preflight_enabled() -> GpuReport {
     match selftest::run() {
-        Ok(report) => report,
+        Ok(report) => {
+            #[cfg(feature = "trace-commit-device")]
+            if report.status == "ok" {
+                trace_commit::install_once();
+            }
+            report
+        }
         Err(e) => GpuReport {
             status: format!("error: {e}"),
             ..Default::default()
@@ -77,6 +99,23 @@ fn preflight_enabled() -> GpuReport {
         status: "unavailable".into(),
         ..Default::default()
     }
+}
+
+/// Stage breakdown of the GPU trace commits since the last call (JSON);
+/// empty when the device is compiled out or never ran.
+pub fn take_commit_report() -> String {
+    #[cfg(all(
+        target_arch = "wasm32",
+        feature = "webgpu",
+        feature = "trace-commit-device"
+    ))]
+    {
+        let b = trace_commit::take_breakdown();
+        if b.calls > 0 {
+            return b.to_json();
+        }
+    }
+    String::new()
 }
 
 /// Address of the mailbox for `gpu-proxy.js`; 0 when compiled out.

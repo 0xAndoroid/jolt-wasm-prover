@@ -142,7 +142,7 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
     };
 
     // Outside the phase clock: gpu=on overhead is exactly this preflight.
-    let gpu = crate::gpu::preflight();
+    let mut gpu = crate::gpu::preflight();
 
     let mut clock = Clock::start();
     let trace_output = TracerBackend::new()
@@ -191,6 +191,7 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
     )
     .map_err(|e| format!("prove error: {e}"))?;
     let prove_ms = clock.lap();
+    gpu.commit = crate::gpu::take_commit_report();
 
     Ok(ProveOutput {
         proof_bytes: encode(&proof, "proof")?,
