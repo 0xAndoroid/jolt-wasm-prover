@@ -6,9 +6,13 @@ import init, {
     WasmProver,
     WasmVerifier,
     gpu_mailbox_ptr,
+    gpu_selftest,
+    gpu_is_dead,
     set_gpu_enabled,
+    set_gpu_disabled,
     set_gpu_commit_enabled,
     set_gpu_digit_range_enabled,
+    set_gpu_op_timeout_ms,
     set_gpu_unavailable,
     set_digit_range_parity_rounds,
 } from '/pkg/jolt_wasm_prover.js';
@@ -32,8 +36,13 @@ async function fetchBytes(url) {
 
 // The prover blocks its threads, so the GPUDevice lives in gpu-proxy.js and
 // talks to Rust through a mailbox in the shared wasm memory (src/gpu/).
-// Resolves to the proxy's ready/unavailable report; never throws.
+// Resolves to {status: 'ok' | 'unavailable' | 'error: …', reason?, adapter?,
+// selftestMs, roundtripUs}; the self-test runs once per session. Never throws.
 async function initGpu() {
+    if (gpuProxy) {
+        set_gpu_enabled();
+        return selftest();
+    }
     const mailboxPtr = gpu_mailbox_ptr();
     if (mailboxPtr === 0) {
         set_gpu_unavailable();
@@ -56,7 +65,27 @@ async function initGpu() {
         return { status: 'unavailable', reason: report.reason };
     }
     set_gpu_enabled();
-    return { status: 'ready', adapter: report.adapter, features: report.features, limits: report.limits };
+    return { ...selftest(), adapter: report.adapter, features: report.features, limits: report.limits };
+}
+
+function selftest() {
+    const st = JSON.parse(gpu_selftest());
+    const gpu = { status: st.status, selftestMs: st.selftest_ms, roundtripUs: st.roundtrip_us };
+    if (st.status !== 'ok') {
+        set_gpu_unavailable();
+        gpu.reason = `GPU self-test failed: ${st.status}`;
+    }
+    return gpu;
+}
+
+// A mailbox op timed out: proving stays on the CPU for the rest of the session.
+// The proxy is orphaned, not terminated: WebKit crashes the whole page when a
+// worker that owns a GPUDevice is terminated (headless WebKit, Sep 2026).
+function dropDeadProxy() {
+    if (!gpuProxy || !gpu_is_dead()) return null;
+    gpuProxy = null;
+    set_gpu_unavailable();
+    return { status: 'unavailable', reason: 'GPU proxy unresponsive — switched to CPU' };
 }
 
 self.onmessage = async (e) => {
@@ -76,12 +105,31 @@ self.onmessage = async (e) => {
                 scheduleArtifacts = schedules;
                 await initThreadPool(data.numThreads);
                 init_tracing();
+                set_gpu_op_timeout_ms(data.gpuTimeoutMs ?? 30000);
                 // gpu: true | false | 'w1' (GPU on, digit-range rounds on the CPU) | 'w2' (GPU on, trace commit on the CPU).
                 const gpu = data.gpu ? await initGpu() : { status: 'disabled' };
                 set_gpu_commit_enabled(data.gpu !== 'w2');
                 set_gpu_digit_range_enabled(data.gpu !== 'w1');
                 set_digit_range_parity_rounds(data.parityRounds ?? 0);
                 self.postMessage({ type: 'init-done', gpu });
+                break;
+            }
+
+            case 'set-gpu': {
+                let gpu;
+                if (data.enabled) {
+                    gpu = await initGpu();
+                } else {
+                    set_gpu_disabled();
+                    gpu = { status: 'disabled' };
+                }
+                self.postMessage({ type: 'gpu-status', gpu });
+                break;
+            }
+
+            // Test hook (bench/test_ui_modes.py): the proxy stops answering the mailbox.
+            case 'hang-gpu-proxy': {
+                gpuProxy?.postMessage({ type: 'hang' });
                 break;
             }
 
@@ -190,6 +238,7 @@ self.onmessage = async (e) => {
     } catch (err) {
         const msg = err.message || String(err);
         console.error('[worker error]', msg);
-        self.postMessage({ type: 'error', error: msg });
+        const gpu = dropDeadProxy();
+        self.postMessage(gpu ? { type: 'error', error: msg, gpu } : { type: 'error', error: msg });
     }
 };

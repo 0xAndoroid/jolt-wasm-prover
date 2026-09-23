@@ -60,6 +60,28 @@ mod wasm {
         crate::gpu::set_unavailable()
     }
 
+    #[wasm_bindgen]
+    pub fn set_gpu_disabled() {
+        crate::gpu::set_disabled()
+    }
+
+    /// Once-per-session GPU self-test (cached afterwards); JSON `GpuReport`.
+    #[wasm_bindgen]
+    pub fn gpu_selftest() -> String {
+        serde_json::to_string(&crate::gpu::selftest()).expect("plain struct")
+    }
+
+    /// Mailbox op deadline; a timeout marks the proxy dead for the session.
+    #[wasm_bindgen]
+    pub fn set_gpu_op_timeout_ms(ms: u32) {
+        crate::gpu::set_op_timeout_ms(ms)
+    }
+
+    #[wasm_bindgen]
+    pub fn gpu_is_dead() -> bool {
+        crate::gpu::mailbox_is_dead()
+    }
+
     /// W1 knob: keep the GPU on but leave the stage-0 trace commit on the CPU
     /// (isolates later waves' increments in the bench).
     #[wasm_bindgen]

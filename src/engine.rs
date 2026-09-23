@@ -152,9 +152,8 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
         program_size: Some(layout.program_size),
     };
 
-    // Outside the phase clock: gpu=on overhead is exactly this preflight.
     #[cfg(target_arch = "wasm32")]
-    let mut gpu = crate::gpu::preflight();
+    let mut gpu = crate::gpu::status_report();
 
     let mut clock = Clock::start();
     let trace_output = TracerBackend::new()

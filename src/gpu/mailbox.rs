@@ -2,7 +2,7 @@
 //! Layout is mirrored by hand in the proxy (u32 word offsets) — keep both in
 //! sync.
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 
 use js_sys::{Atomics, Int32Array, WebAssembly};
@@ -14,10 +14,18 @@ pub const OP_UPLOAD: u32 = 3;
 pub const OP_DESTROY: u32 = 4;
 pub const OP_RUN: u32 = 5;
 /// Several RUN passes in one trip: `args = [npasses, {shader, wx, nbind, region_idx…}…]`,
-/// region 0 = the packed per-pass 64 B uniform blocks.
+/// region 0 = the packed per-pass 64 B uniform blocks. `args[RUN_SEQ_COPY..]`
+/// = `[src_region, dst_region, dst_byte_offset, byte_len]` appends a
+/// buffer-to-buffer copy after the passes (`byte_len` 0 = none).
 pub const OP_RUN_SEQ: u32 = 6;
 /// Copy a device buffer (`args = [handle, byte_len]`) into the READBACK region.
 pub const OP_DOWNLOAD: u32 = 7;
+/// Destroy then create handles in one trip: `args = [n_destroy, handles…, n_create, sizes…]`,
+/// the new handles come back in RET (≤ 8).
+pub const OP_ALLOC: u32 = 8;
+/// Several uploads in one trip: `args = [n, {handle, byte_offset, region}…]`.
+pub const OP_UPLOAD_MULTI: u32 = 9;
+pub const RUN_SEQ_COPY: usize = 28;
 
 pub const STATUS_IDLE: u32 = 0;
 pub const STATUS_BUSY: u32 = 1;
@@ -65,6 +73,19 @@ static MAILBOX: Mailbox = Mailbox {
 
 /// One in-flight op at a time: the mailbox has a single set of slots.
 static LOCK: Mutex<()> = Mutex::new(());
+/// Per-op deadline; W1's accumulate at 2^21 is the longest op.
+static TIMEOUT_MS: AtomicU32 = AtomicU32::new(30_000);
+/// Set once an op timed out: the proxy may still write into the abandoned
+/// regions, so every later call is refused for the rest of the session.
+static DEAD: AtomicBool = AtomicBool::new(false);
+
+pub fn set_timeout_ms(ms: u32) {
+    TIMEOUT_MS.store(ms.max(1), Ordering::SeqCst);
+}
+
+pub fn is_dead() -> bool {
+    DEAD.load(Ordering::SeqCst)
+}
 
 pub fn ptr() -> u32 {
     &MAILBOX as *const Mailbox as u32
@@ -122,6 +143,9 @@ fn mailbox_view() -> Int32Array {
 /// buffers must stay alive and untouched until this returns.
 pub fn call(op: u32, args: &[u32], regions: &[Region]) -> Result<[u32; 8], GpuError> {
     assert!(args.len() <= MAX_ARGS && regions.len() <= MAX_REGIONS);
+    if is_dead() {
+        return Err(GpuError("gpu proxy dead".into()));
+    }
     let _guard = LOCK
         .lock()
         .map_err(|_| GpuError("mailbox lock poisoned".into()))?;
@@ -147,12 +171,21 @@ pub fn call(op: u32, args: &[u32], regions: &[Region]) -> Result<[u32; 8], GpuEr
     let base = ptr() / 4;
     Atomics::notify(&view, base + WORD_DOORBELL)
         .map_err(|e| GpuError(format!("Atomics.notify failed: {e:?}")))?;
-    // No timeout: abandoning an in-flight op would let a slow proxy write a
-    // `readback` region after the caller has freed it, so a dead proxy blocks
-    // this thread forever rather than risking that.
+    // A timed-out op is abandoned, not cancelled: the proxy may still write
+    // the `readback` regions later, so callers must leak them when
+    // `is_dead()` and the session never enters the mailbox again.
+    let timeout = f64::from(TIMEOUT_MS.load(Ordering::SeqCst));
+    let deadline = super::now_ms() + timeout;
     while m.status.load(Ordering::SeqCst) == STATUS_BUSY {
-        // Returns "ok" | "not-equal"; both re-check.
-        Atomics::wait(&view, base + WORD_STATUS, STATUS_BUSY as i32)
+        let remaining = deadline - super::now_ms();
+        if remaining <= 0.0 {
+            DEAD.store(true, Ordering::SeqCst);
+            return Err(GpuError(format!(
+                "gpu proxy unresponsive after {timeout:.0} ms (op {op})"
+            )));
+        }
+        // Returns "ok" | "not-equal" | "timed-out"; all re-check.
+        Atomics::wait_with_timeout(&view, base + WORD_STATUS, STATUS_BUSY as i32, remaining)
             .map_err(|e| GpuError(format!("Atomics.wait failed: {e:?}")))?;
     }
     let status = m.status.swap(STATUS_IDLE, Ordering::SeqCst);

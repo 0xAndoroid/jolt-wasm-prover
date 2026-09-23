@@ -254,7 +254,7 @@ impl WebGpuTraceCommit {
             len: (out.len() * 4) as u32,
             flags: REGION_READBACK,
         };
-        mailbox::call(
+        if let Err(e) = mailbox::call(
             OP_RUN,
             &run_args(
                 SHADER_REDUCE,
@@ -263,7 +263,13 @@ impl WebGpuTraceCommit {
                 2,
             ),
             &[Region::handle(bufs.part), res],
-        )?;
+        ) {
+            if mailbox::is_dead() {
+                // The proxy may still write `out`; leaking it keeps that write harmless.
+                std::mem::forget(out);
+            }
+            return Err(e);
+        }
         drop(slot);
         let t4 = now_ms();
 

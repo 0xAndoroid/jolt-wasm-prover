@@ -2,11 +2,12 @@
 //! backed by the kernels in `frontend/public/wgsl/digit_range/` (layout
 //! contract in `bench/proto-w2/README.md` of the kernel prototype).
 //!
-//! One instance = UPLOAD digits → per round one RUN_SEQ (params + this
-//! round's Gruen tables as inline uploads, the 80 B message as inline
-//! readback) → DOWNLOAD of the last folded table for the CPU tail. Digits,
-//! the two ping-pong tables, the three LUTs and the partials scratch are
-//! persistent handles grown on demand and owned by the live session.
+//! One instance = one UPLOAD (digits, plus lut0 on fresh handles) → per
+//! round one RUN_SEQ (params + this round's Gruen tables as inline uploads,
+//! the 80 B message as inline readback; the last round also copies the
+//! folded table for the CPU tail into that readback). Digits, the two
+//! ping-pong tables, the three LUTs and the partials scratch are persistent
+//! handles (re)allocated in one ALLOC trip and owned by the live session.
 
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,7 +20,7 @@ use akita_prover::{
 use jolt_akita::AkitaError;
 
 use super::mailbox::{
-    self, GpuError, Region, OP_CREATE_BUFFER, OP_DESTROY, OP_DOWNLOAD, OP_RUN_SEQ, OP_UPLOAD,
+    self, GpuError, Region, OP_ALLOC, OP_DOWNLOAD, OP_RUN_SEQ, OP_UPLOAD_MULTI, RUN_SEQ_COPY,
 };
 use super::now_ms;
 
@@ -127,14 +128,6 @@ pub fn install_once() {
     });
 }
 
-fn create_buffer(bytes: u32) -> Result<u32, GpuError> {
-    Ok(mailbox::call(OP_CREATE_BUFFER, &[bytes], &[])?[0])
-}
-
-fn upload(handle: u32, bytes: &[u8]) -> Result<(), GpuError> {
-    mailbox::call(OP_UPLOAD, &[handle, 0], &[Region::upload(bytes)]).map(|_| ())
-}
-
 /// Coefficients of `Q(L + (R - L) X)` for `L = V[a]`, `R = V[b]`, as i32 in
 /// the round-0 layout `lut0[c * 16 + (a | b << 2)]`.
 fn lut0_bytes() -> Vec<u8> {
@@ -167,12 +160,15 @@ fn units_per_thread(units: u32) -> u32 {
     ppt
 }
 
-fn handles_for(slot: &mut Option<Handles>, digits_bytes: u32, n: u32) -> Result<Handles, GpuError> {
-    if let Some(h) = slot.take_if(|h| h.digits_cap < digits_bytes || h.n_cap < n) {
-        destroy(&h.all());
-    }
+/// `true` when the handles were just allocated (lut0 still needs uploading).
+fn handles_for(
+    slot: &mut Option<Handles>,
+    digits_bytes: u32,
+    n: u32,
+) -> Result<(Handles, bool), GpuError> {
+    let stale = slot.take_if(|h| h.digits_cap < digits_bytes || h.n_cap < n);
     if let Some(h) = slot.take() {
-        return Ok(h);
+        return Ok((h, false));
     }
     // Round 1 needs n/4/blk workgroups where blk = min(|E_first|, 2048) and
     // |E_first| ≥ 2^((num_vars-1)/2 - 1); round 0 needs at most n/8/256.
@@ -189,41 +185,36 @@ fn handles_for(slot: &mut Option<Handles>, digits_bytes: u32, n: u32) -> Result<
         256 * FIELD_BYTES as u32,
         max_wg * MESSAGE_BYTES as u32,
     ];
-    let mut created = [0u32; 7];
-    for (i, bytes) in sizes.into_iter().enumerate() {
-        match create_buffer(bytes) {
-            Ok(handle) => created[i] = handle,
-            Err(e) => {
-                destroy(&created[..i]);
-                return Err(e);
-            }
-        }
-    }
-    let [digits, ta, tb, lut0, lut1, lut2f, partials] = created;
-    let h = Handles {
-        digits_cap: digits_bytes,
-        n_cap: n,
-        max_wg,
-        digits,
-        ta,
-        tb,
-        lut0,
-        lut1,
-        lut2f,
-        partials,
-    };
-    if let Err(e) = upload(h.lut0, &lut0_bytes()) {
-        destroy(&h.all());
-        return Err(e);
-    }
-    Ok(h)
+    let old = stale.map(|h| h.all().to_vec()).unwrap_or_default();
+    let mut args = vec![old.len() as u32];
+    args.extend_from_slice(&old);
+    args.push(sizes.len() as u32);
+    args.extend_from_slice(&sizes);
+    let created = mailbox::call(OP_ALLOC, &args, &[])?;
+    let [digits, ta, tb, lut0, lut1, lut2f, partials] = created[..sizes.len()].try_into().unwrap();
+    Ok((
+        Handles {
+            digits_cap: digits_bytes,
+            n_cap: n,
+            max_wg,
+            digits,
+            ta,
+            tb,
+            lut0,
+            lut1,
+            lut2f,
+            partials,
+        },
+        true,
+    ))
 }
 
-/// Best effort: nothing is left to recover when DESTROY itself fails.
+/// Best effort: nothing is left to recover when the destroy itself fails.
 fn destroy(handles: &[u32]) {
-    for &handle in handles {
-        let _ = mailbox::call(OP_DESTROY, &[handle], &[]);
-    }
+    let mut args = vec![handles.len() as u32];
+    args.extend_from_slice(handles);
+    args.push(0);
+    let _ = mailbox::call(OP_ALLOC, &args, &[]);
 }
 
 struct Session {
@@ -235,6 +226,8 @@ struct Session {
     r1: [u8; FIELD_BYTES],
     /// Table handle written by the last round (`None` before round 3).
     last_dst: Option<u32>,
+    /// Folded table read back with the last round's message.
+    table: Option<Vec<u8>>,
     ops: u32,
     upload_ms: f64,
     rounds_ms: f64,
@@ -320,6 +313,7 @@ impl Session {
         out: &mut [u8; MESSAGE_BYTES],
     ) -> Result<(), GpuError> {
         let t0 = now_ms();
+        let last = round + 1 == self.rounds;
         let zero = [0u8; FIELD_BYTES];
         let prev = prev.unwrap_or(&zero);
         let n = self.n;
@@ -328,7 +322,7 @@ impl Session {
         let inner_bits = inner.ilog2();
         let off_second = inner;
         let mut passes: Vec<Pass> = Vec::with_capacity(3);
-        let (main_wgs, lut_handle, table_dst);
+        let (main_wgs, lut_handle, table_dst, table_region);
         match round {
             0 => {
                 if inner_bits < 2 {
@@ -338,7 +332,7 @@ impl Session {
                 let ppt = units_per_thread(units).min(inner / 4);
                 main_wgs = units.div_ceil(WG * ppt);
                 lut_handle = self.handles().lut0;
-                table_dst = None;
+                (table_dst, table_region) = (None, R_TA);
                 passes.push(Pass {
                     shader: SHADER_ROUND0,
                     wgs: main_wgs,
@@ -352,7 +346,7 @@ impl Session {
                 let blk = inner.min(ROUND1_BLK);
                 main_wgs = units.div_ceil(blk);
                 lut_handle = self.handles().lut1;
-                table_dst = None;
+                (table_dst, table_region) = (None, R_TA);
                 passes.push(Pass {
                     shader: SHADER_LUT,
                     wgs: 1,
@@ -372,7 +366,7 @@ impl Session {
                 let ppt = units_per_thread(units);
                 main_wgs = units.div_ceil(WG * ppt);
                 lut_handle = self.handles().lut2f;
-                table_dst = None;
+                (table_dst, table_region) = (None, R_TA);
                 passes.push(Pass {
                     shader: SHADER_LUT,
                     wgs: 1,
@@ -401,12 +395,12 @@ impl Session {
                 let ppt = units_per_thread(units);
                 main_wgs = units.div_ceil(WG * ppt);
                 lut_handle = self.handles().lut2f;
-                let (src_mode, binds, dst) = match k {
-                    3 => (1, BINDS_FIELD_TA_DST, self.handles().ta),
-                    k if k % 2 == 0 => (0, BINDS_FIELD_TB_DST, self.handles().tb),
-                    _ => (0, BINDS_FIELD_TA_DST, self.handles().ta),
+                let (src_mode, binds, dst, region) = match k {
+                    3 => (1, BINDS_FIELD_TA_DST, self.handles().ta, R_TA),
+                    k if k % 2 == 0 => (0, BINDS_FIELD_TB_DST, self.handles().tb, R_TB),
+                    _ => (0, BINDS_FIELD_TA_DST, self.handles().ta, R_TA),
                 };
-                table_dst = Some(dst);
+                (table_dst, table_region) = (Some(dst), region);
                 passes.push(Pass {
                     shader: SHADER_FIELD,
                     wgs: main_wgs,
@@ -449,21 +443,45 @@ impl Session {
                 args.extend_from_slice(&[binding, region]);
             }
         }
+        // The last round's readback also carries the folded table (copied
+        // after the passes), which saves the DOWNLOAD trip.
+        let table_len = if last && table_dst.is_some() {
+            (self.n >> (self.rounds - 1)) as usize * FIELD_BYTES
+        } else {
+            0
+        };
+        if table_len > 0 {
+            assert!(args.len() <= RUN_SEQ_COPY);
+            args.resize(RUN_SEQ_COPY, 0);
+            args.extend_from_slice(&[table_region, R_OUT, MESSAGE_BYTES as u32, table_len as u32]);
+        }
         let mut eq = Vec::with_capacity(e_first.len() + e_second.len());
         eq.extend_from_slice(e_first);
         eq.extend_from_slice(e_second);
+        let mut buf = vec![0u8; MESSAGE_BYTES + table_len];
         let h = self.handles();
         let regions = [
             Region::upload(&param_bytes),
             Region::upload(&eq),
-            Region::readback(out),
+            Region::readback(&mut buf),
             Region::handle(h.digits),
             Region::handle(h.partials),
             Region::handle(lut_handle),
             Region::handle(h.ta),
             Region::handle(h.tb),
         ];
-        mailbox::call(OP_RUN_SEQ, &args, &regions)?;
+        if let Err(e) = mailbox::call(OP_RUN_SEQ, &args, &regions) {
+            if mailbox::is_dead() {
+                // The proxy may still write `buf`; leaking it keeps that write harmless.
+                std::mem::forget(buf);
+            }
+            return Err(e);
+        }
+        out.copy_from_slice(&buf[..MESSAGE_BYTES]);
+        if table_len > 0 {
+            buf.drain(..MESSAGE_BYTES);
+            self.table = Some(buf);
+        }
         if table_dst.is_some() {
             self.last_dst = table_dst;
         }
@@ -472,17 +490,26 @@ impl Session {
         Ok(())
     }
 
+    /// Only enters the mailbox when `table()` comes before the last round.
     fn download_table(&mut self) -> Result<Vec<u8>, GpuError> {
+        if let Some(table) = self.table.take() {
+            return Ok(table);
+        }
         let dst = self
             .last_dst
             .ok_or_else(|| GpuError("table requested before round 3".into()))?;
         let entries = self.n >> (self.rounds - 1);
         let mut table = vec![0u8; entries as usize * FIELD_BYTES];
-        mailbox::call(
+        if let Err(e) = mailbox::call(
             OP_DOWNLOAD,
             &[dst, table.len() as u32],
             &[Region::readback(&mut table)],
-        )?;
+        ) {
+            if mailbox::is_dead() {
+                std::mem::forget(table);
+            }
+            return Err(e);
+        }
         self.ops += 1;
         Ok(table)
     }
@@ -549,7 +576,7 @@ fn open_session(job: &DigitRangeJob<'_>, rounds: usize) -> Result<Session, GpuEr
     // Padded to a whole number of words for writeBuffer.
     let mut digits = job.digits.to_vec();
     digits.resize(digits.len().div_ceil(4) * 4, 0);
-    let handles = handles_for(&mut HANDLES.lock().unwrap(), digits.len() as u32, n)?;
+    let (handles, fresh) = handles_for(&mut HANDLES.lock().unwrap(), digits.len() as u32, n)?;
     let mut session = Session {
         handles: Some(handles),
         n,
@@ -558,12 +585,28 @@ fn open_session(job: &DigitRangeJob<'_>, rounds: usize) -> Result<Session, GpuEr
         r0: [0; FIELD_BYTES],
         r1: [0; FIELD_BYTES],
         last_dst: None,
-        ops: 1,
+        table: None,
+        ops: 1 + u32::from(fresh),
         upload_ms: 0.0,
         rounds_ms: 0.0,
         t_open,
     };
-    upload(session.handles().digits, &digits)?;
+    let lut0 = lut0_bytes();
+    let h = session.handles();
+    let mut args = vec![1, h.digits, 0, 0];
+    let mut regions = vec![Region::upload(&digits)];
+    if fresh {
+        args[0] = 2;
+        args.extend_from_slice(&[h.lut0, 0, 1]);
+        regions.push(Region::upload(&lut0));
+    }
+    if let Err(e) = mailbox::call(OP_UPLOAD_MULTI, &args, &regions) {
+        // Never hand back handles whose lut0 may be missing.
+        if let Some(h) = session.handles.take() {
+            destroy(&h.all());
+        }
+        return Err(e);
+    }
     session.upload_ms = now_ms() - t_open;
     Ok(session)
 }
