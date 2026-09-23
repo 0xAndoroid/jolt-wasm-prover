@@ -9,6 +9,11 @@ rustflags = [
   "-C", "link-arg=--export=__tls_align",
   "-C", "link-arg=--export=__tls_base",
   "-C", "link-arg=--export=__heap_base",
+  # Main-thread stack. The Akita backend kernels recurse deeply inside rayon
+  # parallel iterators and carry large frames (jolt-akita runs them on 64 MiB
+  # worker stacks natively); the default 1 MiB wasm stack overflows. Worker
+  # thread stacks are sized separately by worker.js (`thread_stack_size`).
+  "-C", "link-arg=-zstack-size=33554432",
   "-C", "opt-level=3",
   "-A", "long_running_const_eval",
 ]

@@ -8,5 +8,5 @@ guest = []
 field-inline = ["jolt/field-inline"]
 
 [dependencies]
-jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
-jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "be900fc55de099c4cb50ee79310d624ed9488af8" }
+jolt = { package = "jolt-sdk", git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
+jolt-inlines-keccak256 = { git = "https://github.com/a16z/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }

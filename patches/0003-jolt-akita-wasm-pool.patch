@@ -1,0 +1,50 @@
+From: jolt-wasm-prover <noreply@jolt-wasm-prover>
+Date: Tue, 22 Sep 2026 20:18:48 -0400
+Subject: [PATCH] fix(jolt-akita): run the backend pool inline on wasm32
+
+with_backend_pool builds a dedicated rayon ThreadPool with 64 MiB worker
+stacks; on wasm32 ThreadPoolBuilder::build() cannot spawn OS threads
+(wasm-bindgen-rayon provides exactly one fixed global pool) and panics.
+Run the closure on the current (global) pool there and leave worker
+stack sizing to the embedder (wasm-bindgen thread_stack_size).
+---
+diff --git a/crates/jolt-akita/src/adapters.rs b/crates/jolt-akita/src/adapters.rs
+index b4532ef..2f6f348 100644
+--- a/crates/jolt-akita/src/adapters.rs
++++ b/crates/jolt-akita/src/adapters.rs
+@@ -189,6 +189,7 @@ const SCHEDULE_SELECTION_BYTES: usize = 32;
+ /// so oversizing costs virtual address space only.
+ const BACKEND_WORKER_STACK_BYTES: usize = 64 * 1024 * 1024;
+ 
++#[cfg(any(not(target_arch = "wasm32"), feature = "profiling"))]
+ #[expect(
+     clippy::expect_used,
+     reason = "a pool that cannot spawn threads is an unrecoverable environment failure"
+@@ -205,6 +206,7 @@ fn build_backend_pool(name: &'static str, num_threads: Option<usize>) -> ThreadP
+         .expect("the Akita backend thread pool must build")
+ }
+ 
++#[cfg(not(target_arch = "wasm32"))]
+ fn backend_pool() -> &'static ThreadPool {
+     static POOL: OnceLock<ThreadPool> = OnceLock::new();
+     POOL.get_or_init(|| build_backend_pool("jolt-akita", None))
+@@ -297,7 +299,18 @@ pub(crate) fn with_backend_pool<R: Send>(f: impl FnOnce() -> R + Send) -> R {
+         }
+         ProfileBackendPool::Default => {}
+     }
+-    backend_pool().install(f)
++    // wasm32: the global rayon pool is the only pool that exists
++    // (wasm-bindgen-rayon workers); ThreadPoolBuilder::build() cannot spawn
++    // OS threads and panics. Worker stack size is the embedder's job there
++    // (wasm-bindgen's `thread_stack_size`).
++    #[cfg(target_arch = "wasm32")]
++    {
++        f()
++    }
++    #[cfg(not(target_arch = "wasm32"))]
++    {
++        backend_pool().install(f)
++    }
+ }
+ 
+ #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

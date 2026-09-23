@@ -1,6 +1,6 @@
 # Jolt WASM Prover
 
-In-browser zero-knowledge proving and verification using [Jolt](https://github.com/a16z/jolt). Compiles the Jolt zkVM prover and verifier to WebAssembly with multithreading support via `SharedArrayBuffer` and `wasm-bindgen-rayon`.
+In-browser proving and verification using [Jolt](https://github.com/a16z/jolt). Compiles the Jolt zkVM's modular prover and verifier to WebAssembly on the **Akita lattice protocol** (`jolt-prover/akita`) with multithreading support via `SharedArrayBuffer` and `wasm-bindgen-rayon`.
 
 ## Programs
 
@@ -15,24 +15,27 @@ Four guest programs are included:
 
 ## Prerequisites
 
-- Rust nightly (managed via `rust-toolchain.toml`)
+- Rust `1.95` stable (pinned via `rust-toolchain.toml`; the listed components and targets install on first use)
+- The `jolt` CLI from the pinned jolt rev, on `PATH` (`cargo install --path . --bin jolt` inside an a16z/jolt checkout at that rev) — `generate-preprocessing` compiles the guests through it
 - `wasm-pack`: `curl https://drager.github.io/wasm-pack/installer/init.sh -sSf | bash`
 - Node.js (for the dev server)
 
 ## Quick Start
 
-### 1. Generate preprocessing data
+### 1. Generate artifacts
 
-Preprocessing generates the Dory SRS, compiles guest ELFs, and serializes prover/verifier preprocessing into `frontend/public/`.
+Compiles the guest ELFs, serializes each program's preprocessing, and bundles the Akita schedule catalogs into `frontend/public/`.
 
 ```bash
 cargo run --release --features native --bin generate-preprocessing
 ```
 
-This produces per-program files in `frontend/public/`:
-- `{name}_prover.bin` — prover preprocessing (Dory SRS + shared preprocessing)
-- `{name}_verifier.bin` — verifier preprocessing (Dory verifier setup + shared preprocessing)
+This produces:
+- `akita_schedules.bin` — the three base Akita schedule catalogs (`jolt-akita/schedules/*.aks`), shared by every program, trimmed to the rows a 32-bit target can deserialize (see [Protocol](#protocol))
+- `{name}_program.bin` — `JoltProgramPreprocessing` (bytecode tables, memory layout, max trace length)
 - `{name}.elf` — compiled guest RISC-V ELF
+
+There is no static prover artifact. The Akita commitment setup is exact in the proof shape (padded trace length, RAM size, bytecode size) and its prover half is not serializable, so the browser derives it per proof from the schedule catalogs and the program preprocessing (the "setup" phase, reported separately). The verifier preprocessing for that shape comes out of the same step; the prover returns it next to the proof and the demo's verifier consumes it. A real deployment pins one verifier preprocessing per program and shape.
 
 ### 2. Set up patched WASM dependencies
 
@@ -40,17 +43,21 @@ This produces per-program files in `frontend/public/`:
 ./setup-wasm-deps.sh
 ```
 
-Browser proving currently needs two one-line wasm32 fixes that are not
+Browser proving currently needs a few small wasm32 fixes that are not
 upstream yet — see [WASM runtime patches](#wasm-runtime-patches-pending-upstream).
 Native builds (step 1, roundtrip test) work without this step.
 
 ### 3. Build WASM
 
 ```bash
-CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web
 ```
 
-Outputs the WASM package to `pkg/`.
+Outputs the WASM package to `pkg/`. `build-std` (atomics-enabled `std`) is a
+nightly cargo feature; `RUSTC_BOOTSTRAP=1` unlocks it on the pinned stable
+toolchain. Current nightlies alias `core::convert::Infallible` to `!`, which
+breaks `allocative` 0.3 (a hard dependency through jolt's `common/std`) with
+conflicting trait impls — hence stable.
 
 ### 4. Run (dev)
 
@@ -73,30 +80,32 @@ Both set `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers
 
 ```
 src/lib.rs          WASM entry point — WasmProver, WasmVerifier, init_inlines
+src/engine.rs       Shared prove/verify pipeline (trace → config → Akita setup → prove; verify)
 src/wasm_tracing.rs Chrome Trace Format profiling (Perfetto-compatible)
-preprocessing/      Native binaries for generating preprocessing data
-guests/             RISC-V guest programs (compiled to ELF by jolt-sdk)
+preprocessing/      Native binaries: artifact generation, roundtrip test
+guests/             RISC-V guest programs, own cargo workspace (compiled to ELF via the jolt CLI)
 frontend/           Vite + React + TypeScript + Tailwind frontend
-frontend/public/    Preprocessing artifacts + worker.js
+frontend/public/    Artifacts + worker.js
 server.mjs          Production server with COOP/COEP headers
 ```
 
 ### WASM API
 
 ```javascript
-// Initialize
-await init();
+// Initialize (worker stacks: Akita kernels recurse deeply)
+await init({ module_or_path: wasmUrl, thread_stack_size: 32 * 1024 * 1024 });
 await initThreadPool(navigator.hardwareConcurrency);
 init_tracing();  // optional: enables Perfetto-compatible tracing
-init_inlines();  // registers optimized inline implementations
 
 // Prove
-const prover = new WasmProver(proverPreprocessingBytes, elfBytes);
+const prover = new WasmProver(scheduleArtifactsBytes, programPreprocessingBytes, elfBytes);
 const result = prover.prove_sha2(inputBytes);
-// result.proof, result.program_io, result.proof_size, result.num_cycles
+// result.proof, result.program_io, result.verifier_preprocessing,
+// result.proof_size, result.num_cycles, result.padded_cycles,
+// result.trace_ms, result.setup_ms, result.prove_ms
 
 // Verify
-const verifier = new WasmVerifier(verifierPreprocessingBytes);
+const verifier = new WasmVerifier(result.verifier_preprocessing);
 const valid = verifier.verify(result.proof, result.program_io);
 ```
 
@@ -105,44 +114,67 @@ const valid = verifier.verify(result.proof, result.program_io);
 The `.cargo/config.toml` configures the WASM build with:
 - **Atomics + shared memory** — enables `wasm-bindgen-rayon` multithreading
 - **4 GB max memory** — required for prover memory usage
-- **`build-std`** — rebuilds `std` with atomics support (requires nightly)
+- **32 MiB main-thread stack** — the Akita backend kernels recurse deeply (natively they run on 64 MiB rayon worker stacks); `worker.js` sizes the rayon worker stacks the same way through wasm-bindgen's `thread_stack_size`
+- **`build-std`** — rebuilds `std` with atomics support (nightly cargo feature, unlocked on stable with `RUSTC_BOOTSTRAP=1`)
 
 ## Roundtrip Testing
 
-Validates that preprocessing serialization is deterministic and cross-platform:
+Runs the exact browser code path natively from the shipped artifacts (setup derivation, prove, verify):
 
 ```bash
 cargo run --release --features native --bin test-roundtrip
 ```
 
-## BlindFold ZK
+## Benchmarks
 
-The modular prover compiles with `jolt-prover/zk`: hiding witness
-commitments, committed sumcheck rounds, and the BlindFold tail (jolt
-PR #1690). Proofs are randomized per run — verify them, don't byte-compare
-them. Verification (and the prover's internal replay of it) recurses over a
-folded R1CS, so the native roundtrip runs on a 128 MB stack.
+```bash
+node server.mjs &
+node bench.mjs            # sha2 demo through the React UI
+node bench-chain.mjs 278  # sha2-chain ladder through worker.js (per-phase split)
+```
+
+Both default to the Playwright-bundled Chromium; `PW_BROWSER=webkit` runs the bundled WebKit (Safari's engine), `PW_CHANNEL=chrome` selects system Chrome.
+
+## Protocol
+
+`jolt-prover/akita` selects the packed lattice pipeline: one native `OneHotTrace` commitment group over the Solinas field p = 2^128 − 2^32 + 22537 (`jolt-field/solinas`), the shared stage 1–7 sumchecks on `JoltAkitaBackend::optimized()`, and one native grouped opening (Akita PCS, [LayerZero-Labs/akita](https://github.com/LayerZero-Labs/akita)). Proofs are transparent: `akita` and `zk` (BlindFold) are mutually exclusive in jolt-prover, so this demo has no zero-knowledge mode.
+
+**32-bit schedule subset.** Akita's schedule rows for committed groups of 2^32 or more coefficients (`num_vars >= 32`) carry `usize` fields above `u32::MAX`, which wasm32 cannot deserialize. `generate-preprocessing` drops those rows (dense 36/42, one-hot K=16 40/46, K=256 40/64 kept); nothing a browser can hold is lost and row lookup is exact-key, so the remaining shapes resolve unchanged. The catalog digest bound into the transcript differs from jolt's full catalogs, so browser proofs verify against the verifier preprocessing the prover emits (which carries the same trimmed catalogs), not against a verifier loaded with the packaged `.aks` files.
 
 ## Dependency pins
 
 Jolt crates come from [a16z/jolt](https://github.com/a16z/jolt) at rev
-`be900fc55de099c4cb50ee79310d624ed9488af8` (branch `perf/kernels-optimized`,
-PR #1714) — the optimized kernel backend rebased over main's BlindFold ZK
-support (#1690), so one pin carries both. The extra `perf/manycore-scaling`
-commits from the previous pin are not included.
+`d39bd518a65ea89401de63c3343e98fbad5f1b80` (main, after PR #1818 removed
+`jolt-prover-legacy`). Akita crates come from
+[LayerZero-Labs/akita](https://github.com/LayerZero-Labs/akita) at rev
+`252abb895046cc1d5b9955a26a2ad2318148ac26`, jolt's own pin.
 Arkworks comes from [a16z/arkworks-algebra](https://github.com/a16z/arkworks-algebra)
 branch `dev/twist-shout`; the committed `Cargo.lock` pins it to
 `76bb3a4518928f1ff7f15875f940d614bb9845e6`. The `[patch.crates-io]` block in
-`Cargo.toml` redirects the registry `ark-*` crates (pulled in by `dory-pcs`)
-onto the same fork so the whole graph shares one set of arkworks types.
+`Cargo.toml` redirects the registry `ark-*` crates (pulled in by `dory-pcs`,
+which stays in the graph through `jolt-prover` even though the Dory path is
+compiled out) onto the same fork so the whole graph shares one set of
+arkworks types.
+
+The akita crates depend on `jolt-field` from a16z/jolt at their own rev.
+The `[patch."https://github.com/a16z/jolt"]` block redirects that package
+onto the pinned rev so the graph holds one field identity (the jolt
+workspace does the same with a path patch). Cargo refuses a git patch onto
+the same repository URL, so the redirect points at a mirror of a16z/jolt
+(`0xAndoroid/jolt`) serving the identical commit.
+
+jolt-sdk's host side is Dory-only and does not compile against a
+jolt-prover built with `akita`; the native binaries drive `jolt-host`
+directly and the guest crates are never compiled natively.
+
 Build with the committed lockfile; `cargo update` can move the arkworks
 branch resolution.
 
 ## WASM runtime patches (pending upstream)
 
 The repo builds everywhere from the pinned upstream revs, and native binaries
-are fully functional. Proving on `wasm32` additionally needs two one-line
-fixes that are not upstream yet, shipped in `patches/`:
+are fully functional. Proving on `wasm32` additionally needs five small fixes
+that are not upstream yet, shipped in `patches/`:
 
 1. `0001-jolt-coefflut-u64.patch` — `CoeffLut::saturated()` in
    `jolt-kernels` computes `len * len` in `usize`; at the 65536-entry table
@@ -151,18 +183,21 @@ fixes that are not upstream yet, shipped in `patches/`:
 2. `0002-arkworks-wasm-nested-pool.patch` — `msm_bigint_wnaf` in `ark-ec`
    builds a nested `rayon::ThreadPoolBuilder` per chunk; `build()` panics on
    `wasm32`, where wasm-bindgen-rayon provides exactly one fixed global pool.
-   The fix runs the inner parallel MSM on the global pool.
+   Kept for the arkworks code still linked in; the Akita path does not
+   call it.
+3. `0003-jolt-akita-wasm-pool.patch` — `jolt-akita` runs every backend call
+   on a dedicated rayon pool with 64 MiB worker stacks; `build()` panics on
+   `wasm32`. The fix runs the closure on the global pool there and leaves
+   worker stack sizing to the embedder (`thread_stack_size`).
+4. `0004-akita-wasm-instant.patch` — `akita-prover` and `akita-pcs` read
+   `std::time::Instant` for diagnostics timing; `Instant::now()` panics on
+   `wasm32-unknown-unknown`. The fix routes those imports through a
+   per-crate shim that is a zero-duration stand-in on wasm32.
+5. `0005-akita-types-wasm32-shift.patch` — `akita-types` computes
+   `1usize << 52` as the exact-f64 integer bound; that constant overflows
+   `usize` on 32-bit targets (compile error E0080). The fix makes it `u64`.
 
-What breaks without them, empirically (HeadlessChrome 150, M4, at the pinned
-revs): the default sha2 demo (2^13 trace) **hangs** — proving never completes
-and no error surfaces; sha2-chain at 2^16 **panics** in every rayon worker
-with `index out of bounds: the len is 0` at
-`jolt-kernels/src/optimized/registers_read_write.rs:439` (the CoeffLut fix's
-exact target). With both patches applied, sha2 proves and sha2-chain at 2^16
-proves and verifies in-browser. Native 64-bit builds are unaffected either
-way (the roundtrip test passes without the patches).
-
-`./setup-wasm-deps.sh` clones both upstreams at the pinned revs into
+`./setup-wasm-deps.sh` clones the three upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in
 `Cargo.toml` onto the patched checkouts. `./setup-wasm-deps.sh --revert`
 restores the pinned block.

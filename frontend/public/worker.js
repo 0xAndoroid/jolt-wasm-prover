@@ -7,9 +7,21 @@ import init, {
     WasmVerifier,
 } from '/pkg/jolt_wasm_prover.js';
 
+// Akita backend kernels recurse deeply on rayon workers (64 MiB stacks
+// natively); wasm-bindgen sizes worker stacks from this value (multiple of
+// 64 KiB).
+const THREAD_STACK_SIZE = 32 * 1024 * 1024;
+const SCHEDULES_URL = '/akita_schedules.bin';
+
 let wasmExports = null;
+let scheduleArtifacts = null;
 const provers = {};
-const verifiers = {};
+
+async function fetchBytes(url) {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`fetch ${url}: ${r.status}`);
+    return new Uint8Array(await r.arrayBuffer());
+}
 
 self.onmessage = async (e) => {
     const { type, data } = e.data;
@@ -20,22 +32,24 @@ self.onmessage = async (e) => {
                 if (typeof SharedArrayBuffer === 'undefined') {
                     throw new Error('Your browser does not support SharedArrayBuffer (requires iOS 15.2+, Chrome 91+, Firefox 79+, Safari 15.2+).');
                 }
-                wasmExports = await init('/pkg/jolt_wasm_prover_bg.wasm');
+                const [exports, schedules] = await Promise.all([
+                    init({ module_or_path: '/pkg/jolt_wasm_prover_bg.wasm', thread_stack_size: THREAD_STACK_SIZE }),
+                    fetchBytes(`${SCHEDULES_URL}${data.cacheBust ? `?${data.cacheBust}` : ''}`),
+                ]);
+                wasmExports = exports;
+                scheduleArtifacts = schedules;
                 await initThreadPool(data.numThreads);
                 init_tracing();
-                self.postMessage({ type: 'init-done' });
+                self.postMessage({ type: 'init-done', scheduleBytes: schedules.byteLength });
                 break;
             }
 
             case 'load-program': {
                 const name = data.program;
                 provers[name] = new WasmProver(
-                    new Uint8Array(data.proverPreprocessing),
-                    new Uint8Array(data.verifierPreprocessing),
+                    scheduleArtifacts,
+                    new Uint8Array(data.programPreprocessing),
                     new Uint8Array(data.elfBytes)
-                );
-                verifiers[name] = new WasmVerifier(
-                    new Uint8Array(data.verifierPreprocessing)
                 );
                 self.postMessage({ type: 'program-loaded', program: name });
                 break;
@@ -80,10 +94,13 @@ self.onmessage = async (e) => {
                     program: data.program,
                     proof: result.proof,
                     proofSize: result.proof_size,
-                    compressedProofSize: result.compressed_proof_size,
                     programIo: result.program_io,
+                    verifierPreprocessing: result.verifier_preprocessing,
                     numCycles: result.num_cycles,
                     paddedCycles: result.padded_cycles,
+                    traceMs: result.trace_ms,
+                    setupMs: result.setup_ms,
+                    proveMs: result.prove_ms,
                     peakMemory,
                     elapsed,
                 });
@@ -91,8 +108,11 @@ self.onmessage = async (e) => {
             }
 
             case 'verify': {
-                const verifier = verifiers[data.program];
+                // The Akita verifier setup is exact in the proof shape, so the
+                // verifier is built from the preprocessing the prover emitted
+                // for this proof (a real deployment pins it per program+shape).
                 const start = performance.now();
+                const verifier = new WasmVerifier(new Uint8Array(data.verifierPreprocessing));
                 const valid = verifier.verify(data.proof, data.programIo);
                 const elapsed = performance.now() - start;
 

@@ -1,2 +1,6 @@
 [files]
 extend-exclude = ["frontend/public/"]
+
+[default.extend-words]
+# Akita schedule catalog file extension
+aks = "aks"

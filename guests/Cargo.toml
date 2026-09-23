@@ -1,0 +1,14 @@
+# RISC-V guest workspace, built only through `jolt build -p <guest>` from this
+# directory (preprocessing/generate.rs). Kept apart from the root workspace:
+# see the `[workspace]` note in ../Cargo.toml.
+[workspace]
+resolver = "2"
+members = ["sha2", "secp256k1", "sha3-chain", "sha2-chain"]
+
+# Same codegen as the root workspace the guests used to belong to, so the
+# shipped ELFs are unchanged.
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

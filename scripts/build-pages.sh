@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [ ! -f "$ROOT/pkg/jolt_wasm_prover_bg.wasm" ]; then
   echo "Error: pkg/jolt_wasm_prover_bg.wasm not found." >&2
-  echo "Run: CARGO_UNSTABLE_BUILD_STD=\"panic_abort,std\" wasm-pack build --release --target web" >&2
+  echo "Run: RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD=\"panic_abort,std\" wasm-pack build --release --target web" >&2
   exit 1
 fi
 
