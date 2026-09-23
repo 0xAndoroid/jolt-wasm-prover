@@ -1,0 +1,494 @@
+diff --git a/crates/akita-prover/src/lib.rs b/crates/akita-prover/src/lib.rs
+index fcc8fdf..be429f5 100644
+--- a/crates/akita-prover/src/lib.rs
++++ b/crates/akita-prover/src/lib.rs
+@@ -73,6 +73,11 @@ pub use compute::{
+     SuffixOpeningProveBackend, SuffixTensorProveBackend, TensorBackendFor, TensorCluster,
+     TieredProveStacks, UniformProverStack,
+ };
++pub use protocol::sumcheck::digit_range::device::{
++    set_digit_range_device, set_digit_range_parity_rounds, DigitRangeDevice, DigitRangeJob,
++    DigitRangeSession, FIELD_BYTES as DIGIT_RANGE_FIELD_BYTES,
++    MESSAGE_BYTES as DIGIT_RANGE_MESSAGE_BYTES,
++};
+ pub use protocol::sumcheck::{
+     DigitRangeProver, LowBasisRangeCheckProver, RelationRangeImageProver,
+ };
+diff --git a/crates/akita-prover/src/protocol/sumcheck/digit_range/device.rs b/crates/akita-prover/src/protocol/sumcheck/digit_range/device.rs
+new file mode 100644
+index 0000000..a635681
+--- /dev/null
++++ b/crates/akita-prover/src/protocol/sumcheck/digit_range/device.rs
+@@ -0,0 +1,366 @@
++//! Optional device seam for the basis-8 direct-leaf digit-range sumcheck.
++//!
++//! A [`DigitRangeDevice`] may take the first rounds of one instance: it
++//! receives the packed witness once, then per round the previous challenge
++//! and the prover's own remaining Gruen eq tables, and returns the round's
++//! `q` coefficients. After its last round the device hands back the folded
++//! table and [`LowBasisRangeCheckProver`] finishes on the CPU, so the
++//! transcript, challenge derivation and proof layout are unchanged.
++
++use std::sync::atomic::{AtomicUsize, Ordering};
++use std::sync::{Arc, OnceLock};
++
++use akita_algebra::split_eq::GruenSplitEq;
++use akita_error::AkitaError;
++use akita_serialization::{AkitaSerialize, Compress};
++use akita_sumcheck::{fold_evals_in_place, EqFactoredSumcheckInstanceProver, EqFactoredUniPoly};
++use akita_types::DigitRangePlan;
++use jolt_field::{Field, Fold, Ring, Unreduced};
++
++use super::direct_range_leaf::LowBasisRangeCheckProver;
++use crate::backend::packed_digits::PackedSignedDigits;
++
++/// Canonical little-endian byte length of one field element on the wire.
++pub const FIELD_BYTES: usize = 16;
++/// Round messages carry the five coefficients of `q(X)` (degree 4).
++pub const Q_COEFFS: usize = 5;
++pub const MESSAGE_BYTES: usize = Q_COEFFS * FIELD_BYTES;
++
++/// One basis-8 direct-leaf instance as bytes: `len` digits in two's
++/// complement at `bit_width` bits each, LSB-first contiguous, flat index
++/// `x << ring_bits | y`.
++pub struct DigitRangeJob<'a> {
++    pub digits: &'a [u8],
++    pub bit_width: u8,
++    pub len: usize,
++    pub ring_bits: usize,
++    pub num_vars: usize,
++}
++
++pub trait DigitRangeSession: Send + Sync {
++    /// Fold the table by `prev` (absent in round 0), then write round
++    /// `round`'s `q` coefficients (canonical 16 B LE each) into `out`.
++    /// `e_first`/`e_second` are this round's remaining Gruen tables.
++    fn round(
++        &mut self,
++        round: usize,
++        prev: Option<&[u8; FIELD_BYTES]>,
++        e_first: &[u8],
++        e_second: &[u8],
++        out: &mut [u8; MESSAGE_BYTES],
++    ) -> Result<(), AkitaError>;
++
++    /// The table the last round evaluated (folded by every earlier
++    /// challenge), 16 B LE per entry.
++    fn table(self: Box<Self>) -> Result<Vec<u8>, AkitaError>;
++}
++
++pub trait DigitRangeDevice: Send + Sync {
++    /// `None` declines the instance. `Some(Ok((session, rounds)))` runs the
++    /// first `rounds` rounds on the device; the seam clamps `rounds` to
++    /// `1..=ring_bits` so the handoff table is still in the low-variable phase.
++    fn open(
++        &self,
++        job: &DigitRangeJob<'_>,
++    ) -> Option<Result<(Box<dyn DigitRangeSession>, usize), AkitaError>>;
++}
++
++static DEVICE: OnceLock<Arc<dyn DigitRangeDevice>> = OnceLock::new();
++static PARITY_ROUNDS: AtomicUsize = AtomicUsize::new(0);
++
++/// Install the process-wide device; fails if one is already installed.
++pub fn set_digit_range_device(device: Arc<dyn DigitRangeDevice>) -> Result<(), AkitaError> {
++    DEVICE
++        .set(device)
++        .map_err(|_| AkitaError::InvalidSetup("digit-range device already installed".into()))
++}
++
++/// Check the device's first `rounds` messages against the CPU prover on the
++/// same state; a mismatch fails the prove. Costs a full CPU instance.
++pub fn set_digit_range_parity_rounds(rounds: usize) {
++    PARITY_ROUNDS.store(rounds, Ordering::SeqCst);
++}
++
++fn field_to_bytes<E: Field + AkitaSerialize>(value: &E, out: &mut [u8]) {
++    let mut cursor = std::io::Cursor::new(out);
++    value
++        .serialize_with_mode(&mut cursor, Compress::No)
++        .expect("16-byte field element serializes into a 16-byte slot");
++}
++
++fn fields_to_bytes<E: Field + AkitaSerialize>(values: &[E]) -> Vec<u8> {
++    let mut out = vec![0u8; values.len() * FIELD_BYTES];
++    for (value, slot) in values.iter().zip(out.chunks_exact_mut(FIELD_BYTES)) {
++        field_to_bytes(value, slot);
++    }
++    out
++}
++
++fn field_from_bytes<E: Ring>(bytes: &[u8]) -> E {
++    let mut word = [0u8; FIELD_BYTES];
++    word.copy_from_slice(bytes);
++    E::from_u128(u128::from_le_bytes(word))
++}
++
++struct DeviceRounds<E: Field> {
++    session: Option<Box<dyn DigitRangeSession>>,
++    split_eq: GruenSplitEq<E>,
++    rounds: usize,
++    prev: Option<E>,
++    /// CPU prover fed the same challenges, present only while parity
++    /// checking is on.
++    shadow: Option<LowBasisRangeCheckProver<E>>,
++}
++
++enum Phase<E: Field> {
++    Device(DeviceRounds<E>),
++    Cpu(LowBasisRangeCheckProver<E>),
++    /// Transient state while the table moves from the device to the CPU.
++    Handoff,
++}
++
++/// Direct-leaf prover that runs its first rounds on the installed device
++/// when one accepts the instance, and on the CPU otherwise.
++pub(super) struct DeviceLeaf<E: Field> {
++    phase: Phase<E>,
++    basis: usize,
++    live_x_cols: usize,
++    col_bits: usize,
++    ring_bits: usize,
++    error: Option<AkitaError>,
++}
++
++impl<E: Field + Ring + Unreduced + Fold + AkitaSerialize> DeviceLeaf<E> {
++    pub(super) fn new(
++        digit_witness: PackedSignedDigits,
++        tau0: &[E],
++        plan: DigitRangePlan,
++        live_x_cols: usize,
++        col_bits: usize,
++        ring_bits: usize,
++    ) -> Result<Self, AkitaError> {
++        let cpu = LowBasisRangeCheckProver::new(
++            digit_witness.clone(),
++            tau0,
++            plan,
++            live_x_cols,
++            col_bits,
++            ring_bits,
++        )?;
++        let basis = plan.basis();
++        let mut leaf = Self {
++            phase: Phase::Cpu(cpu),
++            basis,
++            live_x_cols,
++            col_bits,
++            ring_bits,
++            error: None,
++        };
++        let Some(device) = DEVICE.get() else {
++            return Ok(leaf);
++        };
++        let field_ok = E::zero().serialized_size(Compress::No) == FIELD_BYTES;
++        if basis != 8 || !field_ok || ring_bits == 0 {
++            return Ok(leaf);
++        }
++        let job = DigitRangeJob {
++            digits: digit_witness.encoded_bytes(),
++            bit_width: digit_witness.bit_width(),
++            len: digit_witness.len(),
++            ring_bits,
++            num_vars: tau0.len(),
++        };
++        let Some(opened) = device.open(&job) else {
++            return Ok(leaf);
++        };
++        let (session, rounds) = opened?;
++        let rounds = rounds.clamp(1, ring_bits);
++        let shadow = (PARITY_ROUNDS.load(Ordering::SeqCst) > 0)
++            .then(|| {
++                LowBasisRangeCheckProver::new(
++                    digit_witness,
++                    tau0,
++                    plan,
++                    live_x_cols,
++                    col_bits,
++                    ring_bits,
++                )
++            })
++            .transpose()?;
++        leaf.phase = Phase::Device(DeviceRounds {
++            session: Some(session),
++            split_eq: GruenSplitEq::new(tau0)?,
++            rounds,
++            prev: None,
++            shadow,
++        });
++        Ok(leaf)
++    }
++
++    /// Rounds the device ran (0 on the CPU path).
++    pub(super) fn device_rounds(&self) -> usize {
++        match &self.phase {
++            Phase::Device(d) => d.rounds,
++            Phase::Cpu(_) | Phase::Handoff => 0,
++        }
++    }
++
++    /// The first device error, if any. Trait methods cannot fail, so the
++    /// seam records the error, returns zero messages and surfaces it here.
++    pub(super) fn take_error(&mut self) -> Result<(), AkitaError> {
++        match self.error.take() {
++            Some(e) => Err(e),
++            None => Ok(()),
++        }
++    }
++
++    pub(super) fn final_range_image_eval(&self) -> E {
++        match &self.phase {
++            Phase::Cpu(cpu) => cpu.final_range_image_eval(),
++            Phase::Device(_) | Phase::Handoff => {
++                panic!("digit-range device never handed the table back")
++            }
++        }
++    }
++
++    fn zero_message(&self) -> EqFactoredUniPoly<E> {
++        EqFactoredUniPoly::from_q_coeffs(vec![E::zero(); Q_COEFFS])
++    }
++
++    fn device_round(&mut self, round: usize) -> Result<EqFactoredUniPoly<E>, AkitaError> {
++        let Phase::Device(d) = &mut self.phase else {
++            unreachable!("device_round outside the device phase")
++        };
++        let session = d
++            .session
++            .as_mut()
++            .ok_or_else(|| AkitaError::InvalidSetup("digit-range session closed".into()))?;
++        let prev = d.prev.map(|r| {
++            let mut bytes = [0u8; FIELD_BYTES];
++            field_to_bytes(&r, &mut bytes);
++            bytes
++        });
++        let (e_first, e_second) = d.split_eq.remaining_eq_tables();
++        let e_first = fields_to_bytes(e_first);
++        let e_second = fields_to_bytes(e_second);
++        let mut out = [0u8; MESSAGE_BYTES];
++        session.round(round, prev.as_ref(), &e_first, &e_second, &mut out)?;
++        let q_coeffs: Vec<E> = out
++            .chunks_exact(FIELD_BYTES)
++            .map(field_from_bytes)
++            .collect();
++        let poly = EqFactoredUniPoly::from_q_coeffs(q_coeffs);
++        if let Some(shadow) = d.shadow.as_mut() {
++            if round < PARITY_ROUNDS.load(Ordering::SeqCst) {
++                let expected = shadow.compute_round_eq_factored(round);
++                if expected != poly {
++                    return Err(AkitaError::InvalidSetup(format!(
++                        "digit-range device parity mismatch at round {round} (num_vars {}, live_x_cols {})",
++                        d.split_eq.remaining_eq_tables().0.len(), self.live_x_cols
++                    )));
++                }
++                tracing::info!(round, "digit_range_device_parity_ok");
++            }
++        }
++        Ok(poly)
++    }
++
++    fn device_ingest(&mut self, round: usize, r: E) -> Result<(), AkitaError> {
++        let Phase::Device(d) = &mut self.phase else {
++            unreachable!("device_ingest outside the device phase")
++        };
++        d.split_eq.bind(r);
++        d.prev = Some(r);
++        if let Some(shadow) = d.shadow.as_mut() {
++            shadow.ingest_challenge(round, r);
++        }
++        if round + 1 < d.rounds {
++            return Ok(());
++        }
++        let session = d
++            .session
++            .take()
++            .ok_or_else(|| AkitaError::InvalidSetup("digit-range session closed".into()))?;
++        let bytes = session.table()?;
++        let expected_len = (self.live_x_cols << self.ring_bits) >> round;
++        if bytes.len() != expected_len * FIELD_BYTES {
++            return Err(AkitaError::InvalidSize {
++                expected: expected_len * FIELD_BYTES,
++                actual: bytes.len(),
++            });
++        }
++        let mut table: Vec<E> = bytes
++            .chunks_exact(FIELD_BYTES)
++            .map(field_from_bytes)
++            .collect();
++        fold_evals_in_place(&mut table, r);
++        let Phase::Device(d) = std::mem::replace(&mut self.phase, Phase::Handoff) else {
++            unreachable!()
++        };
++        self.phase = Phase::Cpu(LowBasisRangeCheckProver::from_materialized(
++            table,
++            d.split_eq,
++            self.basis,
++            self.live_x_cols,
++            self.col_bits,
++            self.ring_bits,
++            d.rounds,
++        ));
++        Ok(())
++    }
++}
++
++impl<E: Field + Ring + Unreduced + Fold + AkitaSerialize> EqFactoredSumcheckInstanceProver<E>
++    for DeviceLeaf<E>
++{
++    fn num_rounds(&self) -> usize {
++        self.col_bits + self.ring_bits
++    }
++
++    fn degree_bound(&self) -> usize {
++        self.basis / 2
++    }
++
++    fn input_claim(&self) -> E {
++        E::zero()
++    }
++
++    fn current_tau(&self) -> E {
++        match &self.phase {
++            Phase::Device(d) => d.split_eq.current_tau(),
++            Phase::Cpu(cpu) => cpu.current_tau(),
++            Phase::Handoff => unreachable!(),
++        }
++    }
++
++    fn compute_round_eq_factored(&mut self, round: usize) -> EqFactoredUniPoly<E> {
++        match &mut self.phase {
++            Phase::Cpu(cpu) => cpu.compute_round_eq_factored(round),
++            Phase::Handoff => unreachable!(),
++            Phase::Device(_) => {
++                if self.error.is_some() {
++                    return self.zero_message();
++                }
++                match self.device_round(round) {
++                    Ok(poly) => poly,
++                    Err(e) => {
++                        self.error = Some(e);
++                        self.zero_message()
++                    }
++                }
++            }
++        }
++    }
++
++    fn ingest_challenge(&mut self, round: usize, r_round: E) {
++        match &mut self.phase {
++            Phase::Cpu(cpu) => cpu.ingest_challenge(round, r_round),
++            Phase::Handoff => unreachable!(),
++            Phase::Device(_) => {
++                if let Err(e) = self.device_ingest(round, r_round) {
++                    self.error.get_or_insert(e);
++                }
++            }
++        }
++    }
++}
+diff --git a/crates/akita-prover/src/protocol/sumcheck/digit_range/direct_range_leaf/state.rs b/crates/akita-prover/src/protocol/sumcheck/digit_range/direct_range_leaf/state.rs
+index b73a09a..d4ef50e 100644
+--- a/crates/akita-prover/src/protocol/sumcheck/digit_range/direct_range_leaf/state.rs
++++ b/crates/akita-prover/src/protocol/sumcheck/digit_range/direct_range_leaf/state.rs
+@@ -79,6 +79,38 @@ impl<E: Field + Ring + Unreduced> LowBasisRangeCheckProver<E> {
+         })
+     }
+ 
++    /// Resume from a materialized table after `rounds_completed` rounds in
++    /// the low-variable phase (`rounds_completed <= ring_bits`); `split_eq`
++    /// must already be bound to those challenges.
++    pub(crate) fn from_materialized(
++        range_image: Vec<E>,
++        split_eq: GruenSplitEq<E>,
++        basis: usize,
++        live_x_cols: usize,
++        col_bits: usize,
++        ring_bits: usize,
++        rounds_completed: usize,
++    ) -> Self {
++        debug_assert!(rounds_completed <= ring_bits);
++        debug_assert_eq!(
++            range_image.len(),
++            (live_x_cols << ring_bits) >> rounds_completed
++        );
++        Self {
++            range_image: LowBasisRangeImageStorage::Materialized(range_image),
++            split_eq,
++            polynomial_precomputation: RangePolynomialPrecomputation::new(basis),
++            live_x_cols,
++            col_bits,
++            num_vars: col_bits + ring_bits,
++            basis,
++            prefix_tau: None,
++            initial_round_prefix: None,
++            cached_round_poly: None,
++            rounds_completed,
++        }
++    }
++
+     /// Return `range_image(stage1_point)` after the final fold.
+     ///
+     /// # Panics
+diff --git a/crates/akita-prover/src/protocol/sumcheck/digit_range/mod.rs b/crates/akita-prover/src/protocol/sumcheck/digit_range/mod.rs
+index 8096151..fd44297 100644
+--- a/crates/akita-prover/src/protocol/sumcheck/digit_range/mod.rs
++++ b/crates/akita-prover/src/protocol/sumcheck/digit_range/mod.rs
+@@ -18,6 +18,7 @@ mod class_indexed_product;
+ pub(in crate::protocol::sumcheck) mod class_indexed_range_leaf;
+ mod class_indexed_state;
+ mod compact_digit_source;
++pub mod device;
+ pub(crate) mod direct_range_leaf;
+ pub(in crate::protocol::sumcheck) mod exact_prefix;
+ mod range_class_tables;
+@@ -346,7 +347,7 @@ impl<E: Field + Ring + Unreduced + Fold + AkitaSerialize> DigitRangeProver<E> {
+         }
+         if physical_plan.is_none() && plan.basis() <= 8 {
+             let _leaf_span = tracing::info_span!("digit_range_direct_leaf").entered();
+-            let mut leaf_stage = direct_range_leaf::LowBasisRangeCheckProver::new(
++            let mut leaf_stage = device::DeviceLeaf::new(
+                 digit_source.digits(),
+                 &equality_point,
+                 plan,
+@@ -354,6 +355,13 @@ impl<E: Field + Ring + Unreduced + Fold + AkitaSerialize> DigitRangeProver<E> {
+                 high_variable_count,
+                 low_variable_count,
+             )?;
++            tracing::info!(
++                device_rounds = leaf_stage.device_rounds(),
++                live_x_cols = live_block_count,
++                col_bits = high_variable_count,
++                ring_bits = low_variable_count,
++                "digit_range_direct_leaf_plan"
++            );
+             let mut round = 0u32;
+             let (sumcheck, stage1_point, _final_claim) =
+                 prove_eq_factored_sumcheck::<F, T, E, _, _>(&mut leaf_stage, transcript, |tr| {
+@@ -369,6 +377,7 @@ impl<E: Field + Ring + Unreduced + Fold + AkitaSerialize> DigitRangeProver<E> {
+                     })?;
+                     Ok(challenge)
+                 })?;
++            leaf_stage.take_error()?;
+             let range_image_eval = leaf_stage.final_range_image_eval();
+             let proof = AkitaStage1Proof {
+                 stages: vec![AkitaStage1StageProof {
+diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
+index ea1e424..fc38730 100644
+--- a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
++++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/mod.rs
+@@ -87,6 +87,7 @@ use super::two_round_prefix::{
+     stage2_b4_lookup_index_from_digits, stage2_b4_w_digit, stage2_b8_lookup_index_from_digits,
+     stage2_b8_w_digit,
+ };
++use crate::wasm_instant::Instant;
+ use akita_algebra::poly::trim_trailing_zeros;
+ use akita_algebra::split_eq::GruenSplitEq;
+ use akita_error::AkitaError;
+@@ -97,7 +98,6 @@ use jolt_field::solinas::parallel::*;
+ use jolt_field::{Field, Ring, Zero};
+ use jolt_field::{Fold, Unreduced};
+ use std::mem;
+-use crate::wasm_instant::Instant;
+ 
+ use crate::backend::packed_digits::{
+     PackedSignedDigitIter, PackedSignedDigitView, PackedSignedDigits,

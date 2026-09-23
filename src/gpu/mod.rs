@@ -9,6 +9,12 @@
 //! natively) every entry point reports the GPU as disabled and nothing else
 //! changes.
 
+#[cfg(all(
+    target_arch = "wasm32",
+    feature = "webgpu",
+    feature = "digit-range-device"
+))]
+pub mod digit_range;
 #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
 pub mod mailbox;
 #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
@@ -20,7 +26,16 @@ mod selftest;
 ))]
 pub mod trace_commit;
 
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+/// `performance.now()` (falls back to `Date.now()`), shared by the drivers.
+#[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
+fn now_ms() -> f64 {
+    use wasm_bindgen::JsCast;
+    js_sys::Reflect::get(&js_sys::global(), &"performance".into())
+        .map(|p| p.unchecked_into::<web_sys::Performance>().now())
+        .unwrap_or_else(|_| js_sys::Date::now())
+}
 
 const STATE_DISABLED: u32 = 0;
 const STATE_UNAVAILABLE: u32 = 1;
@@ -46,6 +61,28 @@ pub fn is_enabled() -> bool {
     STATE.load(Ordering::SeqCst) == STATE_ENABLED
 }
 
+static COMMIT_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Bench knob: GPU on but the stage-0 trace commit stays on the CPU.
+pub fn set_commit_enabled(enabled: bool) {
+    COMMIT_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+pub fn commit_enabled() -> bool {
+    COMMIT_ENABLED.load(Ordering::SeqCst)
+}
+
+static DIGIT_RANGE_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Bench knob: GPU on but the stage-1 digit-range rounds stay on the CPU.
+pub fn set_digit_range_enabled(enabled: bool) {
+    DIGIT_RANGE_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+pub fn digit_range_enabled() -> bool {
+    DIGIT_RANGE_ENABLED.load(Ordering::SeqCst)
+}
+
 /// What a prove run learned about the GPU before doing any field work.
 #[derive(Clone, Debug, Default)]
 pub struct GpuReport {
@@ -59,6 +96,9 @@ pub struct GpuReport {
     /// JSON stage breakdown of the GPU trace commits in this prove
     /// (`trace_commit::CommitBreakdown`); empty when none ran.
     pub commit: String,
+    /// JSON breakdown of the GPU digit-range instances in this prove
+    /// (`digit_range::Breakdown`); empty when none ran.
+    pub digit_range: String,
 }
 
 /// Self-test + NOP latency probe; only touches the mailbox when enabled.
@@ -83,6 +123,10 @@ fn preflight_enabled() -> GpuReport {
             #[cfg(feature = "trace-commit-device")]
             if report.status == "ok" {
                 trace_commit::install_once();
+            }
+            #[cfg(feature = "digit-range-device")]
+            if report.status == "ok" {
+                digit_range::install_once();
             }
             report
         }
@@ -112,6 +156,23 @@ pub fn take_commit_report() -> String {
     {
         let b = trace_commit::take_breakdown();
         if b.calls > 0 {
+            return serde_json::to_string(&b).expect("plain struct");
+        }
+    }
+    String::new()
+}
+
+/// Breakdown of the GPU digit-range instances since the last call (JSON);
+/// empty when the device is compiled out or never ran.
+pub fn take_digit_range_report() -> String {
+    #[cfg(all(
+        target_arch = "wasm32",
+        feature = "webgpu",
+        feature = "digit-range-device"
+    ))]
+    {
+        let b = digit_range::take_breakdown();
+        if b.instances > 0 {
             return serde_json::to_string(&b).expect("plain struct");
         }
     }

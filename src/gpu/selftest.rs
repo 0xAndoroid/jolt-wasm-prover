@@ -8,6 +8,7 @@ use jolt_field::CanonicalEncoding;
 use super::mailbox::{
     self, GpuError, Region, OP_CREATE_BUFFER, OP_DESTROY, OP_NOP, OP_RUN, OP_UPLOAD,
 };
+use super::now_ms;
 use super::GpuReport;
 
 pub const SHADER_FP128_OPS: u32 = 0;
@@ -36,10 +37,6 @@ pub fn run_args(shader: u32, workgroups: [u32; 3], params: &[u32], bindings: u32
     args.resize(21, 0);
     args.push(bindings);
     args
-}
-
-fn now_ms() -> f64 {
-    js_sys::Date::now()
 }
 
 struct SplitMix(u64);
@@ -137,5 +134,6 @@ pub fn run() -> Result<GpuReport, GpuError> {
         selftest_mismatches: mismatches,
         roundtrip_us,
         commit: String::new(),
+        digit_range: String::new(),
     })
 }

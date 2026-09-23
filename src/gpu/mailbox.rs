@@ -13,6 +13,11 @@ pub const OP_CREATE_BUFFER: u32 = 2;
 pub const OP_UPLOAD: u32 = 3;
 pub const OP_DESTROY: u32 = 4;
 pub const OP_RUN: u32 = 5;
+/// Several RUN passes in one trip: `args = [npasses, {shader, wx, nbind, region_idx…}…]`,
+/// region 0 = the packed per-pass 64 B uniform blocks.
+pub const OP_RUN_SEQ: u32 = 6;
+/// Copy a device buffer (`args = [handle, byte_len]`) into the READBACK region.
+pub const OP_DOWNLOAD: u32 = 7;
 
 pub const STATUS_IDLE: u32 = 0;
 pub const STATUS_BUSY: u32 = 1;
@@ -46,18 +51,16 @@ pub struct Mailbox {
     error: [AtomicU32; ERROR_WORDS],
 }
 
-const ZERO: AtomicU32 = AtomicU32::new(0);
-
 static MAILBOX: Mailbox = Mailbox {
-    doorbell: ZERO,
-    status: ZERO,
-    op: ZERO,
-    _pad: ZERO,
-    args: [ZERO; MAX_ARGS],
-    regions: [ZERO; MAX_REGIONS * 3],
-    ret: [ZERO; 8],
-    error_len: ZERO,
-    error: [ZERO; ERROR_WORDS],
+    doorbell: AtomicU32::new(0),
+    status: AtomicU32::new(0),
+    op: AtomicU32::new(0),
+    _pad: AtomicU32::new(0),
+    args: [const { AtomicU32::new(0) }; MAX_ARGS],
+    regions: [const { AtomicU32::new(0) }; MAX_REGIONS * 3],
+    ret: [const { AtomicU32::new(0) }; 8],
+    error_len: AtomicU32::new(0),
+    error: [const { AtomicU32::new(0) }; ERROR_WORDS],
 };
 
 /// One in-flight op at a time: the mailbox has a single set of slots.

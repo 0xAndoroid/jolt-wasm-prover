@@ -60,6 +60,30 @@ mod wasm {
         crate::gpu::set_unavailable()
     }
 
+    /// W1 knob: keep the GPU on but leave the stage-0 trace commit on the CPU
+    /// (isolates later waves' increments in the bench).
+    #[wasm_bindgen]
+    pub fn set_gpu_commit_enabled(enabled: bool) {
+        crate::gpu::set_commit_enabled(enabled)
+    }
+
+    /// W2 knob: keep the GPU on but leave the stage-1 digit-range rounds on
+    /// the CPU (isolates the W1 increment in the bench).
+    #[wasm_bindgen]
+    pub fn set_gpu_digit_range_enabled(enabled: bool) {
+        crate::gpu::set_digit_range_enabled(enabled)
+    }
+
+    /// Compare the first `rounds` GPU digit-range messages against the CPU
+    /// prover (0 = off); no-op without the `digit-range-device` feature.
+    #[wasm_bindgen]
+    pub fn set_digit_range_parity_rounds(rounds: u32) {
+        #[cfg(feature = "digit-range-device")]
+        akita_prover::set_digit_range_parity_rounds(rounds as usize);
+        #[cfg(not(feature = "digit-range-device"))]
+        let _ = rounds;
+    }
+
     #[wasm_bindgen]
     pub struct WasmProver {
         ctx: engine::ProverContext,
@@ -245,6 +269,12 @@ mod wasm {
         #[wasm_bindgen(getter)]
         pub fn gpu_commit(&self) -> String {
             self.out.gpu.commit.clone()
+        }
+
+        /// JSON breakdown of the GPU digit-range instances (empty if none ran).
+        #[wasm_bindgen(getter)]
+        pub fn gpu_digit_range(&self) -> String {
+            self.out.gpu.digit_range.clone()
         }
     }
 

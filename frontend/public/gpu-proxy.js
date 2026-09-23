@@ -19,7 +19,7 @@ const W = {
     ERROR_BYTES: 256,
 };
 const MAX_REGIONS = 8;
-const OP = { NOP: 1, CREATE_BUFFER: 2, UPLOAD: 3, DESTROY: 4, RUN: 5 };
+const OP = { NOP: 1, CREATE_BUFFER: 2, UPLOAD: 3, DESTROY: 4, RUN: 5, RUN_SEQ: 6, DOWNLOAD: 7 };
 const STATUS = { IDLE: 0, BUSY: 1, DONE: 2, ERROR: 3 };
 const REGION = { UPLOAD: 1, READBACK: 2, HANDLE: 4 };
 // Index = shader id in the RUN op (src/gpu/selftest.rs, src/gpu/trace_commit.rs);
@@ -29,6 +29,11 @@ const SHADERS = [
     ['commit/common', 'commit/prep'],
     ['commit/common', 'commit/commit_accumulate'],
     ['commit/common', 'commit/reduce'],
+    ['fp128', 'digit_range/common', 'digit_range/round0'],
+    ['fp128', 'digit_range/common', 'digit_range/lut'],
+    ['fp128', 'digit_range/common', 'digit_range/round1'],
+    ['fp128', 'digit_range/common', 'digit_range/field'],
+    ['fp128', 'digit_range/common', 'digit_range/reduce'],
 ];
 
 let memory = null;
@@ -39,6 +44,8 @@ const pipelines = new Map();
 const handles = new Map();
 let nextHandle = 1;
 let uniformBuffer = null;
+// One 64 B uniform buffer per pass of a RUN_SEQ (writeBuffer between passes would race).
+const uniformPool = [];
 let uncapturedError = null;
 
 const i32 = () => new Int32Array(memory.buffer);
@@ -89,13 +96,16 @@ function upload(buf, offset, ptr, len) {
 
 async function readback(buf, ptr, len) {
     const staging = device.createBuffer({ size: align4(len), usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-    const enc = device.createCommandEncoder();
-    enc.copyBufferToBuffer(buf, 0, staging, 0, align4(len));
-    device.queue.submit([enc.finish()]);
-    await staging.mapAsync(GPUMapMode.READ);
-    new Uint8Array(memory.buffer, ptr, len).set(new Uint8Array(staging.getMappedRange(), 0, len));
-    staging.unmap();
-    staging.destroy();
+    try {
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(buf, 0, staging, 0, align4(len));
+        device.queue.submit([enc.finish()]);
+        await staging.mapAsync(GPUMapMode.READ);
+        new Uint8Array(memory.buffer, ptr, len).set(new Uint8Array(staging.getMappedRange(), 0, len));
+        staging.unmap();
+    } finally {
+        staging.destroy();
+    }
 }
 
 function getHandle(h) {
@@ -164,6 +174,65 @@ async function runOp(op, args, regions, ret) {
             } finally {
                 for (const t of temps) t.destroy();
             }
+            return;
+        }
+        case OP.RUN_SEQ: {
+            // args = [npasses, {shader, wx, nbind, (binding, region)...}...];
+            // region 0 holds npasses x 64 B params; other regions are shared by the passes.
+            const npasses = args[0];
+            while (uniformPool.length < npasses) {
+                uniformPool.push(device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
+            }
+            const bufs = new Array(MAX_REGIONS).fill(null);
+            const temps = [];
+            const readbacks = [];
+            try {
+                const resolve = (i) => {
+                    if (bufs[i]) return bufs[i];
+                    const r = regions[i];
+                    let buf;
+                    if (r.flags & REGION.HANDLE) {
+                        // ptr is a handle here, not a wasm address: a readback would land at address `handle`.
+                        if (r.flags & (REGION.UPLOAD | REGION.READBACK)) throw new Error(`region ${i}: handle regions cannot be uploaded or read back`);
+                        buf = getHandle(r.ptr);
+                    } else {
+                        buf = storageBuffer(r.len);
+                        temps.push(buf);
+                        if (r.flags & REGION.UPLOAD) upload(buf, 0, r.ptr, r.len);
+                    }
+                    if (r.flags & REGION.READBACK) readbacks.push({ buf, ptr: r.ptr, len: r.len });
+                    bufs[i] = buf;
+                    return buf;
+                };
+                const params = regions[0];
+                const enc = device.createCommandEncoder();
+                let a = 1;
+                for (let p = 0; p < npasses; p++) {
+                    const [shader, wx, nbind] = [args[a], args[a + 1], args[a + 2]];
+                    a += 3;
+                    device.queue.writeBuffer(uniformPool[p], 0, memory.buffer, params.ptr + p * 64, 64);
+                    const entries = [{ binding: 0, resource: { buffer: uniformPool[p] } }];
+                    for (let b = 0; b < nbind; b++, a += 2) {
+                        entries.push({ binding: args[a], resource: { buffer: resolve(args[a + 1]) } });
+                    }
+                    const pipeline = pipelineFor(shader, 0);
+                    const pass = enc.beginComputePass();
+                    pass.setPipeline(pipeline);
+                    pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries }));
+                    pass.dispatchWorkgroups(wx);
+                    pass.end();
+                }
+                device.queue.submit([enc.finish()]);
+                for (const rb of readbacks) await readback(rb.buf, rb.ptr, rb.len);
+                if (readbacks.length === 0) await device.queue.onSubmittedWorkDone();
+            } finally {
+                for (const t of temps) t.destroy();
+            }
+            return;
+        }
+        case OP.DOWNLOAD: {
+            const r = regions[0];
+            await readback(getHandle(args[0]), r.ptr, r.len);
             return;
         }
         default:

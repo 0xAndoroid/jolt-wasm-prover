@@ -17,6 +17,8 @@ RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --r
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu
 # ... plus the GPU one-hot trace commit (needs ./setup-wasm-deps.sh first, patch 0006)
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device
+# ... plus the GPU digit-range sumcheck rounds (patch 0007; W2 increment 0.447 s of 2.78 s at 2^18 idle, kill rule 0.425 s → unparked)
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device
 
 # Build native preprocessing generator (needs the `jolt` CLI from the pinned jolt rev on PATH)
 cargo build --release --features native
@@ -56,6 +58,8 @@ WebGPU harness (Python Playwright, `uv run --with playwright python -m playwrigh
 
 ```bash
 uv run --with playwright python bench/bench_webgpu.py --iters 17,69,278,556 --runs 4 --gpu both   # gpu on vs off: proofs byte-identical, verify=true; commit stage breakdown + off/on/ratio table
+uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 5 --gpu all                # off / w1 (commit only) / on (W1+W2) / w2 (digit range only); W2 increment = w1 − on
+uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 1 --gpu on --parity 6      # CPU shadow of the first 6 GPU digit-range rounds per instance; aborts on mismatch
 uv run --with playwright python bench/test_fp128_wgsl.py                                          # fp128.wgsl vs Python ints mod p, 100k vectors
 uv run --with playwright python bench/proto/commit_proto.py --shape full                          # shipped commit kernels vs Python reference (also --shape small --variant v9 --chunk 64, --shape stress --chunk 2048)
 ```
@@ -71,7 +75,8 @@ uv run --with playwright python bench/proto/commit_proto.py --shape full        
 - `src/lib.rs` — `#[wasm_bindgen]` exports: `WasmProver`, `WasmVerifier`, tracing (`init_inlines` export kept as a no-op — inline registration is inventory-based link-time ctors and worker.js no longer calls it)
 - `src/engine.rs` — the prove/verify pipeline shared by wasm and native: decode the Akita schedule bundle + `JoltProgramPreprocessing` (bincode2), trace via `TracerBackend::trace_compact`, derive `ProverConfig`, build the shape-exact Akita setup with `jolt_prover::akita::preprocessing::preprocess_full` (the "setup" phase, per proof), prove via `jolt_prover::prove` over `JoltAkitaBackend::optimized()`, return proof + program IO + the verifier preprocessing for that shape
 - `src/gpu/` — WebGPU harness behind the `webgpu` cargo feature: `mailbox.rs` (`#[repr(C)]` static in shared wasm memory; Rust fills op/args/regions, `Atomics.notify`s the doorbell and `Atomics.wait`s on `status`), `selftest.rs` (2^20 `a·b+c` vs `AkitaField`, 200 NOP round trips). `engine::prove` runs `gpu::preflight()` before the phase clock and reports `gpu_status` etc.; `disabled`/`unavailable` never touch the mailbox
-- `frontend/public/gpu-proxy.js` — dedicated Worker owning the `GPUDevice`; mirrors the mailbox word layout by hand (keep in sync with `mailbox.rs`); ops NOP/CREATE_BUFFER/UPLOAD/DESTROY/RUN; shaders from `frontend/public/wgsl/` (`fp128.wgsl` library; `commit/{common,prep,commit_accumulate,reduce}.wgsl` share `common.wgsl`), RUN arg 22 is the `CHUNK` pipeline override. `worker.js` spawns it when `init` carries `gpu: true`
+- `frontend/public/gpu-proxy.js` — dedicated Worker owning the `GPUDevice`; mirrors the mailbox word layout by hand (keep in sync with `mailbox.rs`); ops NOP/CREATE_BUFFER/UPLOAD/DESTROY/RUN/RUN_SEQ/DOWNLOAD; shaders from `frontend/public/wgsl/` (`fp128.wgsl` library; `commit/{common,prep,commit_accumulate,reduce}.wgsl` share `common.wgsl`), RUN arg 22 is the `CHUNK` pipeline override. `worker.js` spawns it when `init` carries `gpu: true`
+- `src/gpu/digit_range.rs` — `WebGpuDigitRange`, the `akita_prover::DigitRangeDevice` for the browser (features `webgpu,trace-commit-device,digit-range-device`): installed with the trace-commit device; takes basis-8 direct-leaf instances with ≥ 2^16 digits, runs g = min(ring_bits, log2 n − 12) rounds (one RUN_SEQ op per round: params + eq tables inline, 80-byte message inline readback; kernels `frontend/public/wgsl/digit_range/`), downloads the folded table for the CPU tail. Breakdown → `gpu_digit_range` JSON + `[gpu] digit range …` console line. W2 verdict: 0.447 s increment over W1 at 2^18 on an idle host (kill rule 0.425 s) → unparked, marginal; see `.journals/webgpu-akita-w2.md`
 - `src/gpu/trace_commit.rs` — `WebGpuTraceCommit`, the `jolt_akita::TraceCommitDevice` for the browser (features `webgpu,trace-commit-device`): installed once after the preflight self-test passes, declines to the CPU kernels when the GPU is off or the shape is not K16/D512/n_a1/digits1/colcap64; persistent A/A2/codes/PART buffers per (P, blocks), RES read back per call; stage breakdown → `ProveResult.gpu_commit` JSON + `[gpu] trace commit …` console line
 - `src/trace_commit_reference.rs` — `CpuReferenceDevice`, the CPU oracle for the stage-0 trace-commit device ABI (`docs/trace-commit-device.md`); feature `trace-commit-device`
 - `src/wasm_tracing.rs` — Chrome Trace Format layer for `tracing`, outputs Perfetto-compatible JSON (per-thread tids)
@@ -87,6 +92,7 @@ uv run --with playwright python bench/proto/commit_proto.py --shape full        
 - **default** (no features) — WASM library build (`cdylib`)
 - **`native`** — enables the preprocessing binaries (`jolt-host` guest compilation)
 - **`trace-commit-device`** — `engine::install_trace_commit_device` + `CpuReferenceDevice`; with `webgpu` also `gpu::trace_commit::WebGpuTraceCommit`. Needs the patched `jolt-akita` from `./setup-wasm-deps.sh` (patch 0006), so it is off by default to keep pinned-rev native builds working
+- **`digit-range-device`** — `engine::install_digit_range_device` + the `akita-prover` dependency for the seam types; needs patch 0007 from `./setup-wasm-deps.sh`, off by default for the same reason. `webgpu,trace-commit-device,digit-range-device` together give the W1+W2 browser build
 - **`webgpu`** — compiles the GPU mailbox + self-test into the wasm build; without it `gpu_mailbox_ptr()` returns 0 and worker.js reports `unavailable`
 
 ## Key Dependencies

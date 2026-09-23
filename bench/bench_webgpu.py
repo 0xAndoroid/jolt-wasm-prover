@@ -23,7 +23,7 @@ import sys
 from playwright.sync_api import sync_playwright
 
 SETUP_JS = """
-async ({ threads, gpu }) => {
+async ({ threads, gpu, parityRounds }) => {
     window.__bench = { pending: new Map() };
     const worker = new Worker('/worker.js', { type: 'module' });
     window.__bench.worker = worker;
@@ -42,7 +42,7 @@ async ({ threads, gpu }) => {
     window.__bench.wait = (type) => new Promise((resolve) => window.__bench.pending.set(type, resolve));
 
     const initDone = window.__bench.wait('init-done');
-    worker.postMessage({ type: 'init', data: { numThreads: threads, gpu } });
+    worker.postMessage({ type: 'init', data: { numThreads: threads, gpu, parityRounds } });
     const init = await initDone;
     if (init.type === 'error') throw new Error(init.error);
 
@@ -61,16 +61,24 @@ async ({ threads, gpu }) => {
 """
 
 RUN_JS = """
-async ({ iters }) => {
-    const done = window.__bench.wait('prove-done');
-    window.__bench.worker.postMessage({ type: 'prove', data: { program: 'sha2-chain', input: Array.from(new Uint8Array(32).fill(5)), numIters: iters } });
-    const p = await done;
+async ({ iters, parityRounds }) => {
+    const send = (type, data) => {
+        const reply = window.__bench.wait({ 'prove': 'prove-done', 'verify': 'verify-done', 'clear-trace': 'trace-cleared', 'get-trace': 'trace' }[type]);
+        window.__bench.worker.postMessage({ type, data });
+        return reply;
+    };
+    if (parityRounds) await send('clear-trace');
+    const p = await send('prove', { program: 'sha2-chain', input: Array.from(new Uint8Array(32).fill(5)), numIters: iters });
     if (p.type === 'error') return { error: p.error };
+    // The parity shadow reports each compared round as a tracing event; count them per prove.
+    let parityCompared = null;
+    if (parityRounds) {
+        const t = await send('get-trace');
+        parityCompared = JSON.parse(t.trace).filter((e) => e.args && e.args.message === 'digit_range_device_parity_ok').length;
+    }
     const digest = await crypto.subtle.digest('SHA-256', p.proof);
     const sha = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-    const verified = window.__bench.wait('verify-done');
-    window.__bench.worker.postMessage({ type: 'verify', data: { program: 'sha2-chain', proof: p.proof, programIo: p.programIo, verifierPreprocessing: p.verifierPreprocessing } });
-    const v = await verified;
+    const v = await send('verify', { program: 'sha2-chain', proof: p.proof, programIo: p.programIo, verifierPreprocessing: p.verifierPreprocessing });
     if (v.type === 'error') return { error: v.error };
     return {
         totalSeconds: p.elapsed / 1000,
@@ -89,6 +97,8 @@ async ({ iters }) => {
         gpuSelftestMismatches: p.gpuSelftestMismatches,
         gpuRoundtripUs: p.gpuRoundtripUs,
         gpuCommit: p.gpuCommit ? JSON.parse(p.gpuCommit) : null,
+        gpuDigitRange: p.gpuDigitRange ? JSON.parse(p.gpuDigitRange) : null,
+        parityCompared,
     };
 }
 """
@@ -107,30 +117,32 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", default="17", help="comma-separated sha2-chain iteration counts (17 -> 2^16 padded, 69 -> 2^18, 278 -> 2^20, 556 -> 2^21)")
     ap.add_argument("--runs", type=int, default=3)
-    ap.add_argument("--gpu", default="both", choices=["both", "on", "off"])
+    ap.add_argument("--gpu", default="both", choices=["both", "on", "off", "w1", "w2", "all"],
+                    help="on = W1+W2, w1 = commit only, w2 = digit-range only, all = off,w1,on,w2")
+    ap.add_argument("--parity", type=int, default=0, help="check the first N GPU digit-range rounds per instance against the CPU prover")
     ap.add_argument("--browser", default="webkit", choices=["webkit", "chromium", "chromium-unsafe"])
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--url", default=os.environ.get("BENCH_URL", "http://localhost:8080"))
     args = ap.parse_args()
-    modes = {"both": [True, False], "on": [True], "off": [False]}[args.gpu]
+    modes = {"both": ["on", "off"], "on": ["on"], "off": ["off"], "w1": ["w1"], "w2": ["w2"], "all": ["off", "w1", "on", "w2"]}[args.gpu]
+    gpu_arg = {"on": True, "off": False, "w1": "w1", "w2": "w2"}
     iters_list = [int(x) for x in args.iters.split(",")]
 
     results = []
     with sync_playwright() as p:
         browser = launch(p, args.browser)
-        for gpu in modes:
-            label = "on" if gpu else "off"
+        for label in modes:
             # Fresh page per mode: WebKit crashes when a second 4 GB wasm
             # memory is instantiated in a page whose first worker just died.
             page = browser.new_page()
             page.set_default_timeout(1_800_000)
             page.on("console", lambda msg: sys.stderr.write(f"[page] {msg.text}\n"))
             page.goto(args.url, wait_until="domcontentloaded")
-            init = page.evaluate(SETUP_JS, {"threads": args.threads, "gpu": gpu})
+            init = page.evaluate(SETUP_JS, {"threads": args.threads, "gpu": gpu_arg[label], "parityRounds": args.parity})
             sys.stderr.write(f"gpu={label}: worker ready, init gpu={json.dumps(init)}\n")
             for iters in iters_list:
                 for i in range(args.runs):
-                    r = page.evaluate(RUN_JS, {"iters": iters})
+                    r = page.evaluate(RUN_JS, {"iters": iters, "parityRounds": args.parity})
                     if "error" in r:
                         print(json.dumps({"gpu": label, "iters": iters, "run": i + 1, "error": r["error"]}))
                         sys.stderr.write(f"gpu={label} iters={iters} run {i + 1}: ERROR {r['error']}\n")
@@ -144,6 +156,14 @@ def main():
                         f" + readback {commit['readback_ms']:.1f} = {commit['total_ms']:.1f} ms x{commit['calls']}]"
                         if commit else ""
                     )
+                    dr = r.get("gpuDigitRange")
+                    commit_str += (
+                        f" digit-range[{dr['instances']} inst {dr['gpu_rounds']} rounds {dr['ops']} ops: upload {dr['upload_ms']:.1f}"
+                        f" + rounds {dr['rounds_ms']:.1f} + download {dr['download_ms']:.1f} = {dr['total_ms']:.1f} ms]"
+                        if dr else ""
+                    )
+                    if args.parity:
+                        commit_str += f" parity[{r['parityCompared']} rounds compared]"
                     sys.stderr.write(
                         f"gpu={label} 2^{rec['log2Padded']} run {i + 1}: total {r['totalSeconds']:.2f}s [trace {r['traceSeconds']:.2f} + setup {r['setupSeconds']:.2f} + prove {r['proveSeconds']:.2f}] "
                         f"verify {r['verifySeconds']:.2f}s valid={r['valid']} sha={r['proofSha256'][:16]} peak {r['peakMB']:.0f} MB "
@@ -158,8 +178,7 @@ def main():
     table = []
     for iters in iters_list:
         size = {}
-        for gpu in modes:
-            label = "on" if gpu else "off"
+        for label in modes:
             rs = [r for r in results if r["gpu"] == label and r["iters"] == iters]
             if len(rs) < args.runs:
                 ok = False
@@ -187,31 +206,52 @@ def main():
                 mode["commitCalls"] = commits[0]["calls"]
             # gpu=on must really have run the GPU path (plain chromium has no adapter and
             # exercises the fallback); a quiet fall-through to the CPU is not a pass.
-            expected = "disabled" if not gpu else ("unavailable" if args.browser == "chromium" else "ok")
+            expected = "disabled" if label == "off" else ("unavailable" if args.browser == "chromium" else "ok")
             mode["gpuStatusExpected"] = expected
             gpu_ok = all(r["gpuStatus"] == expected and not r["gpuSelftestMismatches"] for r in rs)
+            drs = [r["gpuDigitRange"] for r in warm if r.get("gpuDigitRange")]
+            if drs:
+                mode["digitRangeMs"] = {k: round(statistics.median(d[k] for d in drs), 2) for k in drs[0]}
+            # Likewise W2: every run of a mode that includes it must report GPU digit-range
+            # instances and rounds (a wasm built without `digit-range-device` reports none),
+            # and with --parity the shadow must have compared at least one round.
+            if label in ("on", "w2") and expected == "ok":
+                for r in rs:
+                    d = r.get("gpuDigitRange")
+                    if not d or d["instances"] < 1 or d["gpu_rounds"] < 1:
+                        sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: no GPU digit-range work reported ({d})\n")
+                        gpu_ok = False
+                    if args.parity and not r["parityCompared"]:
+                        sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: parity shadow compared 0 rounds\n")
+                        gpu_ok = False
+                if args.parity:
+                    mode["parityCompared"] = min(r["parityCompared"] for r in rs)
             size[label] = mode
             ok = ok and mode["allValid"] and len(mode["proofSha256"]) == 1 and gpu_ok
-        if "on" in size and "off" in size:
-            size["proofBytesIdentical"] = size["on"]["proofSha256"] == size["off"]["proofSha256"]
-            size["proveRatioOnOff"] = round(size["on"]["warmMedianProveSeconds"] / size["off"]["warmMedianProveSeconds"], 3)
+        shas = {tuple(m["proofSha256"]) for m in size.values()}
+        if len(size) > 1:
+            size["proofBytesIdentical"] = len(shas) == 1
             ok = ok and size["proofBytesIdentical"]
+        if "on" in size and "off" in size:
+            size["proveRatioOnOff"] = round(size["on"]["warmMedianProveSeconds"] / size["off"]["warmMedianProveSeconds"], 3)
+        if "on" in size and "w1" in size:
+            size["w2IncrementSeconds"] = round(size["w1"]["warmMedianProveSeconds"] - size["on"]["warmMedianProveSeconds"], 3)
         summary["sizes"][str(iters)] = size
         if size:
             log2 = next(iter(m["log2Padded"] for m in size.values() if isinstance(m, dict)))
-            off = size.get("off", {}).get("warmMedianProveSeconds")
-            on = size.get("on", {}).get("warmMedianProveSeconds")
-            table.append((log2, off, on, size.get("proveRatioOnOff"), size.get("on", {}).get("commitMs"), size.get("proofBytesIdentical")))
+            medians = {m: size.get(m, {}).get("warmMedianProveSeconds") for m in ("off", "w1", "on", "w2")}
+            table.append((log2, medians, size.get("w2IncrementSeconds"), size.get("proofBytesIdentical"), {m: size.get(m, {}).get("digitRangeMs") for m in ("on", "w2")}))
     summary["ok"] = ok
     print(json.dumps({"summary": summary}, indent=1))
     fmt = lambda v: "-" if v is None else f"{v:.3f}"
-    sys.stderr.write("\nsize   prove off (s)  prove on (s)  on/off  sha equal  gpu commit stages (ms)\n")
-    for log2, off, on, ratio, commit, same in table:
+    sys.stderr.write("\nsize   prove off   prove w1   prove on   prove w2   w2 incr (s)  sha equal  digit range (ms)\n")
+    for log2, med, incr, same, dr in table:
+        d = dr.get("on") or dr.get("w2")
         stages = (
-            f"pack {commit['pack_ms']:.1f} upload {commit['upload_ms']:.1f} gpu {commit['gpu_ms']:.1f} readback {commit['readback_ms']:.1f} total {commit['total_ms']:.1f}"
-            if commit else "-"
+            f"{d['instances']} inst {d['gpu_rounds']} rounds {d['ops']} ops: upload {d['upload_ms']:.1f} rounds {d['rounds_ms']:.1f} download {d['download_ms']:.1f} total {d['total_ms']:.1f}"
+            if d else "-"
         )
-        sys.stderr.write(f"2^{log2:<4} {fmt(off):>13}  {fmt(on):>12}  {fmt(ratio):>6}  {str(same):>9}  {stages}\n")
+        sys.stderr.write(f"2^{log2:<4} {fmt(med['off']):>9}  {fmt(med['w1']):>9}  {fmt(med['on']):>9}  {fmt(med['w2']):>9}  {fmt(incr):>11}  {str(same):>9}  {stages}\n")
     sys.exit(0 if ok else 1)
 
 
