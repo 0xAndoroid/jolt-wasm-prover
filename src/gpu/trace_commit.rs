@@ -12,12 +12,12 @@ use std::sync::{Arc, Mutex, Once};
 use jolt_akita::{AkitaError, TraceCommitDevice, TraceCommitJob, TraceCommitShape};
 use rayon::prelude::*;
 use serde::Serialize;
-use wasm_bindgen::JsCast;
 
 use super::mailbox::{
     self, GpuError, Region, OP_CREATE_BUFFER, OP_DESTROY, OP_RUN, OP_UPLOAD, REGION_READBACK,
     REGION_UPLOAD,
 };
+use super::now_ms;
 use super::selftest::run_args;
 
 /// Shader ids: index into `SHADERS` in `gpu-proxy.js`.
@@ -102,12 +102,6 @@ pub fn install_once() {
         };
         web_sys::console::log_1(&message.into());
     });
-}
-
-fn now_ms() -> f64 {
-    js_sys::Reflect::get(&js_sys::global(), &"performance".into())
-        .map(|p| p.unchecked_into::<web_sys::Performance>().now())
-        .unwrap_or_else(|_| js_sys::Date::now())
 }
 
 /// Smallest chunk (fewest accumulator passes per position, most partials)

@@ -96,13 +96,16 @@ function upload(buf, offset, ptr, len) {
 
 async function readback(buf, ptr, len) {
     const staging = device.createBuffer({ size: align4(len), usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
-    const enc = device.createCommandEncoder();
-    enc.copyBufferToBuffer(buf, 0, staging, 0, align4(len));
-    device.queue.submit([enc.finish()]);
-    await staging.mapAsync(GPUMapMode.READ);
-    new Uint8Array(memory.buffer, ptr, len).set(new Uint8Array(staging.getMappedRange(), 0, len));
-    staging.unmap();
-    staging.destroy();
+    try {
+        const enc = device.createCommandEncoder();
+        enc.copyBufferToBuffer(buf, 0, staging, 0, align4(len));
+        device.queue.submit([enc.finish()]);
+        await staging.mapAsync(GPUMapMode.READ);
+        new Uint8Array(memory.buffer, ptr, len).set(new Uint8Array(staging.getMappedRange(), 0, len));
+        staging.unmap();
+    } finally {
+        staging.destroy();
+    }
 }
 
 function getHandle(h) {
@@ -183,43 +186,48 @@ async function runOp(op, args, regions, ret) {
             const bufs = new Array(MAX_REGIONS).fill(null);
             const temps = [];
             const readbacks = [];
-            const resolve = (i) => {
-                if (bufs[i]) return bufs[i];
-                const r = regions[i];
-                let buf;
-                if (r.flags & REGION.HANDLE) {
-                    buf = getHandle(r.ptr);
-                } else {
-                    buf = storageBuffer(r.len);
-                    temps.push(buf);
-                    if (r.flags & REGION.UPLOAD) upload(buf, 0, r.ptr, r.len);
+            try {
+                const resolve = (i) => {
+                    if (bufs[i]) return bufs[i];
+                    const r = regions[i];
+                    let buf;
+                    if (r.flags & REGION.HANDLE) {
+                        // ptr is a handle here, not a wasm address: a readback would land at address `handle`.
+                        if (r.flags & (REGION.UPLOAD | REGION.READBACK)) throw new Error(`region ${i}: handle regions cannot be uploaded or read back`);
+                        buf = getHandle(r.ptr);
+                    } else {
+                        buf = storageBuffer(r.len);
+                        temps.push(buf);
+                        if (r.flags & REGION.UPLOAD) upload(buf, 0, r.ptr, r.len);
+                    }
+                    if (r.flags & REGION.READBACK) readbacks.push({ buf, ptr: r.ptr, len: r.len });
+                    bufs[i] = buf;
+                    return buf;
+                };
+                const params = regions[0];
+                const enc = device.createCommandEncoder();
+                let a = 1;
+                for (let p = 0; p < npasses; p++) {
+                    const [shader, wx, nbind] = [args[a], args[a + 1], args[a + 2]];
+                    a += 3;
+                    device.queue.writeBuffer(uniformPool[p], 0, memory.buffer, params.ptr + p * 64, 64);
+                    const entries = [{ binding: 0, resource: { buffer: uniformPool[p] } }];
+                    for (let b = 0; b < nbind; b++, a += 2) {
+                        entries.push({ binding: args[a], resource: { buffer: resolve(args[a + 1]) } });
+                    }
+                    const pipeline = pipelineFor(shader, 0);
+                    const pass = enc.beginComputePass();
+                    pass.setPipeline(pipeline);
+                    pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries }));
+                    pass.dispatchWorkgroups(wx);
+                    pass.end();
                 }
-                if (r.flags & REGION.READBACK) readbacks.push({ buf, ptr: r.ptr, len: r.len });
-                bufs[i] = buf;
-                return buf;
-            };
-            const params = regions[0];
-            const enc = device.createCommandEncoder();
-            let a = 1;
-            for (let p = 0; p < npasses; p++) {
-                const [shader, wx, nbind] = [args[a], args[a + 1], args[a + 2]];
-                a += 3;
-                device.queue.writeBuffer(uniformPool[p], 0, memory.buffer, params.ptr + p * 64, 64);
-                const entries = [{ binding: 0, resource: { buffer: uniformPool[p] } }];
-                for (let b = 0; b < nbind; b++, a += 2) {
-                    entries.push({ binding: args[a], resource: { buffer: resolve(args[a + 1]) } });
-                }
-                const pipeline = pipelineFor(shader, 0);
-                const pass = enc.beginComputePass();
-                pass.setPipeline(pipeline);
-                pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries }));
-                pass.dispatchWorkgroups(wx);
-                pass.end();
+                device.queue.submit([enc.finish()]);
+                for (const rb of readbacks) await readback(rb.buf, rb.ptr, rb.len);
+                if (readbacks.length === 0) await device.queue.onSubmittedWorkDone();
+            } finally {
+                for (const t of temps) t.destroy();
             }
-            device.queue.submit([enc.finish()]);
-            for (const rb of readbacks) await readback(rb.buf, rb.ptr, rb.len);
-            if (readbacks.length === 0) await device.queue.onSubmittedWorkDone();
-            for (const t of temps) t.destroy();
             return;
         }
         case OP.DOWNLOAD: {

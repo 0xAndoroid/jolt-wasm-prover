@@ -28,6 +28,15 @@ pub mod trace_commit;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+/// `performance.now()` (falls back to `Date.now()`), shared by the drivers.
+#[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
+fn now_ms() -> f64 {
+    use wasm_bindgen::JsCast;
+    js_sys::Reflect::get(&js_sys::global(), &"performance".into())
+        .map(|p| p.unchecked_into::<web_sys::Performance>().now())
+        .unwrap_or_else(|_| js_sys::Date::now())
+}
+
 const STATE_DISABLED: u32 = 0;
 const STATE_UNAVAILABLE: u32 = 1;
 const STATE_ENABLED: u32 = 2;

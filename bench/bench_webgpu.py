@@ -61,16 +61,24 @@ async ({ threads, gpu, parityRounds }) => {
 """
 
 RUN_JS = """
-async ({ iters }) => {
-    const done = window.__bench.wait('prove-done');
-    window.__bench.worker.postMessage({ type: 'prove', data: { program: 'sha2-chain', input: Array.from(new Uint8Array(32).fill(5)), numIters: iters } });
-    const p = await done;
+async ({ iters, parityRounds }) => {
+    const send = (type, data) => {
+        const reply = window.__bench.wait({ 'prove': 'prove-done', 'verify': 'verify-done', 'clear-trace': 'trace-cleared', 'get-trace': 'trace' }[type]);
+        window.__bench.worker.postMessage({ type, data });
+        return reply;
+    };
+    if (parityRounds) await send('clear-trace');
+    const p = await send('prove', { program: 'sha2-chain', input: Array.from(new Uint8Array(32).fill(5)), numIters: iters });
     if (p.type === 'error') return { error: p.error };
+    // The parity shadow reports each compared round as a tracing event; count them per prove.
+    let parityCompared = null;
+    if (parityRounds) {
+        const t = await send('get-trace');
+        parityCompared = JSON.parse(t.trace).filter((e) => e.args && e.args.message === 'digit_range_device_parity_ok').length;
+    }
     const digest = await crypto.subtle.digest('SHA-256', p.proof);
     const sha = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
-    const verified = window.__bench.wait('verify-done');
-    window.__bench.worker.postMessage({ type: 'verify', data: { program: 'sha2-chain', proof: p.proof, programIo: p.programIo, verifierPreprocessing: p.verifierPreprocessing } });
-    const v = await verified;
+    const v = await send('verify', { program: 'sha2-chain', proof: p.proof, programIo: p.programIo, verifierPreprocessing: p.verifierPreprocessing });
     if (v.type === 'error') return { error: v.error };
     return {
         totalSeconds: p.elapsed / 1000,
@@ -90,6 +98,7 @@ async ({ iters }) => {
         gpuRoundtripUs: p.gpuRoundtripUs,
         gpuCommit: p.gpuCommit ? JSON.parse(p.gpuCommit) : null,
         gpuDigitRange: p.gpuDigitRange ? JSON.parse(p.gpuDigitRange) : null,
+        parityCompared,
     };
 }
 """
@@ -133,7 +142,7 @@ def main():
             sys.stderr.write(f"gpu={label}: worker ready, init gpu={json.dumps(init)}\n")
             for iters in iters_list:
                 for i in range(args.runs):
-                    r = page.evaluate(RUN_JS, {"iters": iters})
+                    r = page.evaluate(RUN_JS, {"iters": iters, "parityRounds": args.parity})
                     if "error" in r:
                         print(json.dumps({"gpu": label, "iters": iters, "run": i + 1, "error": r["error"]}))
                         sys.stderr.write(f"gpu={label} iters={iters} run {i + 1}: ERROR {r['error']}\n")
@@ -153,6 +162,8 @@ def main():
                         f" + rounds {dr['rounds_ms']:.1f} + download {dr['download_ms']:.1f} = {dr['total_ms']:.1f} ms]"
                         if dr else ""
                     )
+                    if args.parity:
+                        commit_str += f" parity[{r['parityCompared']} rounds compared]"
                     sys.stderr.write(
                         f"gpu={label} 2^{rec['log2Padded']} run {i + 1}: total {r['totalSeconds']:.2f}s [trace {r['traceSeconds']:.2f} + setup {r['setupSeconds']:.2f} + prove {r['proveSeconds']:.2f}] "
                         f"verify {r['verifySeconds']:.2f}s valid={r['valid']} sha={r['proofSha256'][:16]} peak {r['peakMB']:.0f} MB "
@@ -201,6 +212,20 @@ def main():
             drs = [r["gpuDigitRange"] for r in warm if r.get("gpuDigitRange")]
             if drs:
                 mode["digitRangeMs"] = {k: round(statistics.median(d[k] for d in drs), 2) for k in drs[0]}
+            # Likewise W2: every run of a mode that includes it must report GPU digit-range
+            # instances and rounds (a wasm built without `digit-range-device` reports none),
+            # and with --parity the shadow must have compared at least one round.
+            if label in ("on", "w2") and expected == "ok":
+                for r in rs:
+                    d = r.get("gpuDigitRange")
+                    if not d or d["instances"] < 1 or d["gpu_rounds"] < 1:
+                        sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: no GPU digit-range work reported ({d})\n")
+                        gpu_ok = False
+                    if args.parity and not r["parityCompared"]:
+                        sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: parity shadow compared 0 rounds\n")
+                        gpu_ok = False
+                if args.parity:
+                    mode["parityCompared"] = min(r["parityCompared"] for r in rs)
             size[label] = mode
             ok = ok and mode["allValid"] and len(mode["proofSha256"]) == 1 and gpu_ok
         shas = {tuple(m["proofSha256"]) for m in size.values()}

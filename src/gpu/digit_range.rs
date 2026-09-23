@@ -17,11 +17,11 @@ use akita_prover::{
     DIGIT_RANGE_MESSAGE_BYTES as MESSAGE_BYTES,
 };
 use jolt_akita::AkitaError;
-use wasm_bindgen::JsCast;
 
 use super::mailbox::{
     self, GpuError, Region, OP_CREATE_BUFFER, OP_DESTROY, OP_DOWNLOAD, OP_RUN_SEQ, OP_UPLOAD,
 };
+use super::now_ms;
 
 /// Shader ids: index into `SHADERS` in `gpu-proxy.js`.
 const SHADER_ROUND0: u32 = 4;
@@ -127,12 +127,6 @@ pub fn install_once() {
     });
 }
 
-fn now_ms() -> f64 {
-    js_sys::Reflect::get(&js_sys::global(), &"performance".into())
-        .map(|p| p.unchecked_into::<web_sys::Performance>().now())
-        .unwrap_or_else(|_| js_sys::Date::now())
-}
-
 fn create_buffer(bytes: u32) -> Result<u32, GpuError> {
     Ok(mailbox::call(OP_CREATE_BUFFER, &[bytes], &[])?[0])
 }
@@ -175,9 +169,7 @@ fn units_per_thread(units: u32) -> u32 {
 
 fn handles_for(slot: &mut Option<Handles>, digits_bytes: u32, n: u32) -> Result<Handles, GpuError> {
     if let Some(h) = slot.take_if(|h| h.digits_cap < digits_bytes || h.n_cap < n) {
-        for handle in h.all() {
-            mailbox::call(OP_DESTROY, &[handle], &[])?;
-        }
+        destroy(&h.all());
     }
     if let Some(h) = slot.take() {
         return Ok(h);
@@ -187,21 +179,51 @@ fn handles_for(slot: &mut Option<Handles>, digits_bytes: u32, n: u32) -> Result<
     let inner1_bits = (n.ilog2().saturating_sub(1)) / 2 - 1;
     let blk1 = (1u32 << inner1_bits).min(ROUND1_BLK);
     let max_wg = (n / 4).div_ceil(blk1).max((n / 8).div_ceil(WG)) + 1;
+    let sizes = [
+        // +4: the decoder may read one word past the last digit.
+        digits_bytes + 4,
+        n / 8 * FIELD_BYTES as u32,
+        n / 16 * FIELD_BYTES as u32,
+        80 * 4,
+        256 * MESSAGE_BYTES as u32,
+        256 * FIELD_BYTES as u32,
+        max_wg * MESSAGE_BYTES as u32,
+    ];
+    let mut created = [0u32; 7];
+    for (i, bytes) in sizes.into_iter().enumerate() {
+        match create_buffer(bytes) {
+            Ok(handle) => created[i] = handle,
+            Err(e) => {
+                destroy(&created[..i]);
+                return Err(e);
+            }
+        }
+    }
+    let [digits, ta, tb, lut0, lut1, lut2f, partials] = created;
     let h = Handles {
         digits_cap: digits_bytes,
         n_cap: n,
         max_wg,
-        // +4: the decoder may read one word past the last digit.
-        digits: create_buffer(digits_bytes + 4)?,
-        ta: create_buffer(n / 8 * FIELD_BYTES as u32)?,
-        tb: create_buffer(n / 16 * FIELD_BYTES as u32)?,
-        lut0: create_buffer(80 * 4)?,
-        lut1: create_buffer(256 * MESSAGE_BYTES as u32)?,
-        lut2f: create_buffer(256 * FIELD_BYTES as u32)?,
-        partials: create_buffer(max_wg * MESSAGE_BYTES as u32)?,
+        digits,
+        ta,
+        tb,
+        lut0,
+        lut1,
+        lut2f,
+        partials,
     };
-    upload(h.lut0, &lut0_bytes())?;
+    if let Err(e) = upload(h.lut0, &lut0_bytes()) {
+        destroy(&h.all());
+        return Err(e);
+    }
     Ok(h)
+}
+
+/// Best effort: nothing is left to recover when DESTROY itself fails.
+fn destroy(handles: &[u32]) {
+    for &handle in handles {
+        let _ = mailbox::call(OP_DESTROY, &[handle], &[]);
+    }
 }
 
 struct Session {
@@ -272,6 +294,15 @@ const BINDS_FIELD_TB_DST: &[(u32, u32)] = &[
     (6, R_LUT),
 ];
 const BINDS_REDUCE: &[(u32, u32)] = &[(3, R_PARTIALS), (4, R_OUT)];
+
+/// Every exit — `table()`, a failed round or download, an abandoned prove —
+/// hands the buffers back so the next qualifying instance can open.
+impl Drop for Session {
+    fn drop(&mut self) {
+        *HANDLES.lock().unwrap() = self.handles.take();
+        SESSION_OPEN.store(false, Ordering::SeqCst);
+    }
+}
 
 impl Session {
     fn handles(&self) -> &Handles {
@@ -502,8 +533,6 @@ impl DigitRangeSession for Session {
         b.download_ms += download_ms;
         b.total_ms += total_ms;
         drop(b);
-        *HANDLES.lock().unwrap() = self.handles.take();
-        SESSION_OPEN.store(false, Ordering::SeqCst);
         Ok(table)
     }
 }
@@ -558,7 +587,11 @@ impl DigitRangeDevice for WebGpuDigitRange {
             }
             open_session(job, rounds)
                 .map(|s| (Box::new(s) as Box<dyn DigitRangeSession>, rounds))
-                .map_err(|e| AkitaError::InvalidInput(format!("webgpu digit range: {e}")))
+                .map_err(|e| {
+                    // handles_for failed before a Session (and its Drop) existed.
+                    SESSION_OPEN.store(false, Ordering::SeqCst);
+                    AkitaError::InvalidInput(format!("webgpu digit range: {e}"))
+                })
         })
     }
 }
