@@ -4,12 +4,14 @@
 //!
 //! One commit = pack codes → UPLOAD A, codes → RUN prep → RUN accumulate →
 //! RUN reduce (RES read back inline). A, A2, codes and PART are persistent
-//! handles cached per shape; RES is a per-call temp buffer.
+//! handles cached per shape; RES is a per-call temp buffer. The seam validates
+//! the result (length, canonical limbs) before converting it to rings.
 
 use std::sync::{Arc, Mutex, Once};
 
 use jolt_akita::{AkitaError, TraceCommitDevice, TraceCommitJob, TraceCommitShape};
 use rayon::prelude::*;
+use serde::Serialize;
 use wasm_bindgen::JsCast;
 
 use super::mailbox::{
@@ -38,8 +40,6 @@ const UNCOMMITTED: u8 = 0xFF;
 const MAX_CHUNK: u32 = 2048;
 const MIN_CHUNK: u32 = 64;
 const PART_BUDGET_BYTES: u64 = 256 << 20;
-/// p limb 0; limbs 1..3 of p are all ones.
-const P0: u32 = 0x0000_5809;
 
 /// Per-shape persistent buffers (one shape cached at a time).
 struct Buffers {
@@ -63,30 +63,16 @@ pub struct WebGpuTraceCommit {
 }
 
 /// Summed over every device call of one prove; `take()` resets.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize)]
 pub struct CommitBreakdown {
     pub calls: u32,
     pub pack_ms: f64,
     pub upload_ms: f64,
+    /// prep + accumulate.
     pub gpu_ms: f64,
+    /// reduce + RES readback.
     pub readback_ms: f64,
-    pub convert_ms: f64,
     pub total_ms: f64,
-}
-
-impl CommitBreakdown {
-    pub fn to_json(&self) -> String {
-        format!(
-            "{{\"calls\":{},\"pack_ms\":{:.2},\"upload_ms\":{:.2},\"gpu_ms\":{:.2},\"readback_ms\":{:.2},\"convert_ms\":{:.2},\"total_ms\":{:.2}}}",
-            self.calls,
-            self.pack_ms,
-            self.upload_ms,
-            self.gpu_ms,
-            self.readback_ms,
-            self.convert_ms,
-            self.total_ms
-        )
-    }
 }
 
 static BREAKDOWN: Mutex<CommitBreakdown> = Mutex::new(CommitBreakdown {
@@ -95,7 +81,6 @@ static BREAKDOWN: Mutex<CommitBreakdown> = Mutex::new(CommitBreakdown {
     upload_ms: 0.0,
     gpu_ms: 0.0,
     readback_ms: 0.0,
-    convert_ms: 0.0,
     total_ms: 0.0,
 });
 
@@ -210,10 +195,6 @@ fn buffers_for<'a>(
     Ok(slot.as_ref().unwrap())
 }
 
-fn is_canonical(limbs: &[u32]) -> bool {
-    limbs[3] != u32::MAX || limbs[2] != u32::MAX || limbs[1] != u32::MAX || limbs[0] < P0
-}
-
 impl WebGpuTraceCommit {
     fn commit(&self, job: &TraceCommitJob<'_>) -> Result<Vec<u32>, GpuError> {
         let _span = tracing::info_span!("trace_onehot_commit_gpu").entered();
@@ -292,26 +273,19 @@ impl WebGpuTraceCommit {
         drop(slot);
         let t4 = now_ms();
 
-        if !out.par_chunks_exact(4).all(is_canonical) {
-            return Err(GpuError("non-canonical limb in the reduce output".into()));
-        }
-        let t5 = now_ms();
-
-        let (pack_ms, upload_ms, gpu_ms, readback_ms, convert_ms) =
-            (t1 - t0, t2 - t1, t3 - t2, t4 - t3, t5 - t4);
+        let (pack_ms, upload_ms, gpu_ms, readback_ms) = (t1 - t0, t2 - t1, t3 - t2, t4 - t3);
         tracing::info!(
             pack_ms,
             upload_ms,
             gpu_ms,
             readback_ms,
-            convert_ms,
             chunk,
             "trace commit on gpu"
         );
         web_sys::console::log_1(
             &format!(
-                "[gpu] trace commit P={positions} blocks={blocks} chunk={chunk}: pack {pack_ms:.1} + upload {upload_ms:.1} + gpu {gpu_ms:.1} + readback {readback_ms:.1} + convert {convert_ms:.1} = {:.1} ms",
-                t5 - t0
+                "[gpu] trace commit P={positions} blocks={blocks} chunk={chunk}: pack {pack_ms:.1} + upload {upload_ms:.1} + gpu {gpu_ms:.1} + readback {readback_ms:.1} = {:.1} ms",
+                t4 - t0
             )
             .into(),
         );
@@ -321,8 +295,7 @@ impl WebGpuTraceCommit {
         b.upload_ms += upload_ms;
         b.gpu_ms += gpu_ms;
         b.readback_ms += readback_ms;
-        b.convert_ms += convert_ms;
-        b.total_ms += t5 - t0;
+        b.total_ms += t4 - t0;
         Ok(out)
     }
 }

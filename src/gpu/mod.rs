@@ -112,7 +112,7 @@ pub fn take_commit_report() -> String {
     {
         let b = trace_commit::take_breakdown();
         if b.calls > 0 {
-            return b.to_json();
+            return serde_json::to_string(&b).expect("plain struct");
         }
     }
     String::new()

@@ -141,7 +141,7 @@ def main():
                     commit = r.get("gpuCommit")
                     commit_str = (
                         f" commit[pack {commit['pack_ms']:.1f} + upload {commit['upload_ms']:.1f} + gpu {commit['gpu_ms']:.1f}"
-                        f" + readback {commit['readback_ms']:.1f} + convert {commit['convert_ms']:.1f} = {commit['total_ms']:.1f} ms x{commit['calls']}]"
+                        f" + readback {commit['readback_ms']:.1f} = {commit['total_ms']:.1f} ms x{commit['calls']}]"
                         if commit else ""
                     )
                     sys.stderr.write(
@@ -208,7 +208,7 @@ def main():
     sys.stderr.write("\nsize   prove off (s)  prove on (s)  on/off  sha equal  gpu commit stages (ms)\n")
     for log2, off, on, ratio, commit, same in table:
         stages = (
-            f"pack {commit['pack_ms']:.1f} upload {commit['upload_ms']:.1f} gpu {commit['gpu_ms']:.1f} readback {commit['readback_ms']:.1f} convert {commit['convert_ms']:.1f} total {commit['total_ms']:.1f}"
+            f"pack {commit['pack_ms']:.1f} upload {commit['upload_ms']:.1f} gpu {commit['gpu_ms']:.1f} readback {commit['readback_ms']:.1f} total {commit['total_ms']:.1f}"
             if commit else "-"
         )
         sys.stderr.write(f"2^{log2:<4} {fmt(off):>13}  {fmt(on):>12}  {fmt(ratio):>6}  {str(same):>9}  {stages}\n")

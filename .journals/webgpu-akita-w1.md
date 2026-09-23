@@ -10,7 +10,7 @@ Decision ledger: `.audit/webgpu-akita-w1.tsv` (local, untracked).
 
 ## Numbers (this Mac, headless WebKit, 8 threads, warm median of 3 after 1 warm-up; other agents' builds were running, load 5–10)
 
-| size | prove off (s) | prove on (s) | on/off | GPU commit (ms): pack + upload + gpu + readback + convert = total |
+| size | prove off (s) | prove on (s) | on/off | GPU commit (ms): pack + upload + gpu + readback + convert = total (convert = a canonical-limb check the seam already does; removed in review) |
 |---|---|---|---|---|
 | 2^16 | 1.205 | 0.972 | 0.81 | 0.5 + 2.4 + 12.3 + 0.7 + 0.7 = 16.4 |
 | 2^18 | 2.814 | 1.901 | 0.68 | 1.5 + 6.2 + 24.3 + 1.6 + 1.1 = 35.1 |
