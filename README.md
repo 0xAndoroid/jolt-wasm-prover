@@ -126,6 +126,18 @@ Runs the exact browser code path natively from the shipped artifacts (setup deri
 cargo run --release --features native --bin test-roundtrip
 ```
 
+### Cross-target proof check
+
+Compares the browser's sha2 proof of the roundtrip input with the native one and runs it through the native verifier:
+
+```bash
+node server.mjs &   # restart after every wasm/frontend rebuild
+uv run --with playwright python bench/dump_browser_proof.py --out "$TMPDIR/browser"
+JOLT_ROUNDTRIP_VERIFY_DIR="$TMPDIR/browser" cargo run --release --features native --bin test-roundtrip
+```
+
+`JOLT_ROUNDTRIP_DUMP_DIR=DIR` writes the native `{name}_{proof,io,verifier_preprocessing}.bin` instead. Known state: both proofs verify in their own target, but they differ in `joint_opening_proof` (the Akita batched opening, from the grinding nonce onward) and **the native verifier rejects the browser proof** — an upstream akita cross-target divergence. `cargo test --release --features native --bin test-roundtrip -- --ignored sha2_proof_matches_browser_digest` turns green once it is fixed.
+
 ## Benchmarks
 
 ```bash

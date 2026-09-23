@@ -64,6 +64,8 @@ uv run --with playwright python bench/test_fp128_wgsl.py                        
 uv run --with playwright python bench/proto/commit_proto.py --shape full                          # shipped commit kernels vs Python reference (also --shape small --variant v9 --chunk 64, --shape stress --chunk 2048)
 ```
 
+Cross-target proof check (native vs browser proof bytes, native verify of the browser proof): README "Cross-target proof check" — `bench/dump_browser_proof.py` + `JOLT_ROUNDTRIP_{DUMP,VERIFY}_DIR` on `test-roundtrip`. Known state: the native verifier rejects browser proofs (`joint_opening_proof` diverges, upstream akita); `--ignored sha2_proof_matches_browser_digest` tracks it.
+
 `bench_webgpu.py` needs `node server.mjs` restarted after every wasm/frontend rebuild (it caches). GPU-commit chunk rule: CHUNK = smallest of 64..2048 dividing P with PART scratch `(P/CHUNK)·64·blocks·512·32 B` ≤ 256 MiB; GPU memory at 2^21 ≈ 576 MiB (A 64 + A2 128 + codes 128 + PART 256).
 
 `bench.mjs` outputs JSON to stdout; per-run timings go to stderr. sha2-chain iteration counts map to padded trace lengths: 17 → 2^16, 69 → 2^18, 278 → 2^20, 556 → 2^21 — the wasm32 ceiling (2^22 needs a one-hot polynomial with 2^32 coefficients; see README "Protocol"). `bench-chain.mjs` reports the trace / Akita setup / prove split per run.

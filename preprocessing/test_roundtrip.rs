@@ -56,11 +56,46 @@ fn roundtrip(dir: &Path, schedules: &[u8], name: &str, inputs: &[u8]) {
         sha256_hex(&out.verifier_preprocessing_bytes)
     );
 
+    if let Some(dir) = std::env::var_os("JOLT_ROUNDTRIP_DUMP_DIR") {
+        let dir = Path::new(&dir);
+        for (suffix, bytes) in [
+            ("proof", &out.proof_bytes),
+            ("io", &out.io_bytes),
+            ("verifier_preprocessing", &out.verifier_preprocessing_bytes),
+        ] {
+            std::fs::write(dir.join(format!("{name}_{suffix}.bin")), bytes).expect("dump");
+        }
+    }
+
     let verifier_prep = engine::decode_verifier_preprocessing(&out.verifier_preprocessing_bytes)
         .expect("verifier prep");
     let start = Instant::now();
     engine::verify(&verifier_prep, &out.proof_bytes, &out.io_bytes).expect("verify");
     println!("[{name}] verified in {:.3}s", start.elapsed().as_secs_f64());
+
+    if let Some(dir) = std::env::var_os("JOLT_ROUNDTRIP_VERIFY_DIR") {
+        cross_verify(Path::new(&dir), name, &out);
+    }
+}
+
+/// Compares `{name}_{proof,io,verifier_preprocessing}.bin` from `dir` (a
+/// browser proof dumped by `bench/dump_browser_proof.py`) with the native
+/// bytes and runs it through the native verifier.
+fn cross_verify(dir: &Path, name: &str, native: &engine::ProveOutput) {
+    let proof = load(dir, &format!("{name}_proof.bin"));
+    let io = load(dir, &format!("{name}_io.bin"));
+    let prep_bytes = load(dir, &format!("{name}_verifier_preprocessing.bin"));
+    let same = |a: &[u8], b: &[u8]| if a == b { "identical" } else { "DIFFERENT" };
+    println!(
+        "[{name}] foreign proof {} bytes: proof {}, io {}, verifier preprocessing {}",
+        proof.len(),
+        same(&proof, &native.proof_bytes),
+        same(&io, &native.io_bytes),
+        same(&prep_bytes, &native.verifier_preprocessing_bytes),
+    );
+    let prep = engine::decode_verifier_preprocessing(&prep_bytes).expect("foreign verifier prep");
+    engine::verify(&prep, &proof, &io).expect("foreign proof must verify natively");
+    println!("[{name}] foreign proof verified natively");
 }
 
 // Inline registration is inventory-based (link-time); keeping the crates
@@ -138,19 +173,23 @@ fn main() {
 mod tests {
     use super::*;
 
+    fn sha2_ctx() -> engine::ProverContext {
+        let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
+        engine::ProverContext::new(
+            &load(&public_dir, "akita_schedules.bin"),
+            &load(&public_dir, "sha2_program.bin"),
+            &load(&public_dir, "sha2.elf"),
+        )
+        .expect("prover context")
+    }
+
     /// A malformed input (an overlong postcard varint) makes the sha2
     /// guest's argument decode `unwrap` → `jolt_panic`. The proof of
     /// that execution verifies cryptographically (the panic flag is public
     /// IO), so the engine must reject it explicitly on both ends.
     #[test]
     fn rejects_panicked_guest_execution() {
-        let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
-        let ctx = engine::ProverContext::new(
-            &load(&public_dir, "akita_schedules.bin"),
-            &load(&public_dir, "sha2_program.bin"),
-            &load(&public_dir, "sha2.elf"),
-        )
-        .expect("prover context");
+        let ctx = sha2_ctx();
         let inputs = [0xff; 11];
 
         let out = engine::prove_inner(&ctx, &inputs, false).expect("prove");
@@ -164,5 +203,27 @@ mod tests {
             .err()
             .expect("prove must refuse a panicked trace");
         assert!(err.contains("panicked"), "{err}");
+    }
+
+    /// Browser (wasm32, GPU off) proof of the sha2 roundtrip input, dumped
+    /// with `bench/dump_browser_proof.py` from the abbcf0b full-feature build.
+    /// The native proof (81,731 bytes) differs from it only in
+    /// `joint_opening_proof` (the Akita batched opening) and the native
+    /// verifier rejects the browser proof. Upstream: a16z/jolt issue "akita:
+    /// native and wasm32 batched opening proofs diverge (native verifier
+    /// rejects wasm32 proofs)"; un-ignore once it is fixed.
+    const WASM_SHA2_PROOF_SHA256: &str =
+        "d4cc32e373de61fcbbd18487f3528dfe4c6d53bf6e25ac5e395aea8ac402b806";
+
+    #[test]
+    #[ignore = "native and wasm32 Akita opening proofs diverge (upstream a16z/jolt akita issue)"]
+    fn sha2_proof_matches_browser_digest() {
+        let input: &[u8] = b"jolt wasm prover roundtrip test input";
+        let out = engine::prove(
+            &sha2_ctx(),
+            &postcard::to_allocvec(&input).expect("serialize"),
+        )
+        .expect("prove");
+        assert_eq!(sha256_hex(&out.proof_bytes), WASM_SHA2_PROOF_SHA256);
     }
 }
