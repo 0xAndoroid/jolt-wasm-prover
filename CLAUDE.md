@@ -42,7 +42,7 @@ node bench.mjs            # sha2 demo via the React UI (default 3 runs)
 node bench-chain.mjs 278  # sha2-chain at a given iteration count, via worker.js directly
 ```
 
-`bench.mjs` outputs JSON to stdout; per-run timings go to stderr. sha2-chain iteration counts map to padded trace lengths: 17 → 2^16, 69 → 2^18, 278 → 2^20, 1112 → 2^22. `bench-chain.mjs` reports the trace / Akita setup / prove split per run.
+`bench.mjs` outputs JSON to stdout; per-run timings go to stderr. sha2-chain iteration counts map to padded trace lengths: 17 → 2^16, 69 → 2^18, 278 → 2^20, 556 → 2^21 — the wasm32 ceiling (2^22 needs a one-hot polynomial with 2^32 coefficients; see README "Protocol"). `bench-chain.mjs` reports the trace / Akita setup / prove split per run.
 
 **server.mjs caches compressed responses in memory with no mtime check — restart it after every wasm rebuild or you test stale bytes.**
 

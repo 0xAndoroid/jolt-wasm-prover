@@ -37,7 +37,9 @@ struct Guest {
     /// Must equal the guest's `#[jolt::provable(heap_size = ..)]`: the guest
     /// derives its IO region addresses from the same memory layout.
     heap_size: u64,
-    /// Upper bound on the padded trace length the preprocessing admits.
+    /// Upper bound on the padded trace length the preprocessing admits. At
+    /// most 2^21: a 2^22 trace needs a one-hot polynomial with 2^32
+    /// coefficients, which wasm32 cannot address (README "Protocol").
     max_trace_length: usize,
 }
 
@@ -61,14 +63,14 @@ const GUESTS: &[Guest] = &[
         package: "sha3-chain-guest",
         func: "sha3_chain",
         heap_size: 32768,
-        max_trace_length: 1 << 22,
+        max_trace_length: 1 << 21,
     },
     Guest {
         name: "sha2_chain",
         package: "sha2-chain-guest",
         func: "sha2_chain",
         heap_size: 32768,
-        max_trace_length: 1 << 23,
+        max_trace_length: 1 << 21,
     },
 ];
 

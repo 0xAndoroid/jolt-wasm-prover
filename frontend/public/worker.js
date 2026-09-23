@@ -40,7 +40,7 @@ self.onmessage = async (e) => {
                 scheduleArtifacts = schedules;
                 await initThreadPool(data.numThreads);
                 init_tracing();
-                self.postMessage({ type: 'init-done', scheduleBytes: schedules.byteLength });
+                self.postMessage({ type: 'init-done' });
                 break;
             }
 

@@ -3,7 +3,7 @@
 //
 // Usage: node bench-chain.mjs [itersCsv] [runsPerScale]
 //   itersCsv: comma-separated sha2-chain iteration counts (default targets
-//             padded 2^16,2^18,2^20,2^21,2^22)
+//             padded 2^16,2^18,2^20,2^21)
 //   runsPerScale: default 3
 //
 // Emits one JSON line per completed run to stdout and a summary at the end.
@@ -14,7 +14,9 @@ const CYCLES_PER_SHA256 = 3396;
 const targetIters = (scale) =>
     Math.max(1, Math.round((2 ** scale * 0.9) / CYCLES_PER_SHA256));
 
-const DEFAULT_SCALES = [16, 18, 20, 21, 22];
+// 2^21 is the wasm32 ceiling: a 2^22 trace needs a one-hot polynomial with
+// 2^32 coefficients (see README "Protocol").
+const DEFAULT_SCALES = [16, 18, 20, 21];
 const itersList = process.argv[2]
     ? process.argv[2].split(',').map((s) => parseInt(s, 10))
     : DEFAULT_SCALES.map(targetIters);

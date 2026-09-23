@@ -49,7 +49,7 @@ export type WorkerRequest =
 
 // Messages received from the worker
 export type WorkerResponse =
-  | { type: 'init-done'; scheduleBytes: number }
+  | { type: 'init-done' }
   | { type: 'program-loaded'; program: ProgramName }
   | {
       type: 'prove-done'
