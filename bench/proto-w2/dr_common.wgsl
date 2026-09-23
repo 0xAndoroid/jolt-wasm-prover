@@ -1,0 +1,164 @@
+// Shared declarations for the digit-range sumcheck prototype (appended after fp128.wgsl).
+// Field p = 2^128 - 0xFFFFA7F7, elements = vec4<u32> little-endian limbs, canonical.
+// Digits w in [-4,4); class idx(w) = w if w >= 0 else -w-1, range image V[idx] = idx*(idx+1) in {0,2,6,12}.
+// Q(r) = r(r-2)(r-6)(r-12) = (r^2 - 2r)(r^2 - 18r + 72); round polynomial coefficients of Q(L + D*X).
+
+struct Params {
+  n_units: u32,      // pairs (or octets for round 0) in this dispatch
+  inner_bits: u32,   // log2 |E_first| for this round (pair index j: j_low = j & (inner-1), j_high = j >> inner_bits)
+  off_first: u32,    // offset of this round's E_first table in eq[]
+  off_second: u32,   // offset of this round's E_second table in eq[]
+  ppt: u32,          // units per thread
+  packed: u32,       // 0: digits as i8 bytes, 1: 3-bit packed (w+4), 8 digits per 24 bits
+  src_mode: u32,     // field kernel: 0 = fold prev table, 1 = materialize from octets via LUT2f, 2 = round 2 (LUT2f lookup, no table write); lut kernel: 0 = LUT1, 1 = LUT2f
+  _pad: u32,
+  r: vec4<u32>,      // current fold challenge (field kernel: r_{k-1}; lut kernel: r0)
+  r_aux: vec4<u32>,  // lut kernel: r1
+}
+
+const WG: u32 = 256u;
+const ZERO4: vec4<u32> = vec4<u32>(0u, 0u, 0u, 0u);
+
+fn fp_small(k: u32) -> vec4<u32> { return vec4<u32>(k, 0u, 0u, 0u); }
+
+// x * k for k < 2^32, reduced (5-limb product, fold the top limb as +top*C).
+fn fp128_mul_small(x: vec4<u32>, k: u32) -> vec4<u32> {
+  let p0 = mul_wide(x.x, k);
+  let p1 = mul_wide(x.y, k);
+  let p2 = mul_wide(x.z, k);
+  let p3 = mul_wide(x.w, k);
+  let s1 = p1.x + p0.y; let c1 = select(0u, 1u, s1 < p0.y);
+  let s2a = p2.x + p1.y; let c2a = select(0u, 1u, s2a < p1.y);
+  let s2 = s2a + c1; let c2 = c2a + select(0u, 1u, s2 < c1);
+  let s3a = p3.x + p2.y; let c3a = select(0u, 1u, s3a < p2.y);
+  let s3 = s3a + c2; let c3 = c3a + select(0u, 1u, s3 < c2);
+  let top = p3.y + c3; // < 2^32 (no overflow: product < 2^160)
+  let tc = mul_wide(top, FP128_C);
+  let f = add128_carry(vec4<u32>(p0.x, s1, s2, s3), vec4<u32>(tc.x, tc.y, 0u, 0u));
+  let f2 = add_c(vec4<u32>(f[0], f[1], f[2], f[3]), f[4]);
+  return fp128_canon(vec4<u32>(f2[0], f2[1], f2[2], f2[3]));
+}
+
+// x * k for signed k (two's complement i32 in a u32).
+fn fp128_mul_signed(x: vec4<u32>, k: u32) -> vec4<u32> {
+  let neg = (k & 0x80000000u) != 0u;
+  let mag = select(k, 0u - k, neg);
+  let v = fp128_mul_small(x, mag);
+  return select(v, fp128_sub(ZERO4, v), neg);
+}
+
+// Reassemble 8 x 16-bit digit sums (each < 2^32) into a field element: sum_k d[k] * 2^(16k).
+fn fp128_from_digits(d0: u32, d1: u32, d2: u32, d3: u32, d4: u32, d5: u32, d6: u32, d7: u32) -> vec4<u32> {
+  // even digits form a 128-bit value directly; odd digits are shifted by 16 -> 144-bit value.
+  let even = vec4<u32>(d0, d2, d4, d6);
+  let lo = vec4<u32>(d1 << 16u, (d1 >> 16u) | (d3 << 16u), (d3 >> 16u) | (d5 << 16u), (d5 >> 16u) | (d7 << 16u));
+  let tc = mul_wide(d7 >> 16u, FP128_C); // 2^128 * top -> top * C (48-bit)
+  let e = fp128_canon(even);
+  let l = fp128_add(fp128_canon(lo), vec4<u32>(tc.x, tc.y, 0u, 0u));
+  return fp128_add(e, l);
+}
+
+// Fixed bind group layout shared by every kernel (unused slots get dummy buffers).
+@group(0) @binding(0) var<uniform> params: Params;
+@group(0) @binding(1) var<storage, read> digits: array<u32>;
+@group(0) @binding(2) var<storage, read> eq: array<vec4<u32>>;
+@group(0) @binding(3) var<storage, read_write> partials: array<vec4<u32>>;
+@group(0) @binding(4) var<storage, read> src: array<vec4<u32>>;
+@group(0) @binding(5) var<storage, read_write> dst: array<vec4<u32>>;
+@group(0) @binding(6) var<storage, read> lut: array<vec4<u32>>;
+@group(0) @binding(7) var<storage, read_write> lut_out: array<vec4<u32>>;
+@group(0) @binding(8) var<storage, read_write> out: array<vec4<u32>>;
+
+// ---------- digit source: 8 classes (2 bits each) of octet o ----------
+
+fn class_of_i8(b: u32) -> u32 {  // b = byte (two's complement i8)
+  let neg = (b & 0x80u) != 0u;
+  return select(b & 7u, (0xFFu - b) & 7u, neg); // -w-1 = ~w = 0xFF - b (low 3 bits)
+}
+fn class_of_p3(bits: u32) -> u32 { // bits = w + 4 in [0,8)
+  return select(3u - bits, bits - 4u, bits >= 4u);
+}
+fn octet_classes(o: u32) -> u32 {
+  var out: u32 = 0u;
+  if (params.packed == 0u) {
+    let w0 = digits[2u * o];
+    let w1 = digits[2u * o + 1u];
+    for (var t: u32 = 0u; t < 4u; t++) {
+      out |= class_of_i8((w0 >> (8u * t)) & 0xFFu) << (2u * t);
+      out |= class_of_i8((w1 >> (8u * t)) & 0xFFu) << (2u * (t + 4u));
+    }
+  } else {
+    let idx = (o >> 2u) * 3u;
+    let off = (o & 3u) * 24u;
+    let lo = digits[idx + (off >> 5u)] >> (off & 31u);
+    let off2 = off & 31u;
+    let hi = select(0u, digits[idx + (off >> 5u) + 1u] << (32u - off2), off2 > 8u);
+    let bits = (lo | hi) & 0xFFFFFFu;
+    for (var t: u32 = 0u; t < 8u; t++) {
+      out |= class_of_p3((bits >> (3u * t)) & 7u) << (2u * t);
+    }
+  }
+  return out;
+}
+
+const RANGE_V = array<u32, 4>(0u, 2u, 6u, 12u);
+
+// ---------- round polynomial coefficients of Q(L + D X) ----------
+fn entry_coeffs(L: vec4<u32>, D: vec4<u32>) -> array<vec4<u32>, 5> {
+  let twice = fp128_add(L, L);
+  let four = fp128_add(twice, twice);
+  let eight = fp128_add(four, four);
+  let sixteen = fp128_add(eight, eight);
+  let l2 = fp128_mul(L, L);
+  let fq = fp128_sub(l2, twice);
+  let sq = fp128_add(fp128_sub(l2, fp128_add(sixteen, twice)), fp_small(72u));
+  let d2 = fp128_mul(D, D);
+  let fl = fp128_mul(D, fp128_sub(twice, fp_small(2u)));
+  let sl = fp128_mul(D, fp128_sub(twice, fp_small(18u)));
+  var out: array<vec4<u32>, 5>;
+  out[0] = fp128_mul(fq, sq);
+  out[1] = fp128_add(fp128_mul(fq, sl), fp128_mul(fl, sq));
+  out[2] = fp128_add(fp128_add(fp128_mul(fq, d2), fp128_mul(fl, sl)), fp128_mul(d2, sq));
+  out[3] = fp128_mul(d2, fp128_add(fl, sl));
+  out[4] = fp128_mul(d2, d2);
+  return out;
+}
+
+// ---------- workgroup reduce of 5 coefficients -> partials[wg*5 + c] ----------
+var<workgroup> red: array<vec4<u32>, 1280>; // 256 x 5
+
+fn wg_reduce_store(acc: array<vec4<u32>, 5>, lid: u32, wg: u32) {
+  for (var c: u32 = 0u; c < 5u; c++) { red[c * WG + lid] = acc[c]; }
+  workgroupBarrier();
+  for (var s: u32 = WG / 2u; s > 0u; s >>= 1u) {
+    if (lid < s) {
+      for (var c: u32 = 0u; c < 5u; c++) { red[c * WG + lid] = fp128_add(red[c * WG + lid], red[c * WG + lid + s]); }
+    }
+    workgroupBarrier();
+  }
+  if (lid < 5u) { partials[wg * 5u + lid] = red[lid * WG]; }
+}
+
+// ---------- thread -> units mapping ----------
+// A workgroup covers WG*ppt consecutive units, split into blocks of blk = min(inner, WG*ppt) units that share
+// one e_out; each thread walks ppt units of one block with stride tpb, so it multiplies by e_out once at the end.
+// The harness guarantees inner >= ppt (so tpb >= 1).
+struct Map { unit0: u32, stride: u32 }
+fn map_units(lid: u32, wg: u32) -> Map {
+  let wg_units = WG * params.ppt;
+  let blk = min(1u << params.inner_bits, wg_units);
+  let nblk = wg_units / blk;
+  let tpb = WG / nblk;
+  let b = lid / tpb; let lane = lid % tpb;
+  return Map(wg * wg_units + b * blk + lane, tpb);
+}
+fn e_in_of(unit: u32) -> vec4<u32> { return eq[params.off_first + (unit & ((1u << params.inner_bits) - 1u))]; }
+fn e_out_of(unit: u32) -> vec4<u32> { return eq[params.off_second + (unit >> params.inner_bits)]; }
+fn finish_thread(acc: ptr<function, array<vec4<u32>, 5>>, m: Map) {
+  let eo = e_out_of(m.unit0);
+  for (var c: u32 = 0u; c < 5u; c++) { (*acc)[c] = fp128_mul((*acc)[c], eo); }
+}
+fn accumulate(acc: ptr<function, array<vec4<u32>, 5>>, L: vec4<u32>, Rt: vec4<u32>, w: vec4<u32>) {
+  let co = entry_coeffs(L, fp128_sub(Rt, L));
+  for (var c: u32 = 0u; c < 5u; c++) { (*acc)[c] = fp128_add((*acc)[c], fp128_mul(co[c], w)); }
+}
