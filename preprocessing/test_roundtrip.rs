@@ -89,8 +89,7 @@ fn main() {
 
     // Fixed valid signature over SHA-256("hello world"); limbs are
     // little-endian u64 (limb 0 least significant), Q = (x limbs 0..4, y 4..8).
-    // Same postcard(z)‖postcard(r)‖postcard(s)‖postcard(q) layout as
-    // `WasmProver::prove_ecdsa`.
+    // Input bytes match `WasmProver::prove_ecdsa`.
     let z: [u64; 4] = [
         0x9088f7ace2efcde9,
         0xc484efe37a5380ee,
