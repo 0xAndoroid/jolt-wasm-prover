@@ -18,18 +18,21 @@ Orchestrator task c45196f3 · kanban #562 · playbook: vault `reference/feature-
 
 ## Playbook steps — Phase 2 (deployment readiness)
 1. plan 1/1 — skip: spec is explicit (build + WebKit pass + DEPLOY.md), one lane.
-2. implement 1/1 — fable-high, worktree `webgpu-w3/deploy-readiness`: full W1+W2 wasm build, frontend build, Playwright headless WebKit pass both modes 2^18 + 2^20 (verify=true, byte-identical), 375/1440 screenshots, DEPLOY.md + build-pages.sh refreshed for the webgpu feature set, CSP/_headers check. Preview deploy: skip — DEPLOY.md marks no preview path (user rule). [done — PR #14 @11ee71d → 0484354; blocker: wasm 56.9 MB > 25 MiB cap → strip=symbols 22.4 MiB]
-3. review i/3 — fresh fable-medium. [done — 1/3: 1 fixed @b222a0e; 2/3: 1 minor @11ee71d; 3/3: ZERO ISSUES]
-4. merge 1/1 — shell. [done — 0484354]
-5. deploy 1/1 — skip: production `wrangler pages deploy` is the user's; exact command in the report. [skip — ready dist copied to main checkout frontend/dist + pkg]
+2. implement 1/1 — fable-high, worktree `webgpu-w3/deploy-readiness`: full wasm + frontend build, WebKit pass both modes 2^18 + 2^20 (verify=true, byte-identical), 375/1440 screenshots, DEPLOY.md + build-pages.sh refreshed, CSP/_headers check. Preview deploy: skip — DEPLOY.md marks no preview path. [done — PR #14; blocker: wasm 56.9 MB > 25 MiB Pages cap → `-C strip=symbols` 22.4 MiB]
+3. review i/3 — fresh fable-medium. [done — 1/3: 1 fixed @b222a0e (build-pages webgpu probe false negative); 2/3: 1 minor @11ee71d; 3/3: ZERO ISSUES]
+4. merge 1/1 — shell. [done — 0484354; note: merged while rust-fmt showed a GitHub checkout cert flake; main run re-verified green]
+5. deploy 1/1 — done by main at 16:41 (build 0484354, deployment 9548420b, live smoke passed). [done]
+   - implement csp 1/1 (fable-low): jolt.rs console CSP inline-style warning. [closed — not reproducible in WebKit/Chromium local + live (0 violations); likely a browser extension]
 
 ## Playbook steps — Phase 3 (W3 perf)
-1. plan 1/1 — done early as `plan p3 1/1` (e93207ea) → `.journals/webgpu-w3-p3-plan.md`: lever 1 stage-2 GO, lever 2 PARK (4–5 % ^18 reachable), lever 3 KILL by arithmetic (W1 wall 33 ms = 2.1 %). [done]
-2. implement 1/1 — fable-high, worktree `webgpu-w3/stage2-gpu`, units U0→U5 (RD then QF), patch 0008. [running]
-   - bench (orchestrator lane, `--machine macbook-home`, self-guarded load1 < 3): idle `bench_webgpu.py --gpu all` 2^16–2^21 → kill-rule verdict. [pending]
-3. review i/3 — fresh fable-medium + one astra pass on the WGSL math. [1/3: 3 LOW fixed @2d67ec7; astra math pass clean; 2/3: 2 fixed — unreachable `case_c` kernel branch removed (host clamps ppt ≤ |E_first|; with akita's E_first-pops-first split inner < 8 needs a 2^36 domain), bench `w2IncrementSeconds` = w1 − s2off (was w1 − on, which since W3 included the stage-2 saving); error path proven with a sticky-failing cpu-ref (rounds ≥ 0 / ≥ 3 / tables) → clean `stage-2 proving failed` error, no proof, no panic]
-4. merge 1/1 — shell. [pending]
-5. deploy 1/1 — skip: production deploy is the user's. [pending]
+1. plan 1/1 — done early as `plan p3 1/1` (e93207ea) → `.journals/webgpu-w3-p3-plan.md`: lever 1 stage-2 GO, lever 2 PARK, lever 3 KILL by arithmetic (W1 wall 33 ms = 2.1 %). [done]
+2. implement 1/1 — fable-high, worktree `webgpu-w3/stage2-gpu`, patch 0008. U0: 2^20 ceiling 6.4 % → planner's AND predicate killed it; user (via main) chose the full QF scope at 2^18 under the OR rule → QF L0/L1 + dense L2–L5 + cubic additional terms; byte-identical 2^16/18/20, parity clean. [done — PR #15 @b20898d ready]
+   - implement g1 1/1 (fable-high, parallel): fold-grind on GPU. [KILLED before coding — false premise: `fold_grind_sample` is a decompose-fold norm probe (nonce 0 accepted at all 6 levels), not a Blake2b PoW; corrected lever ceiling 3.2 % @2^18 / 5.6 % @2^20 < bars]
+   - bench 1/1 (`--machine macbook-home`, idle guard load1 < 3): `bench_webgpu.py --gpu all` 2^16–2^21. [done — KEEP: 2^18 +0.164 s = 10.5 % (bar 5 %), 2^20 +9.3 %, 2^21 +9.9 %; prove 2^18 1.405 s vs 2.703 CPU; byte-identical across 5 modes]
+3. review i/3 — fresh Fable + one astra pass on the WGSL math. [1/3: 3 LOW @2d67ec7 (eager-select OOB loads → guards, oracle exact capacity); math 1/1 (astra, read-only): 1 HIGH folded into 1/3, fp128/round/additional/reduce cleared; 2/3: 2 LOW @cf85aa7 (unreachable case_c branch, w2Increment vs s2off); 3/3: 3 LOW @908f448 (reduce.wgsl storageBarrier ordering, coefficient_bits=0 decline, device_round after error); 4/4 DEVIATION (convergence round beyond the playbook's 3 — all findings LOW and shrinking): 1 LOW @018a34f (deploy tooling at 3 features) + main #16–#18 merged in → CONVERGED]
+4. merge 1/1 — pre-merge lane e1c2346 (main #19 spongefish pin merged, zero conflicts, CPU==GPU sha 2^16/18/20, UI 29/29, native + cpu-ref 3/3, cross-verify PASS) → squash 50d78f8, remote branch deleted, `wt remove`. [done]
+5. deploy 1/1 — redeploy dist for 50d78f8 (22.4 MiB wasm, 4 features, build-pages gate passed) staged in the main checkout `frontend/dist`; production `npx wrangler pages deploy frontend/dist --project-name=jolt-wasm-prover` left to main/user. [done — staged]
+   - report 1/1 — `~/.pika/web/reports/webgpu-akita-w3-2026-09.html` + vault note. [running]
 
 ## Plan (phase 1)
 Numbers measured from source (main @ 7a26b84):
@@ -105,3 +108,11 @@ U0 verdict first (Sep 23 17:00): KILL by the AND predicate (2^18 0.370 s PASS, 2
 - Gates: kernels vs Python dense-fold reference 131k + 65k pairs (`bench/test_stage2_wgsl.py`) VERIFIED; native roundtrip with `JOLT_RELATION_RANGE_DEVICE=cpu-ref` on all 6 levels (Factored 12/9 rounds, Dense 8/7/6/5) → sha identical VERIFIED; browser `--gpu both --iters 17,69,278`: sha equal at 2^16/2^18/2^20 (4359b6b8 / b93ccc30 / 1a291342), verify=true, device on 5/6/6 levels VERIFIED; `--parity 6` @2^18: 35 rounds + 6 handoffs clean VERIFIED; `--gpu all` (off/w1/on/w2/s2off) sha equal at 2^18 + 2^20 VERIFIED.
 - Mini timings (load1 20–70, noise-dominated — the idle verdict is the macbook-home lane): stage-2 GPU wall @2^18 163 ms (light load) … 316–373 ms (heavy) vs CPU 467 ms; per level (loaded) L0 2^24 Factored 12 rounds 118–128 ms (35 MiB inline, mostly the ≤ 80k additional pairs × 80 B per round), L1 2^21 37–98, L2 2^20 Dense 38–110 (16 MiB P0 upload), L3–L5 9–45 ms. Prove @2^18 (2 runs, warm median): off 3.484 · w1 2.852 · on 3.205 · w2 4.678 · s2off 3.080 s; @2^20: off 10.172 · w1 7.469 · on 5.755 · w2 10.196 · s2off 7.866 s — increments not interpretable under this load.
 - Left/ideas: pack the pairs (drop the 12 B pad, or fold the binary weights via the interval + eq structure to remove the per-round pair upload); GPU-fold the sparse pair list instead of the host `bind`; cache the dense P0 across levels? (different per level); the compact digits upload could be shared with the W2 device (same digits) — not done.
+
+
+## Implementation notes (G1)
+- Premise check failed before any code: `fold_grind_sample` (`ring_relation.rs:858`) wraps `fold_grind::sample_multi_group_fold_decompose_witnesses`, a fold-response rejection grind, not the Blake2b PoW (`search_grinding_nonce`, `grinding.rs:79`, which only runs inside `sample_grinded_sumcheck_challenge`, ≤10 hashes/round).
+- Per nonce: `PreviewFoldDraw` squeezes fold challenges off a sponge clone (cheap), `probe_fold` builds the decompose-fold witness (i32 ring MAC over the committed rows), `accepts_fold_witness_flat` checks the digit/L2 bounds. First accepted nonce wins; the accept predicate is the fold norm, not a hash.
+- Trace (`.local-bench/webkit-trace-sha2chain-69-cold-mini.json`): exactly one probe per level, nonce 0 accepted at all 6 levels. 137.5 ms mini = L0 `TracePackedOneHot::decompose_fold` 111.3 (`trace_onehot_decompose_accumulate` 101.4) + L1–5 `SuffixWitnessView::decompose_fold` 9.2/6.4/1.5/1.1/~0 + acceptance 1.9 + live replay 1.3. Hashing is not visible.
+- Metal reference (`markosg04/akita@feat/akita-metal`, `crates/akita-metal/src/runtime/fold.rs`, `kernels/onehot.metal`): no grind/PoW kernel; it GPU-ises the decompose fold itself (`akita_fp128_d512_decompose_fold`, `d128_subring64_decompose_fold`). Its Blake2b kernel is the resident sumcheck-challenge transcript (plan U8), unrelated.
+- Corrected lever = "level-0 decompose fold on GPU" (exact integer, byte-identical in principle, W1-style seam + 2 kernels, Metal precedent). Ceiling at zero GPU cost: 111 ms × 0.446 = 50 ms = 3.2 % @2^18; ×4 trace ≈ 200 ms = 5.6 % @2^20 — both under the 5 %/8 % bars → KILL by arithmetic (same class as lever 3). Nothing built; worktree holds only this note.
