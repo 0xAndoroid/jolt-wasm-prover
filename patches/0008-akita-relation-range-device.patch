@@ -309,10 +309,10 @@ index 0000000..5301f64
 +}
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs
 new file mode 100644
-index 0000000..ed1c562
+index 0000000..453cf61
 --- /dev/null
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs
-@@ -0,0 +1,410 @@
+@@ -0,0 +1,416 @@
 +use super::device::{
 +    field_from_bytes, field_to_bytes, fields_from_bytes, fields_to_bytes, installed_device,
 +    parity_rounds, DeviceRounds, RelationRangeJob, RelationRangeShape, RoundInput, WeightsKind,
@@ -489,7 +489,13 @@ index 0000000..ed1c562
 +            field_to_bytes(&r, &mut bytes);
 +            bytes
 +        });
++        // The first error already fails the prove; a session that missed a
++        // round is out of step with the host folds, so it is not driven further.
++        let failed = self.device_error.is_some();
 +        let terms = (|| -> Result<[E; TERMS], AkitaError> {
++            if failed {
++                return Ok([E::zero(); TERMS]);
++            }
 +            let session = d
 +                .session
 +                .as_mut()

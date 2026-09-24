@@ -393,9 +393,10 @@ impl Session {
                 }
             }
         };
-        // A thread's units must share one E_second entry; with akita's split
-        // (E_first pops first) inner < 8 needs a 2^36 domain, so the clamp
-        // never fires on wasm32 and `max_wgs` stays a valid partials bound.
+        // A thread's units must share one E_second entry, so ppt <= |E_first|.
+        // With akita's split (E_first holds (n-1)/2 vars and pops first)
+        // `units_per_thread` only exceeds |E_first| on >= 2^38 domains, so the
+        // clamp never bites on wasm32 and `max_wgs` stays a valid partials bound.
         let ppt = units_per_thread(n_units).min(inner);
         let wgs = n_units.div_ceil(WG * ppt);
         let zero = [0u8; FIELD_BYTES];
@@ -684,6 +685,11 @@ impl RelationRangeDevice for WebGpuRelationRange {
             && shape.domain_len >= 1 << MIN_DOMAIN_BITS
             && shape.bit_width >= 1
             && shape.bit_width <= 8
+            // The factored kernels write the flat P at round `coefficient_bits`
+            // into a TA/TB table and fold it from there; with no coefficient
+            // round that write lands in round 0 (no table yet) and round 1
+            // would fold the raw lane weights instead.
+            && (shape.weights == WeightsKind::Dense || shape.coefficient_bits >= 1)
             && !SESSION_OPEN.load(Ordering::SeqCst);
         if qualifies {
             gpu_rounds(shape)
