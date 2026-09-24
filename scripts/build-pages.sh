@@ -1,13 +1,14 @@
+grep -qaF '[gpu] stage-2 relation-range device' "$WASM" || die "pkg/ lacks webgpu,relation-range-device. Run: $WASM_CMD"
 #!/usr/bin/env bash
 # Assemble frontend/dist/ for Cloudflare Pages from a pkg/ built with the full
-# browser feature set (GPU mailbox + trace-commit + digit-range devices).
+# browser feature set (GPU mailbox + trace-commit + digit-range + relation-range devices).
 #
 #   ./scripts/build-pages.sh          use the existing pkg/ (feature set is checked)
 #   ./scripts/build-pages.sh --wasm   run ./setup-wasm-deps.sh + the wasm build first
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FEATURES="webgpu,trace-commit-device,digit-range-device"
+FEATURES="webgpu,trace-commit-device,digit-range-device,relation-range-device"
 WASM_CMD="RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD=\"panic_abort,std\" wasm-pack build --release --target web -- --features $FEATURES"
 MAX_FILE_BYTES=$((25 * 1024 * 1024)) # Cloudflare Pages per-file cap
 
@@ -24,7 +25,7 @@ JS="$ROOT/pkg/jolt_wasm_prover.js"
 [ -f "$WASM" ] || die "pkg/jolt_wasm_prover_bg.wasm not found. Run: $WASM_CMD"
 # The shipped build must carry every GPU feature. `gpu_mailbox_ptr` is exported
 # unconditionally (returns 0 without `webgpu`), so probe the install messages of
-# src/gpu/{trace_commit,digit_range}.rs instead: each compiles only with `webgpu`
+# src/gpu/{trace_commit,digit_range,stage2}.rs instead: each compiles only with `webgpu`
 # plus its device feature.
 grep -qaF '[gpu] trace commit device' "$WASM" || die "pkg/ lacks webgpu,trace-commit-device. Run: $WASM_CMD"
 grep -qaF '[gpu] digit range device' "$WASM" || die "pkg/ lacks webgpu,digit-range-device. Run: $WASM_CMD"

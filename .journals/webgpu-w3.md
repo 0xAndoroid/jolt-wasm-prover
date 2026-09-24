@@ -18,13 +18,18 @@ Orchestrator task c45196f3 · kanban #562 · playbook: vault `reference/feature-
 
 ## Playbook steps — Phase 2 (deployment readiness)
 1. plan 1/1 — skip: spec is explicit (build + WebKit pass + DEPLOY.md), one lane.
-2. implement 1/1 — fable-high, worktree `webgpu-w3/deploy-readiness`: full W1+W2 wasm build, frontend build, Playwright headless WebKit pass both modes 2^18 + 2^20 (verify=true, byte-identical), 375/1440 screenshots, DEPLOY.md + build-pages.sh refreshed for the webgpu feature set, CSP/_headers check. Preview deploy: skip — DEPLOY.md marks no preview path (user rule). [running]
-3. review i/3 — fresh fable-medium. [pending]
-4. merge 1/1 — shell. [pending]
-5. deploy 1/1 — skip: production `wrangler pages deploy` is the user's; exact command in the report. [pending]
+2. implement 1/1 — fable-high, worktree `webgpu-w3/deploy-readiness`: full W1+W2 wasm build, frontend build, Playwright headless WebKit pass both modes 2^18 + 2^20 (verify=true, byte-identical), 375/1440 screenshots, DEPLOY.md + build-pages.sh refreshed for the webgpu feature set, CSP/_headers check. Preview deploy: skip — DEPLOY.md marks no preview path (user rule). [done — PR #14 @11ee71d → 0484354; blocker: wasm 56.9 MB > 25 MiB cap → strip=symbols 22.4 MiB]
+3. review i/3 — fresh fable-medium. [done — 1/3: 1 fixed @b222a0e; 2/3: 1 minor @11ee71d; 3/3: ZERO ISSUES]
+4. merge 1/1 — shell. [done — 0484354]
+5. deploy 1/1 — skip: production `wrangler pages deploy` is the user's; exact command in the report. [skip — ready dist copied to main checkout frontend/dist + pkg]
 
-## Playbook steps — Phase 3
-(filled when phase 2 merges)
+## Playbook steps — Phase 3 (W3 perf)
+1. plan 1/1 — done early as `plan p3 1/1` (e93207ea) → `.journals/webgpu-w3-p3-plan.md`: lever 1 stage-2 GO, lever 2 PARK (4–5 % ^18 reachable), lever 3 KILL by arithmetic (W1 wall 33 ms = 2.1 %). [done]
+2. implement 1/1 — fable-high, worktree `webgpu-w3/stage2-gpu`, units U0→U5 (RD then QF), patch 0008. [running]
+   - bench (orchestrator lane, `--machine macbook-home`, self-guarded load1 < 3): idle `bench_webgpu.py --gpu all` 2^16–2^21 → kill-rule verdict. [pending]
+3. review i/3 — fresh fable-medium + one astra pass on the WGSL math. [1/3: 3 LOW fixed @2d67ec7; astra math pass clean; 2/3: 2 fixed — unreachable `case_c` kernel branch removed (host clamps ppt ≤ |E_first|; with akita's E_first-pops-first split inner < 8 needs a 2^36 domain), bench `w2IncrementSeconds` = w1 − s2off (was w1 − on, which since W3 included the stage-2 saving); error path proven with a sticky-failing cpu-ref (rounds ≥ 0 / ≥ 3 / tables) → clean `stage-2 proving failed` error, no proof, no panic]
+4. merge 1/1 — shell. [pending]
+5. deploy 1/1 — skip: production deploy is the user's. [pending]
 
 ## Plan (phase 1)
 Numbers measured from source (main @ 7a26b84):
@@ -92,3 +97,11 @@ Inherently sequential: the g RUN_SEQ rounds — round k's params carry challenge
 - Screenshots 375/1440 GPU+CPU: `/tmp/webgpu-w3-p2-{375,1440}.png`, `/tmp/webgpu-w3-p2-cpu-{375,1440}.png` — selector legible, selected segment obvious, reason line on CPU-only (chromium), no horizontal overflow.
 - Non-issue: WebKit logs `Refused to apply a stylesheet … style-src` only around `page.screenshot` — Playwright's injected screenshot stylesheet, not the app.
 - Byte-level code equality stripped vs unstripped NOT shown (sections re-hash after the full rebuild); functional equivalence is the browser pass above.
+
+## Implementation notes (phase 3) — implement 1/1 (branch `webgpu-w3/stage2-gpu`, PR #15)
+U0 verdict first (Sep 23 17:00): KILL by the AND predicate (2^18 0.370 s PASS, 2^20 0.508 s FAIL); user overrode → full QF scope at 2^18 (OR kill rule). Ledger: `.audit/webgpu-w3.tsv` phase3 rows.
+- Profile (mini, warm W1+W2, `bench_webgpu.py --dump-trace` + `bench/trace_spans.py`): stage 2 = 467 ms of 2.240 s @2^18 (levels nv 24,21,20,19,18,17: 194/47/33/106/47/28 ms), 583 of 5.161 s @2^20 (nv 25,22,20,19,18,17: 365/73/28/24/48/29) — levels 2–5 do not grow with the trace, so 2^20 caps at 6.4 % even at zero GPU cost. `stage2_plan`: L0/L1 quotient_factored + packing linear (2 sources ≤ 576 values, 76544/11718 lane segments), L2–L5 reduced_dense + sparse linear; every level has additional terms (sparse compression linear 79888 … 0 entries, negative-binary support 77824 … 0 on 2 intervals; physical_l2 levels 3–5 carry 262144/98304/65536 linear entries). Trip probe 0.42–0.82 ms.
+- Design (patch 0008 `RelationRangeDevice`, `src/gpu/stage2.rs`, `wgsl/stage2/`): the device owns the witness (compact digits → field table at round 1) and the relation weights either **dense** (flat table P = dense weights + structured linear + additional linear, folded on the GPU; the host list keeps only the binary part) or **factored** (alpha × lane_w with the host folding alpha and the ≤ 576 linear source values per coefficient round; per-lane segment map `start << 8 | count` uploaded once after the lane weights; at the first lane round the kernel materialises P = alpha·lane_w + linear and continues dense). The additional cubic runs as a second pass over the host-folded sparse pairs (`[m | l0 l1 ρb0 ρb1]`, ≤ 80k pairs at L0 round 0). One RUN_SEQ per round (round pass + additional pass + reduce, 160 B readback, last round post-copies `[P | W]` for the 2^12 CPU tail); MAX_ARGS 32 → 64 (proxy `W` mirrored), MAX_REGIONS stays 8. Round polynomials are unique, so the standard per-round algorithm reproduces the CPU's two-round compact prefix / partial-lane fusions exactly; SkipLinear + trimming stay on the host. Parity mode keeps the CPU authoritative (no prefix) and compares full round polynomials + handoff tables.
+- Gates: kernels vs Python dense-fold reference 131k + 65k pairs (`bench/test_stage2_wgsl.py`) VERIFIED; native roundtrip with `JOLT_RELATION_RANGE_DEVICE=cpu-ref` on all 6 levels (Factored 12/9 rounds, Dense 8/7/6/5) → sha identical VERIFIED; browser `--gpu both --iters 17,69,278`: sha equal at 2^16/2^18/2^20 (4359b6b8 / b93ccc30 / 1a291342), verify=true, device on 5/6/6 levels VERIFIED; `--parity 6` @2^18: 35 rounds + 6 handoffs clean VERIFIED; `--gpu all` (off/w1/on/w2/s2off) sha equal at 2^18 + 2^20 VERIFIED.
+- Mini timings (load1 20–70, noise-dominated — the idle verdict is the macbook-home lane): stage-2 GPU wall @2^18 163 ms (light load) … 316–373 ms (heavy) vs CPU 467 ms; per level (loaded) L0 2^24 Factored 12 rounds 118–128 ms (35 MiB inline, mostly the ≤ 80k additional pairs × 80 B per round), L1 2^21 37–98, L2 2^20 Dense 38–110 (16 MiB P0 upload), L3–L5 9–45 ms. Prove @2^18 (2 runs, warm median): off 3.484 · w1 2.852 · on 3.205 · w2 4.678 · s2off 3.080 s; @2^20: off 10.172 · w1 7.469 · on 5.755 · w2 10.196 · s2off 7.866 s — increments not interpretable under this load.
+- Left/ideas: pack the pairs (drop the 12 B pad, or fold the binary weights via the interval + eq structure to remove the per-round pair upload); GPU-fold the sparse pair list instead of the host `bind`; cache the dense P0 across levels? (different per level); the compact digits upload could be shared with the W2 device (same digits) — not done.

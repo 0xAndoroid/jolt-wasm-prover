@@ -61,20 +61,23 @@ async ({ threads, gpu, parityRounds }) => {
 """
 
 RUN_JS = """
-async ({ iters, parityRounds }) => {
+async ({ iters, parityRounds, dumpTrace }) => {
     const send = (type, data) => {
         const reply = window.__bench.wait({ 'prove': 'prove-done', 'verify': 'verify-done', 'clear-trace': 'trace-cleared', 'get-trace': 'trace' }[type]);
         window.__bench.worker.postMessage({ type, data });
         return reply;
     };
-    if (parityRounds) await send('clear-trace');
+    if (parityRounds || dumpTrace) await send('clear-trace');
     const p = await send('prove', { program: 'sha2-chain', input: Array.from(new Uint8Array(32).fill(5)), numIters: iters });
     if (p.type === 'error') return { error: p.error };
     // The parity shadow reports each compared round as a tracing event; count them per prove.
-    let parityCompared = null;
+    let parityCompared = null, stage2ParityCompared = null, stage2TablesOk = null;
     if (parityRounds) {
         const t = await send('get-trace');
-        parityCompared = JSON.parse(t.trace).filter((e) => e.args && e.args.message === 'digit_range_device_parity_ok').length;
+        const events = JSON.parse(t.trace).filter((e) => e.args && e.args.message);
+        parityCompared = events.filter((e) => e.args.message === 'digit_range_device_parity_ok').length;
+        stage2ParityCompared = events.filter((e) => e.args.message === 'stage2_device_parity_ok').length;
+        stage2TablesOk = events.filter((e) => e.args.message === 'stage2_device_tables_ok').length;
     }
     const digest = await crypto.subtle.digest('SHA-256', p.proof);
     const sha = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -98,12 +101,31 @@ async ({ iters, parityRounds }) => {
         gpuRoundtripUs: p.gpuRoundtripUs,
         gpuCommit: p.gpuCommit ? JSON.parse(p.gpuCommit) : null,
         gpuDigitRange: p.gpuDigitRange ? JSON.parse(p.gpuDigitRange) : null,
+        gpuStage2: p.gpuStage2 ? JSON.parse(p.gpuStage2) : null,
         parityCompared,
+        stage2ParityCompared,
+        stage2TablesOk,
     };
 }
 """
 
 TEARDOWN_JS = "() => { window.__bench.worker.terminate(); window.__bench = null; }"
+
+GET_TRACE_JS = """
+async () => {
+    const reply = window.__bench.wait('trace');
+    window.__bench.worker.postMessage({ type: 'get-trace' });
+    return (await reply).trace;
+}
+"""
+
+TRIP_PROBE_JS = """
+async ({ n }) => {
+    const reply = window.__bench.wait('gpu-trip-probe-done');
+    window.__bench.worker.postMessage({ type: 'gpu-trip-probe', data: { n } });
+    return (await reply).msPerTrip;
+}
+"""
 
 
 def launch(p, browser):
@@ -117,15 +139,17 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--iters", default="17", help="comma-separated sha2-chain iteration counts (17 -> 2^16 padded, 69 -> 2^18, 278 -> 2^20, 556 -> 2^21)")
     ap.add_argument("--runs", type=int, default=3)
-    ap.add_argument("--gpu", default="both", choices=["both", "on", "off", "w1", "w2", "all"],
-                    help="on = W1+W2, w1 = commit only, w2 = digit-range only, all = off,w1,on,w2")
+    ap.add_argument("--gpu", default="both", choices=["both", "on", "off", "w1", "w2", "s2off", "all"],
+                    help="on = W1+W2+W3, w1 = commit only, w2 = digit-range only, s2off = W1+W2 (stage-2 device off), all = off,w1,on,w2,s2off")
     ap.add_argument("--parity", type=int, default=0, help="check the first N GPU digit-range rounds per instance against the CPU prover")
     ap.add_argument("--browser", default="webkit", choices=["webkit", "chromium", "chromium-unsafe"])
     ap.add_argument("--threads", type=int, default=8)
+    ap.add_argument("--dump-trace", default=None, help="write the worker's span trace (Chrome Trace Format JSON) of the last prove of each mode/size to PATH.<mode>.<iters>.json (see bench/trace_spans.py)")
+    ap.add_argument("--trip-probe", type=int, default=0, help="before proving, time N dependent one-dispatch RUN_SEQ trips through the mailbox and print ms/trip")
     ap.add_argument("--url", default=os.environ.get("BENCH_URL", "http://localhost:8080"))
     args = ap.parse_args()
-    modes = {"both": ["on", "off"], "on": ["on"], "off": ["off"], "w1": ["w1"], "w2": ["w2"], "all": ["off", "w1", "on", "w2"]}[args.gpu]
-    gpu_arg = {"on": True, "off": False, "w1": "w1", "w2": "w2"}
+    modes = {"both": ["on", "off"], "on": ["on"], "off": ["off"], "w1": ["w1"], "w2": ["w2"], "s2off": ["s2off"], "all": ["off", "w1", "on", "w2", "s2off"]}[args.gpu]
+    gpu_arg = {"on": True, "off": False, "w1": "w1", "w2": "w2", "s2off": "s2off"}
     iters_list = [int(x) for x in args.iters.split(",")]
 
     results = []
@@ -140,13 +164,24 @@ def main():
             page.goto(args.url, wait_until="domcontentloaded")
             init = page.evaluate(SETUP_JS, {"threads": args.threads, "gpu": gpu_arg[label], "parityRounds": args.parity})
             sys.stderr.write(f"gpu={label}: worker ready, init gpu={json.dumps(init)}\n")
+            if args.trip_probe and label != "off":
+                for _ in range(3):
+                    ms = page.evaluate(TRIP_PROBE_JS, {"n": args.trip_probe})
+                    sys.stderr.write(f"gpu={label}: trip probe {args.trip_probe} dependent RUN_SEQ trips: {ms:.3f} ms/trip\n")
+                    print(json.dumps({"gpu": label, "tripProbe": args.trip_probe, "msPerTrip": ms}), flush=True)
             for iters in iters_list:
                 for i in range(args.runs):
-                    r = page.evaluate(RUN_JS, {"iters": iters, "parityRounds": args.parity})
+                    r = page.evaluate(RUN_JS, {"iters": iters, "parityRounds": args.parity, "dumpTrace": bool(args.dump_trace)})
                     if "error" in r:
                         print(json.dumps({"gpu": label, "iters": iters, "run": i + 1, "error": r["error"]}))
                         sys.stderr.write(f"gpu={label} iters={iters} run {i + 1}: ERROR {r['error']}\n")
                         break
+                    if args.dump_trace:
+                        trace = page.evaluate(GET_TRACE_JS)
+                        path = f"{args.dump_trace}.{label}.{iters}.json"
+                        with open(path, "w") as f:
+                            f.write(trace)
+                        sys.stderr.write(f"gpu={label} iters={iters} run {i + 1}: trace -> {path}\n")
                     rec = {"gpu": label, "iters": iters, "run": i + 1, "log2Padded": r["paddedCycles"].bit_length() - 1, **r, "init": init}
                     results.append(rec)
                     print(json.dumps(rec), flush=True)
@@ -162,15 +197,25 @@ def main():
                         f" + rounds {dr['rounds_ms']:.1f} + download {dr['download_ms']:.1f} = {dr['total_ms']:.1f} ms]"
                         if dr else ""
                     )
+                    s2 = r.get("gpuStage2")
+                    commit_str += (
+                        f" stage2[{s2['instances']} inst {s2['gpu_rounds']} rounds {s2['ops']} ops: upload {s2['upload_ms']:.1f}"
+                        f" + rounds {s2['rounds_ms']:.1f} = {s2['total_ms']:.1f} ms, {s2['inline_bytes'] / 1048576:.1f} MiB inline]"
+                        if s2 else ""
+                    )
                     if args.parity:
-                        commit_str += f" parity[{r['parityCompared']} rounds compared]"
+                        commit_str += f" parity[{r['parityCompared']} digit-range rounds, {r['stage2ParityCompared']} stage-2 rounds, {r['stage2TablesOk']} stage-2 handoffs compared]"
                     sys.stderr.write(
                         f"gpu={label} 2^{rec['log2Padded']} run {i + 1}: total {r['totalSeconds']:.2f}s [trace {r['traceSeconds']:.2f} + setup {r['setupSeconds']:.2f} + prove {r['proveSeconds']:.2f}] "
                         f"verify {r['verifySeconds']:.2f}s valid={r['valid']} sha={r['proofSha256'][:16]} peak {r['peakMB']:.0f} MB "
                         f"gpu_status={r['gpuStatus']} selftest {r['gpuSelftestMs']:.0f} ms ({r['gpuSelftestMismatches']} mism) roundtrip {r['gpuRoundtripUs']:.0f} us{commit_str}\n"
                     )
-            page.evaluate(TEARDOWN_JS)
-            page.close()
+            # WebKit sometimes drops the page right after a heavy GPU run; the next mode gets a fresh page anyway.
+            try:
+                page.evaluate(TEARDOWN_JS)
+                page.close()
+            except Exception as e:  # noqa: BLE001
+                sys.stderr.write(f"gpu={label}: teardown skipped ({type(e).__name__})\n")
         browser.close()
 
     summary = {"iters": iters_list, "browser": args.browser, "threads": args.threads, "sizes": {}}
@@ -207,6 +252,9 @@ def main():
             # gpu=on must really have run the GPU path (plain chromium has no adapter and
             # exercises the fallback); a quiet fall-through to the CPU is not a pass.
             expected = "disabled" if label == "off" else ("unavailable" if args.browser == "chromium" else "ok")
+            s2s = [r["gpuStage2"] for r in warm if r.get("gpuStage2")]
+            if s2s:
+                mode["stage2Ms"] = {k: round(statistics.median(d[k] for d in s2s), 2) for k in s2s[0]}
             mode["gpuStatusExpected"] = expected
             gpu_ok = all(r["gpuStatus"] == expected and not r["gpuSelftestMismatches"] for r in rs)
             drs = [r["gpuDigitRange"] for r in warm if r.get("gpuDigitRange")]
@@ -215,11 +263,22 @@ def main():
             # Likewise W2: every run of a mode that includes it must report GPU digit-range
             # instances and rounds (a wasm built without `digit-range-device` reports none),
             # and with --parity the shadow must have compared at least one round.
-            if label in ("on", "w2") and expected == "ok":
+            if label in ("on", "w2", "s2off") and expected == "ok":
                 for r in rs:
                     d = r.get("gpuDigitRange")
                     if not d or d["instances"] < 1 or d["gpu_rounds"] < 1:
                         sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: no GPU digit-range work reported ({d})\n")
+                        gpu_ok = False
+                    s2 = r.get("gpuStage2")
+                    # `on` must run the stage-2 device (a wasm without `relation-range-device` reports none); `s2off` must not.
+                    if label == "on" and (not s2 or s2["instances"] < 1):
+                        sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: no GPU stage-2 work reported ({s2})\n")
+                        gpu_ok = False
+                    if label == "s2off" and s2:
+                        sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: stage-2 device ran in s2off mode\n")
+                        gpu_ok = False
+                    if label == "on" and args.parity and not r["stage2ParityCompared"]:
+                        sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: stage-2 parity shadow compared 0 rounds\n")
                         gpu_ok = False
                     if args.parity and not r["parityCompared"]:
                         sys.stderr.write(f"FAIL gpu={label} 2^{r['log2Padded']} run {r['run']}: parity shadow compared 0 rounds\n")
@@ -234,24 +293,32 @@ def main():
             ok = ok and size["proofBytesIdentical"]
         if "on" in size and "off" in size:
             size["proveRatioOnOff"] = round(size["on"]["warmMedianProveSeconds"] / size["off"]["warmMedianProveSeconds"], 3)
-        if "on" in size and "w1" in size:
-            size["w2IncrementSeconds"] = round(size["w1"]["warmMedianProveSeconds"] - size["on"]["warmMedianProveSeconds"], 3)
+        # `on` carries W3 too; the W2 increment is W1 vs W1+W2 (`s2off`), or vs `on` when s2off did not run.
+        w12 = size.get("s2off") or size.get("on")
+        if w12 and "w1" in size:
+            size["w2IncrementSeconds"] = round(size["w1"]["warmMedianProveSeconds"] - w12["warmMedianProveSeconds"], 3)
+        if "on" in size and "s2off" in size:
+            size["stage2IncrementSeconds"] = round(size["s2off"]["warmMedianProveSeconds"] - size["on"]["warmMedianProveSeconds"], 3)
         summary["sizes"][str(iters)] = size
         if size:
             log2 = next(iter(m["log2Padded"] for m in size.values() if isinstance(m, dict)))
-            medians = {m: size.get(m, {}).get("warmMedianProveSeconds") for m in ("off", "w1", "on", "w2")}
-            table.append((log2, medians, size.get("w2IncrementSeconds"), size.get("proofBytesIdentical"), {m: size.get(m, {}).get("digitRangeMs") for m in ("on", "w2")}))
+            medians = {m: size.get(m, {}).get("warmMedianProveSeconds") for m in ("off", "w1", "on", "w2", "s2off")}
+            table.append((log2, medians, size.get("w2IncrementSeconds"), size.get("proofBytesIdentical"), {m: size.get(m, {}).get("digitRangeMs") for m in ("on", "w2")}, size.get("stage2IncrementSeconds"), size.get("on", {}).get("stage2Ms")))
     summary["ok"] = ok
     print(json.dumps({"summary": summary}, indent=1))
     fmt = lambda v: "-" if v is None else f"{v:.3f}"
-    sys.stderr.write("\nsize   prove off   prove w1   prove on   prove w2   w2 incr (s)  sha equal  digit range (ms)\n")
-    for log2, med, incr, same, dr in table:
+    sys.stderr.write("\nsize   prove off   prove w1   prove on   prove w2  prove s2off  w2 incr (s)  s2 incr (s)  sha equal  digit range (ms) | stage 2 (ms)\n")
+    for log2, med, incr, same, dr, s2incr, s2 in table:
         d = dr.get("on") or dr.get("w2")
         stages = (
             f"{d['instances']} inst {d['gpu_rounds']} rounds {d['ops']} ops: upload {d['upload_ms']:.1f} rounds {d['rounds_ms']:.1f} download {d['download_ms']:.1f} total {d['total_ms']:.1f}"
             if d else "-"
         )
-        sys.stderr.write(f"2^{log2:<4} {fmt(med['off']):>9}  {fmt(med['w1']):>9}  {fmt(med['on']):>9}  {fmt(med['w2']):>9}  {fmt(incr):>11}  {str(same):>9}  {stages}\n")
+        stages += (
+            f" | {s2['instances']} inst {s2['gpu_rounds']} rounds {s2['ops']} ops: upload {s2['upload_ms']:.1f} rounds {s2['rounds_ms']:.1f} total {s2['total_ms']:.1f}"
+            if s2 else " | -"
+        )
+        sys.stderr.write(f"2^{log2:<4} {fmt(med['off']):>9}  {fmt(med['w1']):>9}  {fmt(med['on']):>9}  {fmt(med['w2']):>9}  {fmt(med['s2off']):>11}  {fmt(incr):>11}  {fmt(s2incr):>11}  {str(same):>9}  {stages}\n")
     sys.exit(0 if ok else 1)
 
 

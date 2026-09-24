@@ -106,6 +106,31 @@ mod wasm {
         let _ = rounds;
     }
 
+    /// W3 knob (`s2off`): keep the GPU on but leave the stage-2 relation-range
+    /// rounds on the CPU.
+    #[wasm_bindgen]
+    pub fn set_gpu_stage2_enabled(enabled: bool) {
+        crate::gpu::set_stage2_enabled(enabled)
+    }
+
+    /// Keep the CPU stage-2 prover authoritative and compare the device's
+    /// first `rounds` round polynomials + handoff tables (0 = off); no-op
+    /// without the `relation-range-device` feature.
+    #[wasm_bindgen]
+    pub fn set_relation_range_parity_rounds(rounds: u32) {
+        #[cfg(feature = "relation-range-device")]
+        akita_prover::set_relation_range_parity_rounds(rounds as usize);
+        #[cfg(not(feature = "relation-range-device"))]
+        let _ = rounds;
+    }
+
+    /// Bench probe: mean milliseconds of `n` dependent RUN_SEQ trips (one
+    /// dispatch + 96 B readback each); NaN when the GPU is not enabled.
+    #[wasm_bindgen]
+    pub fn gpu_trip_probe(n: u32) -> f64 {
+        crate::gpu::trip_probe(n)
+    }
+
     #[wasm_bindgen]
     pub struct WasmProver {
         ctx: engine::ProverContext,
@@ -297,6 +322,12 @@ mod wasm {
         #[wasm_bindgen(getter)]
         pub fn gpu_digit_range(&self) -> String {
             self.out.gpu.digit_range.clone()
+        }
+
+        /// JSON breakdown of the GPU stage-2 instances (empty if none ran).
+        #[wasm_bindgen(getter)]
+        pub fn gpu_stage2(&self) -> String {
+            self.out.gpu.stage2.clone()
         }
     }
 

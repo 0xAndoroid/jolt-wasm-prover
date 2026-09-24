@@ -173,6 +173,7 @@ export function useProver() {
           totalMs: msg.elapsed,
           commitMs: stage(msg.gpuCommit),
           digitRangeMs: stage(msg.gpuDigitRange),
+          stage2Ms: stage(msg.gpuStage2),
         }
         setState((prev) => ({
           ...prev,
@@ -199,7 +200,8 @@ export function useProver() {
           p,
           `  mode ${mode.toUpperCase()}` +
             (lastProof.commitMs != null ? ` · commit ${ms(lastProof.commitMs)}` : '') +
-            (lastProof.digitRangeMs != null ? ` · digit range ${ms(lastProof.digitRangeMs)}` : ''),
+            (lastProof.digitRangeMs != null ? ` · digit range ${ms(lastProof.digitRangeMs)}` : '') +
+            (lastProof.stage2Ms != null ? ` · stage 2 ${ms(lastProof.stage2Ms)}` : ''),
         )
         sha256Digest(msg.proof).then((d) => log(p, `Proof SHA-256: ${hex(d)}`))
         if (msg.numCycles != null)

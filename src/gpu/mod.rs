@@ -22,6 +22,12 @@ mod selftest;
 #[cfg(all(
     target_arch = "wasm32",
     feature = "webgpu",
+    feature = "relation-range-device"
+))]
+pub mod stage2;
+#[cfg(all(
+    target_arch = "wasm32",
+    feature = "webgpu",
     feature = "trace-commit-device"
 ))]
 pub mod trace_commit;
@@ -89,6 +95,17 @@ pub fn digit_range_enabled() -> bool {
     DIGIT_RANGE_ENABLED.load(Ordering::SeqCst)
 }
 
+static STAGE2_ENABLED: AtomicBool = AtomicBool::new(true);
+
+/// Bench knob (`s2off`): GPU on but the stage-2 relation-range rounds stay on the CPU.
+pub fn set_stage2_enabled(enabled: bool) {
+    STAGE2_ENABLED.store(enabled, Ordering::SeqCst);
+}
+
+pub fn stage2_enabled() -> bool {
+    STAGE2_ENABLED.load(Ordering::SeqCst)
+}
+
 /// What a prove run learned about the GPU before doing any field work.
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct GpuReport {
@@ -105,6 +122,9 @@ pub struct GpuReport {
     /// JSON breakdown of the GPU digit-range instances in this prove
     /// (`digit_range::Breakdown`); empty when none ran.
     pub digit_range: String,
+    /// JSON breakdown of the GPU stage-2 instances in this prove
+    /// (`stage2::Breakdown`); empty when none ran.
+    pub stage2: String,
 }
 
 /// The session's one self-test result (`selftest`), reused by every prove.
@@ -189,6 +209,10 @@ fn selftest_enabled() -> GpuReport {
             if report.status == "ok" {
                 digit_range::install_once();
             }
+            #[cfg(feature = "relation-range-device")]
+            if report.status == "ok" {
+                stage2::install_once();
+            }
             report
         }
         Err(e) => GpuReport {
@@ -233,6 +257,60 @@ pub fn take_digit_range_report() -> String {
     ))]
     {
         let b = digit_range::take_breakdown();
+        if b.instances > 0 {
+            return serde_json::to_string(&b).expect("plain struct");
+        }
+    }
+    String::new()
+}
+
+/// Mean ms per dependent RUN_SEQ trip: one dispatch of the digit-range
+/// reduce kernel over zero partials plus a 96 B inline readback — the shape
+/// of one stage-2 sumcheck round without its compute.
+pub fn trip_probe(n: u32) -> f64 {
+    #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
+    {
+        use mailbox::{Region, OP_RUN_SEQ};
+        if STATE.load(Ordering::SeqCst) != STATE_ENABLED || n == 0 {
+            return f64::NAN;
+        }
+        let mut params = [0u32; 16];
+        params[4] = 1;
+        let param_bytes: Vec<u8> = params.iter().flat_map(|w| w.to_le_bytes()).collect();
+        let partials = [0u8; 80];
+        let mut out = [0u8; 96];
+        // reduce kernel (shader 8): partials -> binding 3, out -> binding 4.
+        let args = [1, 8, 1, 2, 3, 2, 4, 1];
+        let t0 = now_ms();
+        for _ in 0..n {
+            let regions = [
+                Region::upload(&param_bytes),
+                Region::readback(&mut out),
+                Region::upload(&partials),
+            ];
+            if mailbox::call(OP_RUN_SEQ, &args, &regions).is_err() {
+                return f64::NAN;
+            }
+        }
+        (now_ms() - t0) / f64::from(n)
+    }
+    #[cfg(not(all(target_arch = "wasm32", feature = "webgpu")))]
+    {
+        let _ = n;
+        f64::NAN
+    }
+}
+
+/// Breakdown of the GPU stage-2 instances since the last call (JSON);
+/// empty when the device is compiled out or never ran.
+pub fn take_stage2_report() -> String {
+    #[cfg(all(
+        target_arch = "wasm32",
+        feature = "webgpu",
+        feature = "relation-range-device"
+    ))]
+    {
+        let b = stage2::take_breakdown();
         if b.instances > 0 {
             return serde_json::to_string(&b).expect("plain struct");
         }

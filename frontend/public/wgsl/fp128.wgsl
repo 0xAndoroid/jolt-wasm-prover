@@ -169,3 +169,33 @@ fn fp128_mul(a: vec4<u32>, b: vec4<u32>) -> vec4<u32> {
 fn fp128_muladd(a: vec4<u32>, b: vec4<u32>, c: vec4<u32>) -> vec4<u32> {
     return fp128_add(fp128_mul(a, b), c);
 }
+
+// ---------- small-integer multiplies (shared by the sumcheck kernels) ----------
+const ZERO4: vec4<u32> = vec4<u32>(0u, 0u, 0u, 0u);
+fn fp_small(k: u32) -> vec4<u32> { return vec4<u32>(k, 0u, 0u, 0u); }
+
+// x * k for k < 2^32, reduced (5-limb product, fold the top limb as +top*C).
+fn fp128_mul_small(x: vec4<u32>, k: u32) -> vec4<u32> {
+  let p0 = mul_wide(x.x, k);
+  let p1 = mul_wide(x.y, k);
+  let p2 = mul_wide(x.z, k);
+  let p3 = mul_wide(x.w, k);
+  let s1 = p1.x + p0.y; let c1 = select(0u, 1u, s1 < p0.y);
+  let s2a = p2.x + p1.y; let c2a = select(0u, 1u, s2a < p1.y);
+  let s2 = s2a + c1; let c2 = c2a + select(0u, 1u, s2 < c1);
+  let s3a = p3.x + p2.y; let c3a = select(0u, 1u, s3a < p2.y);
+  let s3 = s3a + c2; let c3 = c3a + select(0u, 1u, s3 < c2);
+  let top = p3.y + c3; // < 2^32 (product < 2^160)
+  let tc = mul_wide(top, FP128_C);
+  let f = add128_carry(vec4<u32>(p0.x, s1, s2, s3), vec4<u32>(tc.x, tc.y, 0u, 0u));
+  let f2 = add_c(vec4<u32>(f[0], f[1], f[2], f[3]), f[4]);
+  return fp128_canon(vec4<u32>(f2[0], f2[1], f2[2], f2[3]));
+}
+
+// x * k for signed k (two's complement i32 in a u32).
+fn fp128_mul_signed(x: vec4<u32>, k: u32) -> vec4<u32> {
+  let neg = (k & 0x80000000u) != 0u;
+  let mag = select(k, 0u - k, neg);
+  let v = fp128_mul_small(x, mag);
+  return select(v, fp128_sub(ZERO4, v), neg);
+}

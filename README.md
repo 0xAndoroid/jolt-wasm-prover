@@ -165,14 +165,17 @@ RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --r
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device
 # ... plus the GPU digit-range rounds (patch 0007)
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device
+# ... plus the GPU stage-2 relation-range rounds (patch 0008) — the full browser build
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device,relation-range-device
 
 # Oracle bench: gpu on vs off, proofs must match, verify must pass. Needs node server.mjs, which
 # serves frontend/dist/: after editing worker.js, gpu-proxy.js or wgsl/ run `cd frontend && npm run build`
 # and restart the server (it caches responses). Prints the GPU commit stage breakdown and a final
 # off/on/ratio table per size.
 uv run --with playwright python bench/bench_webgpu.py --iters 17,69,278,556 --runs 4 --gpu both --browser webkit
-# --gpu all runs off / w1 (commit only) / on (W1+W2) / w2 (digit range only) and prints the W2 increment
-# (w1 − on); --parity N shadows the first N GPU digit-range rounds with the CPU prover and aborts on a mismatch
+# --gpu all runs off / w1 (commit only) / on (W1+W2+W3) / w2 (digit range only) / s2off (W1+W2) and prints the
+# W2 (w1 − s2off) and W3 (s2off − on) increments; --parity N shadows the first N GPU digit-range and stage-2 rounds
+# with the CPU prover and aborts on a mismatch
 uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 5 --gpu all
 uv run --with playwright python bench/bench_webgpu.py --iters 69 --runs 1 --gpu on --parity 6
 
