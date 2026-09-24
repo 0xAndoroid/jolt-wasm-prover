@@ -16,12 +16,12 @@ static output is uploaded.
    the jolt pin changed: `cargo run --release --features native --bin generate-preprocessing`.
 3. Patched wasm deps: `./setup-wasm-deps.sh` (rewrites the override block in `Cargo.toml`
    to point at `.wasm-deps/`; never commit that state, `./setup-wasm-deps.sh --revert` restores it).
-4. Wasm, full browser feature set (GPU mailbox + trace-commit + digit-range devices):
+4. Wasm, full browser feature set (GPU mailbox + trace-commit + digit-range + relation-range devices):
    ```bash
-   RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device
+   RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device,relation-range-device
    ```
    After a toolchain change run `cargo clean --target wasm32-unknown-unknown` first.
-5. `./scripts/build-pages.sh` — checks that `pkg/` carries all three features, runs
+5. `./scripts/build-pages.sh` — checks that `pkg/` carries all four features, runs
    `npm ci && npm run build`, copies `pkg/` into `frontend/dist/pkg/`, checks the GPU files
    landed and that no file exceeds the 25 MiB Pages cap (`--wasm` runs steps 3–4 for you).
 6. Local smoke (same headers as production, see below):

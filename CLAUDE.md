@@ -19,6 +19,8 @@ RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --r
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device
 # ... plus the GPU digit-range sumcheck rounds (patch 0007; W2 increment 0.447 s of 2.78 s at 2^18 idle, kill rule 0.425 s → unparked)
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device
+# ... plus the GPU stage-2 relation-range sumcheck rounds (patch 0008; the full browser build)
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device,relation-range-device
 
 # Build native preprocessing generator (needs the `jolt` CLI from the pinned jolt rev on PATH)
 cargo build --release --features native
@@ -139,7 +141,7 @@ Output directory: `frontend/dist/` (with `pkg/` copied in). The shipped wasm is 
 
 ```bash
 ./setup-wasm-deps.sh
-RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device,relation-range-device
 ./scripts/build-pages.sh          # npm ci + vite build + pkg copy + 25 MiB per-file check (`--wasm` runs the two lines above first)
 npx wrangler pages deploy frontend/dist --project-name=jolt-wasm-prover   # add --branch preview for a preview URL
 ```

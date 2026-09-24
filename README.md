@@ -165,6 +165,8 @@ RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --r
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device
 # ... plus the GPU digit-range rounds (patch 0007)
 RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device
+# ... plus the GPU stage-2 relation-range rounds (patch 0008) — the full browser build
+RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device,relation-range-device
 
 # Oracle bench: gpu on vs off, proofs must match, verify must pass. Needs node server.mjs, which
 # serves frontend/dist/: after editing worker.js, gpu-proxy.js or wgsl/ run `cd frontend && npm run build`
