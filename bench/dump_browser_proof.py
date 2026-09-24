@@ -33,7 +33,7 @@ async ({ input }) => {
     const p = await send('prove', { program: 'sha2', input }, 'prove-done');
     if (p.type === 'error') throw new Error(p.error);
     const v = await send('verify', { program: 'sha2', proof: p.proof, programIo: p.programIo, verifierPreprocessing: p.verifierPreprocessing }, 'verify-done');
-    return { valid: v.valid, cycles: p.numCycles, padded: p.paddedCycles, proof: Array.from(p.proof), io: Array.from(p.programIo), vp: Array.from(p.verifierPreprocessing) };
+    return { valid: v.valid, cycles: p.numCycles, padded: p.paddedCycles, traceMs: p.traceMs, setupMs: p.setupMs, proveMs: p.proveMs, proof: Array.from(p.proof), io: Array.from(p.programIo), vp: Array.from(p.verifierPreprocessing) };
 }
 """
 
@@ -60,7 +60,8 @@ def main():
             f.write(bytes(r[key]))
     print(
         f"sha2: {r['cycles']} cycles, padded {r['padded']}, proof {len(r['proof'])} bytes, "
-        f"verify={r['valid']}, sha256 {hashlib.sha256(bytes(r['proof'])).hexdigest()}"
+        f"verify={r['valid']}, sha256 {hashlib.sha256(bytes(r['proof'])).hexdigest()}, "
+        f"trace {r['traceMs'] / 1000:.2f}s setup {r['setupMs'] / 1000:.2f}s prove {r['proveMs'] / 1000:.2f}s"
     )
     if not r["valid"]:
         sys.exit(1)

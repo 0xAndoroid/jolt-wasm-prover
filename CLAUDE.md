@@ -68,7 +68,7 @@ uv run --with playwright python bench/bench_webgpu.py --iters 69,278 --runs 2 --
 uv run --with playwright python bench/proto/commit_proto.py --shape full                          # shipped commit kernels vs Python reference (also --shape small --variant v9 --chunk 64, --shape stress --chunk 2048)
 ```
 
-Cross-target proof check (native vs browser proof bytes, native verify of the browser proof): README "Cross-target proof check" — `bench/dump_browser_proof.py` + `JOLT_ROUNDTRIP_{DUMP,VERIFY}_DIR` on `test-roundtrip`. Known state: the native verifier rejects browser proofs (`joint_opening_proof` diverges, upstream akita); `--ignored sha2_proof_matches_browser_digest` tracks it.
+Cross-target proof check (native vs browser proof bytes, native verify of the browser proof): README "Cross-target proof check" — `bench/dump_browser_proof.py` + `JOLT_ROUNDTRIP_{DUMP,VERIFY}_DIR` on `test-roundtrip`. Browser and native proofs are byte-identical since the spongefish `4ee5f2b2` `[patch]` (a16z/jolt #1924); `sha2_proof_matches_browser_digest` pins the shared digest.
 
 `bench_webgpu.py` needs `node server.mjs` restarted after every wasm/frontend rebuild (it caches). GPU-commit chunk rule: CHUNK = smallest of 64..2048 dividing P with PART scratch `(P/CHUNK)·64·blocks·512·32 B` ≤ 256 MiB; GPU memory at 2^21 ≈ 576 MiB (A 64 + A2 128 + codes 128 + PART 256).
 

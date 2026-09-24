@@ -136,7 +136,7 @@ uv run --with playwright python bench/dump_browser_proof.py --out "$TMPDIR/brows
 JOLT_ROUNDTRIP_VERIFY_DIR="$TMPDIR/browser" cargo run --release --features native --bin test-roundtrip
 ```
 
-`JOLT_ROUNDTRIP_DUMP_DIR=DIR` writes the native `{name}_{proof,io,verifier_preprocessing}.bin` instead. Known state: both proofs verify in their own target, but they differ in `joint_opening_proof` (the Akita batched opening, from the grinding nonce onward) and **the native verifier rejects the browser proof** — an upstream akita cross-target divergence. `cargo test --release --features native --bin test-roundtrip -- --ignored sha2_proof_matches_browser_digest` turns green once it is fixed.
+`JOLT_ROUNDTRIP_DUMP_DIR=DIR` writes the native `{name}_{proof,io,verifier_preprocessing}.bin` instead. Browser and native proofs are byte-identical and cross-verify since spongefish `4ee5f2b2` (`[patch]` in `Cargo.toml`; a16z/jolt #1924 — the pre-fix sponge hashed its squeeze counters at pointer width, so the Akita batched opening diverged on wasm32 and the native verifier rejected browser proofs). `cargo test --release --features native --bin test-roundtrip sha2_proof_matches_browser_digest` pins the shared proof digest.
 
 ## Benchmarks
 

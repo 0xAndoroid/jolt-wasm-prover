@@ -208,17 +208,17 @@ mod tests {
     }
 
     /// Browser (wasm32, GPU off) proof of the sha2 roundtrip input, dumped
-    /// with `bench/dump_browser_proof.py` from the abbcf0b full-feature build.
-    /// The native proof (81,731 bytes) differs from it only in
-    /// `joint_opening_proof` (the Akita batched opening) and the native
-    /// verifier rejects the browser proof. Upstream: a16z/jolt issue "akita:
-    /// native and wasm32 batched opening proofs diverge (native verifier
-    /// rejects wasm32 proofs)"; un-ignore once it is fixed.
+    /// with `bench/dump_browser_proof.py` (WebKit and Chromium agree). Native
+    /// and wasm32 proofs are byte-identical since spongefish 4ee5f2b2
+    /// (a16z/jolt #1924: the Blake2b512 sponge behind `AkitaTranscript`
+    /// hashed its squeeze counters at pointer width, so the batched opening
+    /// diverged across targets and the native verifier rejected browser
+    /// proofs). `bench/dump_browser_proof.py` prints the digest; regenerate
+    /// if the transcript or the sha2 artifacts change.
     const WASM_SHA2_PROOF_SHA256: &str =
-        "d4cc32e373de61fcbbd18487f3528dfe4c6d53bf6e25ac5e395aea8ac402b806";
+        "afe5b6cced775f1663e7c047ec27ccd0a1593cd9d8d717427018ec2312f5ed1d";
 
     #[test]
-    #[ignore = "native and wasm32 Akita opening proofs diverge (upstream a16z/jolt akita issue)"]
     fn sha2_proof_matches_browser_digest() {
         let input: &[u8] = b"jolt wasm prover roundtrip test input";
         let out = engine::prove(

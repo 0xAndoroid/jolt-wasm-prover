@@ -126,3 +126,13 @@ ark-serialize = { git = "https://github.com/a16z/arkworks-algebra", branch = "de
 [patch."https://github.com/a16z/jolt"]
 jolt-field = { git = "https://github.com/0xAndoroid/jolt", rev = "d39bd518a65ea89401de63c3343e98fbad5f1b80" }
 # <<< wasm-deps overrides
+
+# spongefish before 4ee5f2b2 hashed its squeeze counters at pointer width
+# (`usize::to_be_bytes`), so the Blake2b512 sponge behind `AkitaTranscript`
+# derived different Fiat-Shamir challenges on wasm32 than on 64-bit: browser
+# proofs verified in the browser but not natively (a16z/jolt #1924). The Akita
+# crates pin the pre-fix rev and Cargo refuses a `[patch]` back onto the same
+# source, so the fixed upstream commit (v0.7.2) is served from a fork mirror.
+# Drop once LayerZero-Labs/akita bumps spongefish >= 0.7.2.
+[patch."https://github.com/arkworks-rs/spongefish"]
+spongefish = { git = "https://github.com/0xAndoroid/spongefish", rev = "4ee5f2b22a6ef628f7b6e162ab72cc285b9a850e" }
