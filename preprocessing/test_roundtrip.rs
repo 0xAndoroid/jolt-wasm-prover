@@ -56,11 +56,46 @@ fn roundtrip(dir: &Path, schedules: &[u8], name: &str, inputs: &[u8]) {
         sha256_hex(&out.verifier_preprocessing_bytes)
     );
 
+    if let Some(dir) = std::env::var_os("JOLT_ROUNDTRIP_DUMP_DIR") {
+        let dir = Path::new(&dir);
+        for (suffix, bytes) in [
+            ("proof", &out.proof_bytes),
+            ("io", &out.io_bytes),
+            ("verifier_preprocessing", &out.verifier_preprocessing_bytes),
+        ] {
+            std::fs::write(dir.join(format!("{name}_{suffix}.bin")), bytes).expect("dump");
+        }
+    }
+
     let verifier_prep = engine::decode_verifier_preprocessing(&out.verifier_preprocessing_bytes)
         .expect("verifier prep");
     let start = Instant::now();
     engine::verify(&verifier_prep, &out.proof_bytes, &out.io_bytes).expect("verify");
     println!("[{name}] verified in {:.3}s", start.elapsed().as_secs_f64());
+
+    if let Some(dir) = std::env::var_os("JOLT_ROUNDTRIP_VERIFY_DIR") {
+        cross_verify(Path::new(&dir), name, &out);
+    }
+}
+
+/// Compares `{name}_{proof,io,verifier_preprocessing}.bin` from `dir` (a
+/// browser proof dumped by `bench/dump_browser_proof.py`) with the native
+/// bytes and runs it through the native verifier.
+fn cross_verify(dir: &Path, name: &str, native: &engine::ProveOutput) {
+    let proof = load(dir, &format!("{name}_proof.bin"));
+    let io = load(dir, &format!("{name}_io.bin"));
+    let prep_bytes = load(dir, &format!("{name}_verifier_preprocessing.bin"));
+    let same = |a: &[u8], b: &[u8]| if a == b { "identical" } else { "DIFFERENT" };
+    println!(
+        "[{name}] foreign proof {} bytes: proof {}, io {}, verifier preprocessing {}",
+        proof.len(),
+        same(&proof, &native.proof_bytes),
+        same(&io, &native.io_bytes),
+        same(&prep_bytes, &native.verifier_preprocessing_bytes),
+    );
+    let prep = engine::decode_verifier_preprocessing(&prep_bytes).expect("foreign verifier prep");
+    engine::verify(&prep, &proof, &io).expect("foreign proof must verify natively");
+    println!("[{name}] foreign proof verified natively");
 }
 
 // Inline registration is inventory-based (link-time); keeping the crates
@@ -89,6 +124,43 @@ fn main() {
     let inputs = postcard::to_allocvec(&sha2_input).expect("serialize");
     roundtrip(&public_dir, &schedules, "sha2", &inputs);
 
+    // Fixed valid signature over SHA-256("hello world"); limbs are
+    // little-endian u64 (limb 0 least significant), Q = (x limbs 0..4, y 4..8).
+    // Input bytes match `WasmProver::prove_ecdsa`.
+    let z: [u64; 4] = [
+        0x9088f7ace2efcde9,
+        0xc484efe37a5380ee,
+        0xa52e52d7da7dabfa,
+        0xb94d27b9934d3e08,
+    ];
+    let r: [u64; 4] = [
+        0xb8fc413b4b967ed8,
+        0x248d4b0b2829ab00,
+        0x587f69296af3cd88,
+        0x3a5d6a386e6cf7c0,
+    ];
+    let s: [u64; 4] = [
+        0x66a82f274e3dcafc,
+        0x299a02486be40321,
+        0x6212d714118f617e,
+        0x9d452f63cf91018d,
+    ];
+    let q: [u64; 8] = [
+        0x0012563f32ed0216,
+        0xee00716af6a73670,
+        0x91fc70e34e00e6c8,
+        0xeeb6be8b9e68868b,
+        0x4780de3d5fda972d,
+        0xcb1b42d72491e47f,
+        0xdc7f31262e4ba2b7,
+        0xdc7b004d3bb2800d,
+    ];
+    let mut inputs = postcard::to_allocvec(&z).expect("serialize");
+    inputs.extend_from_slice(&postcard::to_allocvec(&r).expect("serialize"));
+    inputs.extend_from_slice(&postcard::to_allocvec(&s).expect("serialize"));
+    inputs.extend_from_slice(&postcard::to_allocvec(&q).expect("serialize"));
+    roundtrip(&public_dir, &schedules, "ecdsa", &inputs);
+
     let mut inputs = postcard::to_allocvec(&[5u8; 32]).expect("serialize");
     // 17 → 2^16, 69 → 2^18 (default 100), 278 → 2^20, 556 → 2^21 padded cycles.
     let iters =
@@ -97,4 +169,63 @@ fn main() {
     roundtrip(&public_dir, &schedules, "sha2_chain", &inputs);
 
     println!("All roundtrips passed!");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sha2_ctx() -> engine::ProverContext {
+        let public_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("frontend/public");
+        engine::ProverContext::new(
+            &load(&public_dir, "akita_schedules.bin"),
+            &load(&public_dir, "sha2_program.bin"),
+            &load(&public_dir, "sha2.elf"),
+        )
+        .expect("prover context")
+    }
+
+    /// A malformed input (an overlong postcard varint) makes the sha2
+    /// guest's argument decode `unwrap` → `jolt_panic`. The proof of
+    /// that execution verifies cryptographically (the panic flag is public
+    /// IO), so the engine must reject it explicitly on both ends.
+    #[test]
+    fn rejects_panicked_guest_execution() {
+        let ctx = sha2_ctx();
+        let inputs = [0xff; 11];
+
+        let out = engine::prove_inner(&ctx, &inputs, false).expect("prove");
+        let prep = engine::decode_verifier_preprocessing(&out.verifier_preprocessing_bytes)
+            .expect("verifier prep");
+        let err = engine::verify(&prep, &out.proof_bytes, &out.io_bytes)
+            .expect_err("panicked execution must not verify");
+        assert!(err.contains("panicked"), "{err}");
+
+        let err = engine::prove(&ctx, &inputs)
+            .err()
+            .expect("prove must refuse a panicked trace");
+        assert!(err.contains("panicked"), "{err}");
+    }
+
+    /// Browser (wasm32, GPU off) proof of the sha2 roundtrip input, dumped
+    /// with `bench/dump_browser_proof.py` from the abbcf0b full-feature build.
+    /// The native proof (81,731 bytes) differs from it only in
+    /// `joint_opening_proof` (the Akita batched opening) and the native
+    /// verifier rejects the browser proof. Upstream: a16z/jolt issue "akita:
+    /// native and wasm32 batched opening proofs diverge (native verifier
+    /// rejects wasm32 proofs)"; un-ignore once it is fixed.
+    const WASM_SHA2_PROOF_SHA256: &str =
+        "d4cc32e373de61fcbbd18487f3528dfe4c6d53bf6e25ac5e395aea8ac402b806";
+
+    #[test]
+    #[ignore = "native and wasm32 Akita opening proofs diverge (upstream a16z/jolt akita issue)"]
+    fn sha2_proof_matches_browser_digest() {
+        let input: &[u8] = b"jolt wasm prover roundtrip test input";
+        let out = engine::prove(
+            &sha2_ctx(),
+            &postcard::to_allocvec(&input).expect("serialize"),
+        )
+        .expect("prove");
+        assert_eq!(sha256_hex(&out.proof_bytes), WASM_SHA2_PROOF_SHA256);
+    }
 }

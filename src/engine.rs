@@ -165,8 +165,26 @@ pub struct ProveOutput {
     pub gpu: crate::gpu::GpuReport,
 }
 
+/// A proof of a panicked execution is well-formed (the panic flag is public
+/// IO bound in the transcript) but attests a failed run, so the demo refuses
+/// it on both ends: here right after tracing, before spending the prove time,
+/// and again in [`verify`] for proofs produced elsewhere. jolt-sdk instead
+/// returns the flag to the caller (`io_device.panic`) and lets the application
+/// decide.
 #[tracing::instrument(skip_all, name = "engine::prove")]
 pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> {
+    prove_inner(ctx, inputs, true)
+}
+
+const PANICKED: &str = "guest execution panicked";
+
+/// `reject_panic = false` lets the roundtrip test produce a panicked proof for
+/// [`verify`] to reject.
+pub(crate) fn prove_inner(
+    ctx: &ProverContext,
+    inputs: &[u8],
+    reject_panic: bool,
+) -> Result<ProveOutput, String> {
     let program_preprocessing = &ctx.program_preprocessing;
     let layout = &program_preprocessing.memory_layout;
     let memory_config = MemoryConfig {
@@ -190,6 +208,9 @@ pub fn prove(ctx: &ProverContext, inputs: &[u8]) -> Result<ProveOutput, String> 
             &program_preprocessing.bytecode,
         )
         .map_err(|e| format!("trace error: {e:?}"))?;
+    if reject_panic && trace_output.device.panic {
+        return Err(PANICKED.to_string());
+    }
     let unpadded_cycles = trace_output.trace.len();
     let trace_ms = clock.lap();
 
@@ -257,7 +278,11 @@ pub fn verify(prep: &VerifierPrep, proof_bytes: &[u8], io_bytes: &[u8]) -> Resul
     let proof: Proof = decode(proof_bytes, "proof")?;
     let public_io: JoltDevice = decode(io_bytes, "program io")?;
     jolt_verifier::verify::<F, Pcs, Vc, Transcript>(prep, &public_io, &proof, None)
-        .map_err(|e| format!("verification failed: {e}"))
+        .map_err(|e| format!("verification failed: {e}"))?;
+    if public_io.panic {
+        return Err(format!("verification failed: {PANICKED}"));
+    }
+    Ok(())
 }
 
 /// `std::time::Instant` panics on wasm32-unknown-unknown; the browser gets

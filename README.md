@@ -9,7 +9,7 @@ Four guest programs are included:
 | Program | Description | Guest crate |
 |---------|-------------|-------------|
 | **SHA-256** | Hash arbitrary input | `guests/sha2` |
-| **ECDSA** | Secp256k1 signature verification | `guests/secp256k1` |
+| **ECDSA** | secp256k1 ECDSA verification of one fixed signature (`jolt-inlines-secp256k1` field inlines) | `guests/secp256k1` |
 | **Keccak Chain** | Iterated Keccak-256 hashing | `guests/sha3-chain` |
 | **SHA-256 Chain** | Iterated SHA-256 (tunable trace length, for scale benchmarks) | `guests/sha2-chain` |
 
@@ -120,11 +120,23 @@ The `.cargo/config.toml` configures the WASM build with:
 
 ## Roundtrip Testing
 
-Runs the exact browser code path natively from the shipped artifacts (setup derivation, prove, verify):
+Runs the exact browser code path natively from the shipped artifacts (setup derivation, prove, verify) for `sha2`, `ecdsa` and `sha2_chain`:
 
 ```bash
 cargo run --release --features native --bin test-roundtrip
 ```
+
+### Cross-target proof check
+
+Compares the browser's sha2 proof of the roundtrip input with the native one and runs it through the native verifier:
+
+```bash
+node server.mjs &   # restart after every wasm/frontend rebuild
+uv run --with playwright python bench/dump_browser_proof.py --out "$TMPDIR/browser"
+JOLT_ROUNDTRIP_VERIFY_DIR="$TMPDIR/browser" cargo run --release --features native --bin test-roundtrip
+```
+
+`JOLT_ROUNDTRIP_DUMP_DIR=DIR` writes the native `{name}_{proof,io,verifier_preprocessing}.bin` instead. Known state: both proofs verify in their own target, but they differ in `joint_opening_proof` (the Akita batched opening, from the grinding nonce onward) and **the native verifier rejects the browser proof** — an upstream akita cross-target divergence. `cargo test --release --features native --bin test-roundtrip -- --ignored sha2_proof_matches_browser_digest` turns green once it is fixed.
 
 ## Benchmarks
 
