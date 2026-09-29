@@ -46,6 +46,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: scripts/lint/rust.sh native
       - if: always()
         run: echo "rust-native wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
@@ -64,7 +65,9 @@ jobs:
       - run: ./setup-wasm-deps.sh
       - uses: Swatinem/rust-cache@v2
         with:
+          key: ${{ hashFiles('setup-wasm-deps.sh', 'patches/**') }}
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: scripts/lint/rust.sh device
       - if: always()
         run: echo "rust-device wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
@@ -84,7 +87,9 @@ jobs:
       - run: ./setup-wasm-deps.sh
       - uses: Swatinem/rust-cache@v2
         with:
+          key: ${{ hashFiles('setup-wasm-deps.sh', 'patches/**') }}
           cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: scripts/lint/rust.sh wasm
       - if: always()
         run: echo "rust-wasm wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"

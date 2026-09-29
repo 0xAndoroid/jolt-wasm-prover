@@ -132,10 +132,11 @@ jolt-field = { git = "https://github.com/0xAndoroid/jolt", rev = "d39bd518a65ea8
 # derived different Fiat-Shamir challenges on wasm32 than on 64-bit: browser
 # proofs verified in the browser but not natively (a16z/jolt #1924). The Akita
 # crates pin the pre-fix rev and Cargo refuses a `[patch]` back onto the same
-# source, so the fixed upstream commit (v0.7.2) is served from a fork mirror.
-# Drop once LayerZero-Labs/akita bumps spongefish >= 0.7.2.
+# source, so the fix is taken from crates.io: 0.7.3 is that commit plus the
+# release bump (the 0xAndoroid/spongefish mirror that served it is gone).
+# Drop once LayerZero-Labs/akita bumps spongefish >= 0.7.3.
 [patch."https://github.com/arkworks-rs/spongefish"]
-spongefish = { git = "https://github.com/0xAndoroid/spongefish", rev = "4ee5f2b22a6ef628f7b6e162ab72cc285b9a850e" }
+spongefish = { version = "=0.7.3" }
 
 [lints.rust]
 # WASM mailbox and JS shared-memory views require unsafe blocks.
