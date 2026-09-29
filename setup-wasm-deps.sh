@@ -138,7 +138,7 @@ fetch_at_rev() { # fetch_at_rev <dir> <url> <rev>
 pin_mtimes() { # pin_mtimes <dir> — cargo fingerprints path deps by mtime; a fresh clone must not look newer than cached builds
     local dir=$1 stamp
     stamp=$(TZ=UTC git -C "$dir" log -1 --format=%cd --date=format-local:%Y%m%d%H%M.%S)
-    (cd "$dir" && git ls-files -z | xargs -0 touch -t "$stamp")
+    (cd "$dir" && git ls-files -z | xargs -0 touch -h -t "$stamp")
 }
 
 echo "Fetching a16z/jolt @ $JOLT_REV ..."
