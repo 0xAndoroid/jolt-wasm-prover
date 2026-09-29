@@ -1,10 +1,10 @@
-import { webkit } from 'playwright';
+import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'fs';
 
 const TIMEOUT = 120_000;
 
 async function run() {
-    const browser = await webkit.launch({ headless: true });
+    const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
 
@@ -57,5 +57,5 @@ try {
     await run();
 } catch (e) {
     console.error(e);
-    process.exitCode = 1;
+    process.exit(1);
 }

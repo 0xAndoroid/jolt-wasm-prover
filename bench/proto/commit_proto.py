@@ -57,41 +57,38 @@ for _name, (_cols, _cpt, _scheme) in GEN_VARIANTS.items():
 
 def gen_data(shape, seed):
     rng = np.random.default_rng(seed)
-    rows, cols, colcap, blocks, pos = (shape[k] for k in ("T", "cols", "colcap", "blocks", "positions"))
-    if not (blocks * pos * 32 == rows):
-        raise ValueError("Invalid benchmark shape: blocks * pos * 32 == rows")
+    T, cols, colcap, blocks, pos = (shape[k] for k in ("T", "cols", "colcap", "blocks", "positions"))
+    assert blocks * pos * 32 == T
     pm1 = np.array([0x5808, MASK32, MASK32, MASK32], dtype=np.uint32)  # p - 1
     if shape is SHAPES["stress"]:
-        matrix = np.broadcast_to(pm1, (pos, 512, 4)).copy()
-        hot = rng.integers(0, 16, size=(rows, cols), dtype=np.uint8)
-        code = np.full((rows, colcap), 0xFF, dtype=np.uint8)
+        A = np.broadcast_to(pm1, (pos, 512, 4)).copy()
+        hot = rng.integers(0, 16, size=(T, cols), dtype=np.uint8)
+        code = np.full((T, colcap), 0xFF, dtype=np.uint8)
         code[:, :cols] = hot
-        return matrix, code
+        return A, code
     # A: positions x 512 coefficients x 4 limbs, canonical (< p).
-    matrix = rng.integers(0, 1 << 32, size=(pos, 512, 4), dtype=np.uint64).astype(np.uint32)
-    top = (matrix[..., 1] == MASK32) & (matrix[..., 2] == MASK32) & (matrix[..., 3] == MASK32)
-    matrix[top, 3] = 0
-    matrix[0, 0] = pm1
-    matrix[0, 1] = 0
-    matrix[1, 511] = pm1
-    matrix[pos - 1, 0] = pm1
-    matrix[pos - 1, 255] = 0
+    A = rng.integers(0, 1 << 32, size=(pos, 512, 4), dtype=np.uint64).astype(np.uint32)
+    top = (A[..., 1] == MASK32) & (A[..., 2] == MASK32) & (A[..., 3] == MASK32)
+    A[top, 3] = 0
+    A[0, 0] = pm1
+    A[0, 1] = 0
+    A[1, 511] = pm1
+    A[pos - 1, 0] = pm1
+    A[pos - 1, 255] = 0
     # hot / mask -> code bytes: hot (0..15) if committed else 0xFF; padded to colcap.
-    hot = rng.integers(0, 16, size=(rows, cols), dtype=np.uint8)
-    mask = rng.random((rows, cols)) < 0.5
+    hot = rng.integers(0, 16, size=(T, cols), dtype=np.uint8)
+    mask = rng.random((T, cols)) < 0.5
     committed = (hot != 0) | mask
-    code = np.full((rows, colcap), 0xFF, dtype=np.uint8)
+    code = np.full((T, colcap), 0xFF, dtype=np.uint8)
     code[:, :cols] = np.where(committed, hot, 0xFF)
     code[0:4, :] = 0xFF  # rows with every column uncommitted
-    code[rows - 1, :cols] = 0  # last row: hot = 0 with mask bit on every column
+    code[T - 1, :cols] = 0  # last row: hot = 0 with mask bit on every column
     if shape is SHAPES["small"]:
-        r = np.arange(rows) % 32
+        r = np.arange(T) % 32
         shifts = (16 * r[:, None] + code[:, :cols])[code[:, :cols] < 16]
-        if not (len(np.unique(shifts)) == 512):
-            raise ValueError("small shape must exercise every shift 0..511")
-        if not (((hot[:, :cols] == 0) & ~mask).any()):
-            raise ValueError("small shape must have hot = 0 without the mask bit")
-    return matrix, code
+        assert len(np.unique(shifts)) == 512, "small shape must exercise every shift 0..511"
+        assert ((hot[:, :cols] == 0) & ~mask).any(), "small shape must have hot = 0 without the mask bit"
+    return A, code
 
 
 def to_int(limbs):
@@ -100,7 +97,7 @@ def to_int(limbs):
     return o[..., 0] | (o[..., 1] << 32) | (o[..., 2] << 64) | (o[..., 3] << 96)
 
 
-def ref_rows(matrix_ext, code, shape, c, b):
+def ref_rows(A_ext, code, shape, c, b):
     """Exact R[c][b] (512 Python ints, mod p) via Σ_q Σ_r rot(A[q], s)."""
     pos = shape["positions"]
     acc = np.zeros(512, dtype=object)
@@ -112,18 +109,18 @@ def ref_rows(matrix_ext, code, shape, c, b):
         if r.size == 0:
             continue
         s = 16 * r + codes[r]
-        acc += matrix_ext[q][(idx[None, :] - s[:, None]) % 1024].sum(axis=0)
+        acc += A_ext[q][(idx[None, :] - s[:, None]) % 1024].sum(axis=0)
     return [int(v) % P for v in acc]
 
 
-def ref_coeff(matrix_ext, code, shape, c, b, i):
+def ref_coeff(A_ext, code, shape, c, b, i):
     pos = shape["positions"]
     row0 = b * pos * 32
     codes = code[row0 : row0 + pos * 32, c].astype(np.int64)
     rows = np.nonzero(codes < 16)[0]
     q = rows // 32
     s = 16 * (rows % 32) + codes[rows]
-    return int(matrix_ext[q, (i - s) % 1024].sum()) % P
+    return int(A_ext[q, (i - s) % 1024].sum()) % P
 
 
 def main():
@@ -141,10 +138,9 @@ def main():
     pos, colcap, blocks = shape["positions"], shape["colcap"], shape["blocks"]
     chunk = min(args.chunk, pos) if var["chunked"] else pos
     num_chunks = pos // chunk
-    if not (pos % chunk == 0 and colcap % 8 == 0 and chunk <= MAX_CHUNK):
-        raise ValueError(
-            "Invalid benchmark shape: pos % chunk == 0 and colcap % 8 == 0 and chunk <= MAX_CHUNK"
-        )
+    assert pos % chunk == 0
+    assert colcap % 8 == 0
+    assert chunk <= MAX_CHUNK
     params = {
         "positions": pos,
         "num_chunks": num_chunks,
@@ -156,7 +152,7 @@ def main():
     constants = {"CHUNK": chunk} if var["chunked"] else {}
 
     t0 = time.time()
-    matrix, code = gen_data(shape, args.seed)
+    A, code = gen_data(shape, args.seed)
     gen_s = time.time() - t0
     files = {
         "/config.json": (
@@ -171,7 +167,7 @@ def main():
                 }
             ).encode(),
         ),
-        "/a.bin": ("application/octet-stream", matrix.tobytes()),
+        "/a.bin": ("application/octet-stream", A.tobytes()),
         "/hot.bin": ("application/octet-stream", code.tobytes()),
     }
     if args.variant in GEN_VARIANTS:
@@ -217,20 +213,18 @@ def main():
 
     if not args.no_verify:
         t0 = time.time()
-        result = to_int(res)
-        matrix_int = to_int(matrix)
-        matrix_ext = np.concatenate(
-            [matrix_int, -matrix_int], axis=1
-        )  # rot(A,s)[i] = A_ext[(i - s) mod 1024]
-        canon = bool((result < P).all())
-        pad_zero = bool((result[shape["cols"] :] == 0).all())
+        R = to_int(res)
+        A_int = to_int(A)
+        A_ext = np.concatenate([A_int, -A_int], axis=1)  # rot(A[q],s)[i] = A_ext[q, (i - s) % 1024]
+        canon = bool((R < P).all())
+        pad_zero = bool((R[shape["cols"] :] == 0).all())
         mism = 0
         if args.shape != "full":
             checked = shape["cols"] * blocks * 512
             for c in range(shape["cols"]):
                 for b in range(blocks):
-                    exp = ref_rows(matrix_ext, code, shape, c, b)
-                    mism += sum(1 for i in range(512) if exp[i] != result[c, b, i])
+                    exp = ref_rows(A_ext, code, shape, c, b)
+                    mism += sum(1 for i in range(512) if exp[i] != R[c, b, i])
         else:
             rng = np.random.default_rng(args.seed + 1)
             picks = [
@@ -245,7 +239,7 @@ def main():
             picks += [(0, 0, 0), (0, 0, 511), (shape["cols"] - 1, blocks - 1, 511), (5, 3, 0)]
             checked = len(picks)
             for c, b, i in picks:
-                if ref_coeff(matrix_ext, code, shape, c, b, i) != result[c, b, i]:
+                if ref_coeff(A_ext, code, shape, c, b, i) != R[c, b, i]:
                     mism += 1
         summary["correctness"] = {
             "checked": checked,

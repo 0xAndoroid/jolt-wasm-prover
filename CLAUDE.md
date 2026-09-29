@@ -53,16 +53,16 @@ Install web tools with `npm ci --ignore-scripts --prefix frontend`; versions are
 - `npm run lint --prefix frontend` — oxlint with React, hooks, accessibility, and typed rules.
 - `scripts/lint/python.sh` — Ruff ALL and formatter, via `uvx ruff@0.16.9`.
 - `scripts/lint/shell.sh` — ShellCheck and shfmt; whitespace comes from `.editorconfig`.
-- `scripts/lint/rust.sh` — root crate format and native Clippy; local-only, never a CI dependency build.
+- `scripts/lint/rust.sh` — root crate format and Clippy; native always, native device features and WASM when `.wasm-deps/` exists; local-only.
 
 `scripts/pre-commit.sh` dispatches each language script in `--staged` mode; irrelevant files and missing toolchains exit silently.
-The guest workspace is built only via `jolt build`. Patched-device features require existing `.wasm-deps/` checkouts; without them only `native` is checked.
+The guest workspace is built only via `jolt build`. The default native pass excludes the WASM bindings, `wasm_tracing.rs`, GPU implementation modules, and reference-device modules. With patched `.wasm-deps/` checkouts, the script also checks native device features and the full browser feature set on `wasm32-unknown-unknown` using `build-std`; otherwise it prints that scope as a skip. No WASM package is emitted.
 HTML integrity checks cover external assets except Google Fonts: its CSS varies by user agent and has no fixed SRI digest. Local asset names are hashed by Vite.
 Static checks do not generate or modify `pkg/`, preprocessing artifacts, WGSL, or patch files.
 
 ## Benchmarking
 
-Requires: `npm install`, dev server running. Node scripts use Playwright's bundled headless WebKit.
+Requires: `npm install`, dev server running. Scripts default to the Playwright-bundled Chromium; `PW_BROWSER=webkit` runs bundled WebKit; `PW_CHANNEL=chrome` selects system Chrome.
 
 ```bash
 node server.mjs &

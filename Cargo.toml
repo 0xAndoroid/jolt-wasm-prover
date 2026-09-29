@@ -189,7 +189,9 @@ allow_attributes = "deny"
 
 result_large_err = "allow"
 
-# The native preprocessing binaries produce CLI output; print lints are omitted.
+# Printing belongs only in the native CLI binaries.
+print_stdout = "deny"
+print_stderr = "deny"
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"

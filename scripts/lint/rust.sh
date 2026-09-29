@@ -7,3 +7,10 @@ if [[ "${1:-}" == --staged ]]; then
 fi
 cargo fmt -q --message-format=short -- --check
 cargo clippy -q --all-targets --features native --message-format=short -- -D warnings
+if [[ -d .wasm-deps ]]; then
+    device_features="trace-commit-device,digit-range-device,relation-range-device"
+    cargo clippy -q --all-targets --features "native,$device_features" --message-format=short -- -D warnings
+    RUSTC_BOOTSTRAP=1 cargo clippy -q --lib --target wasm32-unknown-unknown -Z build-std=panic_abort,std --features "webgpu,$device_features" --message-format=short -- -D warnings
+else
+    echo 'skip: patched checkouts absent; WASM bindings, tracing, GPU modules, and reference devices are not linted'
+fi

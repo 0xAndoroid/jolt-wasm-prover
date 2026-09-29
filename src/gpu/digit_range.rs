@@ -242,7 +242,10 @@ struct Pass {
     params: [u32; 16],
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Round parameters mirror the GPU mailbox ABI"
+)]
 fn params(
     n_units: u32,
     inner_bits: u32,

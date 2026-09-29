@@ -3,6 +3,8 @@
 //! prover (`JoltAkitaBackend::optimized()`) and verifier from those bytes,
 //! including the per-proof setup derivation the browser performs.
 
+#![expect(clippy::print_stdout, reason = "CLI output")]
+
 use sha2::{Digest, Sha256};
 use std::error::Error;
 use std::io;

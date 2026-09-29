@@ -8,7 +8,7 @@
 //
 // Emits one JSON line per completed run to stdout and a summary at the end.
 
-import { webkit } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 const CYCLES_PER_SHA256 = 3396;
 /** @param {number} scale */
@@ -24,7 +24,12 @@ const itersList = process.argv[2]
 const RUNS = Math.trunc(Number(process.argv[3] || '3'));
 
 async function run() {
-    const browser = await webkit.launch({headless: true});
+    const engine = process.env['PW_BROWSER'] === 'webkit' ? webkit : chromium;
+    const channel = process.env['PW_CHANNEL'];
+    const browser = await engine.launch({
+        headless: true,
+        ...(engine === chromium && channel ? { channel } : {}),
+    });
     const page = await browser.newContext().then((c) => c.newPage());
     page.on('console', (msg) => process.stderr.write('[page] ' + msg.text() + '\n'));
     await page.goto(process.env['BENCH_URL'] || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
@@ -182,5 +187,5 @@ try {
     await run();
 } catch (e) {
     console.error(e);
-    process.exitCode = 1;
+    process.exit(1);
 }

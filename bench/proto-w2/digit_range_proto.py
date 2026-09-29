@@ -47,8 +47,8 @@ def hash_challenge(words):
     return h
 
 
-def limbs_to_int(linear):
-    return linear[0] | (linear[1] << 32) | (linear[2] << 64) | (linear[3] << 96)
+def limbs_to_int(l):
+    return l[0] | (l[1] << 32) | (l[2] << 64) | (l[3] << 96)
 
 
 def int_to_limbs(x):
@@ -71,13 +71,13 @@ def poly_mul(a, b):
     return out
 
 
-def q_coeffs(left, right):
+def q_coeffs(L, Rt):
     """Coefficients of Q(L + (Rt-L) X), Q(r) = (r^2 - 2r)(r^2 - 18r + 72)."""
-    lin = [left % P, (right - left) % P]
+    lin = [L % P, (Rt - L) % P]
     sq = poly_mul(lin, lin)
-    first = [(sq[0] - 2 * lin[0]) % P, (sq[1] - 2 * lin[1]) % P, sq[2]]
-    second = [(sq[0] - 18 * lin[0] + 72) % P, (sq[1] - 18 * lin[1]) % P, sq[2]]
-    return poly_mul(first, second)
+    A = [(sq[0] - 2 * lin[0]) % P, (sq[1] - 2 * lin[1]) % P, sq[2]]
+    B = [(sq[0] - 18 * lin[0] + 72) % P, (sq[1] - 18 * lin[1]) % P, sq[2]]
+    return poly_mul(A, B)
 
 
 def lut0():
@@ -86,23 +86,21 @@ def lut0():
         co = q_coeffs(V[cp & 3], V[cp >> 2])
         for c in range(5):
             v = co[c] if co[c] < P // 2 else co[c] - P
-            if not (-(2**31) <= v < 2**31):
-                raise ValueError("Invalid benchmark shape: -(2**31) <= v < 2**31")
+            assert -(2**31) <= v < 2**31
             out[c * 16 + cp] = v
     return out
 
 
 def eq_rounds(tau):
     """Fixed-split Gruen tables per round; returns (concatenated limbs, per-round meta)."""
-    rounds = len(tau)
-    split = 1 + (rounds - 1) // 2
+    R = len(tau)
+    split = 1 + (R - 1) // 2
     data, meta, tables = [], [], []
-    for k in range(rounds):
+    for k in range(R):
         first = tau[k + 1 : split] if k + 1 < split else []
         second = tau[split:] if k + 1 <= split else tau[k + 1 :]
         ef, es = eq_table(first), eq_table(second)
-        if not (len(ef) * len(es) * 2 == (1 << (rounds - k))):
-            raise ValueError("Invalid benchmark shape: len(ef) * len(es) * 2 == (1 << (rounds - k))")
+        assert len(ef) * len(es) * 2 == (1 << (R - k))
         meta.append({"inner_bits": len(first), "off_first": len(data), "off_second": len(data) + len(ef)})
         data += ef + es
         tables.append((ef, es))
@@ -140,16 +138,16 @@ def fold(table, r):
 
 def check_instance(inst, out, tau, tables, meta, v, exact, fixed):
     """Returns dict of verdicts. `v` = range-image ints (None for big shapes)."""
-    rounds = inst["rounds"]
+    R = inst["rounds"]
     msgs = [[limbs_to_int(m[4 * c : 4 * c + 4]) for c in range(5)] for m in out["msgs"]]
     rs = [limbs_to_int(r) for r in out["challenges"]]
-    res = {"rounds": rounds, "checks": {}}
+    res = {"rounds": R, "checks": {}}
     # challenges derived as specified
     ok_ch = all(
         (rs[k] == limbs_to_int(fixed[k]))
         if fixed
         else (rs[k] == limbs_to_int(hash_challenge(out["msgs"][k])))
-        for k in range(rounds)
+        for k in range(R)
     )
     res["checks"]["challenge_derivation"] = ok_ch
 
@@ -158,18 +156,18 @@ def check_instance(inst, out, tau, tables, meta, v, exact, fixed):
         return sum(c * pow(x, i, P) for i, c in enumerate(co)) % P
 
     s, prev, ok_sc = 1, 0, True
-    for k in range(rounds):
+    for k in range(R):
 
-        def linear(x, t=tau[k]):
+        def l(x, t=tau[k]):
             return ((1 - t) * (1 - x) + t * x) % P
 
-        def round_poly(x, scale=s, linear=linear, coefficients=msgs[k]):
-            return scale * linear(x) * evalp(coefficients, x) % P
+        def Pk(x, s=s, l=l, co=msgs[k]):
+            return s * l(x) * evalp(co, x) % P
 
-        if (round_poly(0) + round_poly(1)) % P != prev:
+        if (Pk(0) + Pk(1)) % P != prev:
             ok_sc = False
-        prev = round_poly(rs[k])
-        s = s * linear(rs[k]) % P
+        prev = Pk(rs[k])
+        s = s * l(rs[k]) % P
     res["checks"]["sumcheck_consistency"] = ok_sc
     final_tab = [
         limbs_to_int(w)
@@ -181,13 +179,13 @@ def check_instance(inst, out, tau, tables, meta, v, exact, fixed):
         .tolist()
     ]
     final = fold(final_tab, rs[-1])[0]
-    q_final = final * (final - 2) % P * (final - 6) % P * (final - 12) % P
-    res["checks"]["final_claim"] = (s * q_final % P) == prev  # eq(tau, r) * Q(final) == P_{R-1}(r_{R-1})
+    Qf = final * (final - 2) % P * (final - 6) % P * (final - 12) % P
+    res["checks"]["final_claim"] = (s * Qf % P) == prev  # eq(tau, r) * Q(final) == P_{R-1}(r_{R-1})
     if exact:
         table = list(v)
         mism_msgs, mism_tables = 0, 0
         dumps = {d["tag"]: d["b64"] for d in out["dumps"]}
-        for k in range(rounds):
+        for k in range(R):
             ef, es = tables[k]
             ref = reference_round(table, ef, es, meta[k]["inner_bits"])
             if ref != msgs[k]:
@@ -202,10 +200,10 @@ def check_instance(inst, out, tau, tables, meta, v, exact, fixed):
                 ]
                 if got != table:
                     mism_tables += 1
-            if k == rounds - 1:
+            if k == R - 1:
                 last_in = list(table)  # 2-element table the last round wrote; final fold happens on the host
             table = fold(table, rs[k])
-        res["checks"]["exact_messages"] = {"rounds": rounds, "mismatched": mism_msgs}
+        res["checks"]["exact_messages"] = {"rounds": R, "mismatched": mism_msgs}
         res["checks"]["exact_tables"] = {
             "dumped": len([t for t in dumps if t.startswith("table_in")]),
             "mismatched": mism_tables,
@@ -250,13 +248,13 @@ def timing(out):
     def phase(lo, hi):
         return round(sum(p["busy_ms"] for p in per if lo <= p["k"] < hi), 3)
 
-    rounds = len(ks)
+    R = len(ks)
     gaps = [p["gap_ms"] for p in per if p["gap_ms"] is not None]
     span = ts[-1]["end"] - ts[0]["begin"]
     return {
         "compact_ms": phase(0, 3),
         "materialize_r3_ms": phase(3, 4),
-        "field_ms": phase(4, rounds),
+        "field_ms": phase(4, R),
         "gpu_busy_ms": round(sum(p["busy_ms"] for p in per), 3),
         "gap_median_ms": round(sorted(gaps)[len(gaps) // 2], 4),
         "gap_mean_ms": round(sum(gaps) / len(gaps), 4),
@@ -280,24 +278,23 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
-    round_counts = args.rounds or ([24, 21, 20, 19] if args.set == "full" else [])
+    rounds = args.rounds or ([24, 21, 20, 19] if args.set == "full" else [])
     if args.shape == "small":
-        round_counts = [12]
-    if not round_counts:
+        rounds = [12]
+    if not rounds:
         ap.error("nothing to run: pass --rounds R ..., --set full or --shape small")
     exact = args.shape == "small"
     rng = np.random.default_rng(args.seed)
 
     files, instances, refs = {}, [], []
     t0 = time.time()
-    for idx, rounds in enumerate(round_counts):
-        if not (12 <= rounds <= 27):
-            raise ValueError("Invalid benchmark shape: 12 <= rounds <= 27")
-        n = 1 << rounds
+    for idx, R in enumerate(rounds):
+        assert 12 <= R <= 27
+        n = 1 << R
         w = rng.integers(-4, 4, size=n, dtype=np.int8)
         tau = [
             int(x)
-            for x in rng.integers(0, 1 << 62, size=(rounds, 2), dtype=np.int64)
+            for x in rng.integers(0, 1 << 62, size=(R, 2), dtype=np.int64)
             @ np.array([1, 1 << 62], dtype=object)
             % P
         ]
@@ -306,7 +303,7 @@ def main():
             [
                 int_to_limbs(int(x))
                 for x in (
-                    rng.integers(0, 1 << 62, size=(rounds, 2), dtype=np.int64)
+                    rng.integers(0, 1 << 62, size=(R, 2), dtype=np.int64)
                     @ np.array([1, 1 << 62], dtype=object)
                     % P
                 )
@@ -319,7 +316,7 @@ def main():
         files[f"/d{idx}_eq.bin"] = ("application/octet-stream", eq_arr.tobytes())
         instances.append(
             {
-                "rounds": rounds,
+                "rounds": R,
                 "i8_url": f"/d{idx}_i8.bin",
                 "packed_url": f"/d{idx}_p3.bin",
                 "eq_url": f"/d{idx}_eq.bin",

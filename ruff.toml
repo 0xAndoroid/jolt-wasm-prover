@@ -12,8 +12,6 @@ ignore = [
   "PLR0913", # Arithmetic inputs mirror GPU kernel parameters.
   "PLR0915", # Benchmark procedures stay linear rather than splitting for size.
   "PLR0917", # Arithmetic inputs mirror GPU kernel parameters.
-  "TRY003", # CLI errors carry their local diagnostic instead of custom exception classes.
-  "EM101", # Literal CLI error text is clearer at the raise site.
   "D", # Bench scripts and arithmetic helpers do not need API docstrings.
   "COM812", # The formatter owns trailing commas.
   "ISC001", # The formatter owns string layout.
@@ -22,6 +20,12 @@ ignore = [
 ]
 
 [lint.per-file-ignores]
-"bench/**/*.py" = ["T201"] # CLI results and progress are the scripts' output.
+"bench/**/*.py" = [
+  "T201", # CLI results and progress are the scripts' output.
+  "N8", # Mathematical notation matches the GPU kernels.
+  "E741", # Single-letter mathematical variables match the kernels.
+  "E743", # Single-letter local polynomial functions use the same notation.
+  "S101", # Assertions are the oracle's checks, not production input validation.
+]
 
 "bench/test_*_wgsl.py" = ["S311"] # Seeded oracle vectors are public test data, never cryptographic secrets.

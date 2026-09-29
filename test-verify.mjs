@@ -1,9 +1,14 @@
-import { webkit } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 const TIMEOUT = 120_000;
 
 async function run() {
-    const browser = await webkit.launch({headless: true});
+    const engine = process.env['PW_BROWSER'] === 'webkit' ? webkit : chromium;
+    const channel = process.env['PW_CHANNEL'];
+    const browser = await engine.launch({
+        headless: true,
+        ...(engine === chromium && channel ? { channel } : {}),
+    });
     const context = await browser.newContext();
     const page = await context.newPage();
 
@@ -106,5 +111,5 @@ try {
     await run();
 } catch (e) {
     console.error(e);
-    process.exitCode = 1;
+    process.exit(1);
 }

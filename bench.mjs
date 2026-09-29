@@ -1,10 +1,15 @@
-import { webkit } from 'playwright';
+import { chromium, webkit } from 'playwright';
 
 const RUNS = Math.trunc(Number(process.argv[2] || '3'));
 const TIMEOUT = Math.trunc(Number(process.env['BENCH_TIMEOUT'] || '120000'));
 
 async function run() {
-    const browser = await webkit.launch({headless: true});
+    const engine = process.env['PW_BROWSER'] === 'webkit' ? webkit : chromium;
+    const channel = process.env['PW_CHANNEL'];
+    const browser = await engine.launch({
+        headless: true,
+        ...(engine === chromium && channel ? { channel } : {}),
+    });
     const context = await browser.newContext();
     const page = await context.newPage();
 
@@ -45,7 +50,8 @@ async function run() {
         process.stderr.write(`  run ${i + 1}: ${seconds.toFixed(2)}s\n`);
 
         await page.waitForFunction(
-            () => !document.querySelector('button.prove-btn')?.hasAttribute('disabled'),
+            () => !document.querySelector('#page-sha2 .prove-btn')?.hasAttribute('disabled'),
+            undefined,
             { timeout: TIMEOUT },
         );
     }
@@ -62,5 +68,5 @@ try {
     await run();
 } catch (e) {
     console.error(e);
-    process.exitCode = 1;
+    process.exit(1);
 }

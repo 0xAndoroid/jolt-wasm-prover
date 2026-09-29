@@ -118,17 +118,17 @@ def reference_terms(w, p, e_first, e_second, n_units):
     bits = len(e_first).bit_length() - 1
     acc = [0] * 6
     for j in range(n_units):
-        left = w[2 * j] if 2 * j < len(w) else 0
-        right = w[2 * j + 1] if 2 * j + 1 < len(w) else 0
-        dw = right - left
-        p0, p1 = p[2 * j], p[2 * j + 1]
-        dp = p1 - p0
+        L = w[2 * j] if 2 * j < len(w) else 0
+        R = w[2 * j + 1] if 2 * j + 1 < len(w) else 0
+        dw = R - L
+        P0, P1 = p[2 * j], p[2 * j + 1]
+        dp = P1 - P0
         e = e_first[j & mask] * e_second[j >> bits]
-        acc[0] += e * (left * (left + 1))
-        acc[1] += e * (dw * (2 * left + 1))
+        acc[0] += e * (L * (L + 1))
+        acc[1] += e * (dw * (2 * L + 1))
         acc[2] += e * dw * dw
-        acc[3] += left * p0
-        acc[4] += left * dp + dw * p0
+        acc[3] += L * P0
+        acc[4] += L * dp + dw * P0
         acc[5] += dw * dp
     return [fe(a) for a in acc]
 
@@ -142,18 +142,18 @@ def reference_additional(w, sparse):
         lin = [0, 0]
         bin_ = [0, 0]
         while i < len(sparse) and sparse[i][0] >> 1 == parent:
-            idx, lane, b = sparse[i]
-            lin[idx & 1] = lane
+            idx, l, b = sparse[i]
+            lin[idx & 1] = l
             bin_[idx & 1] = b
             i += 1
-        left = w[2 * parent] if 2 * parent < len(w) else 0
-        right = w[2 * parent + 1] if 2 * parent + 1 < len(w) else 0
-        dw = right - left
+        L = w[2 * parent] if 2 * parent < len(w) else 0
+        R = w[2 * parent + 1] if 2 * parent + 1 < len(w) else 0
+        dw = R - L
         dl = lin[1] - lin[0]
         db = bin_[1] - bin_[0]
-        q0, q1, q2 = left * (left + 1), dw * (2 * left + 1), dw * dw
-        acc[0] += left * lin[0] + bin_[0] * q0
-        acc[1] += left * dl + dw * lin[0] + bin_[0] * q1 + db * q0
+        q0, q1, q2 = L * (L + 1), dw * (2 * L + 1), dw * dw
+        acc[0] += L * lin[0] + bin_[0] * q0
+        acc[1] += L * dl + dw * lin[0] + bin_[0] * q1 + db * q0
         acc[2] += dw * dl + bin_[0] * q2 + db * q1
         acc[3] += db * q2
     return [fe(a) for a in acc]
@@ -166,9 +166,9 @@ def bind_sparse(sparse, r):
         parent = sparse[i][0] >> 1
         lin = bin_ = 0
         while i < len(sparse) and sparse[i][0] >> 1 == parent:
-            idx, lane, b = sparse[i]
+            idx, l, b = sparse[i]
             scale = r if idx & 1 else (1 - r)
-            lin += scale * lane
+            lin += scale * l
             bin_ += scale * b
             i += 1
         lin, bin_ = fe(lin), fe(bin_)
@@ -187,8 +187,8 @@ def pairs_blob(sparse):
         lin = [0, 0]
         bin_ = [0, 0]
         while i < len(sparse) and sparse[i][0] >> 1 == parent:
-            idx, lane, b = sparse[i]
-            lin[idx & 1] = lane
+            idx, l, b = sparse[i]
+            lin[idx & 1] = l
             bin_[idx & 1] = b
             i += 1
         out += u32s([parent, 0, 0, 0]) + to_bytes([lin[0], lin[1], bin_[0], bin_[1]])
@@ -251,7 +251,7 @@ def run_instance(rng, log_domain, factored, *, addends=True):
     start = rng.randrange(live_len - 200)
     for i in range(start, start + 150):
         sparse.setdefault(i, [0, 0])[1] = rng.getrandbits(128) % P
-    sparse = sorted((i, lane, b) for i, (lane, b) in sparse.items()) if addends else []
+    sparse = sorted((i, l, b) for i, (l, b) in sparse.items()) if addends else []
 
     w = [d % P for d in digits]
     p = p0[:]
@@ -428,7 +428,7 @@ def main():
         )
         page.goto("http://localhost/stage2-test")
         for factored, addends in ((True, True), (False, True), (True, False)):
-            buffers, jobs, expected, (w, p) = run_instance(rng, args.log_domain, factored, addends)
+            buffers, jobs, expected, (w, p) = run_instance(rng, args.log_domain, factored, addends=addends)
             results = page.evaluate(PAGE_JS, {"sources": sources, "buffers": buffers, "jobs": jobs})
             mode = ("factored" if factored else "dense") + ("" if addends else "/noadd")
             for k, (res, exp) in enumerate(zip(results, expected, strict=True)):

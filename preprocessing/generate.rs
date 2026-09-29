@@ -18,6 +18,8 @@
 //! the pinned jolt rev); jolt-sdk's host machinery is Dory-only and does not
 //! compile against a jolt-prover built with `akita`.
 
+#![expect(clippy::print_stdout, reason = "CLI output")]
+
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
