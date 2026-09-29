@@ -38,11 +38,10 @@ fn now_micros() -> f64 {
 }
 
 fn get_start_time() -> f64 {
-    let mut start = START_TIME.lock().unwrap();
-    if start.is_none() {
-        *start = Some(now_micros());
-    }
-    start.unwrap()
+    *START_TIME
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get_or_insert_with(now_micros)
 }
 
 struct ChromeTraceLayer;
@@ -74,7 +73,10 @@ where
             },
         };
 
-        TRACE_EVENTS.lock().unwrap().push(event);
+        TRACE_EVENTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(event);
     }
 
     fn on_close(&self, id: Id, ctx: Context<'_, S>) {
@@ -96,7 +98,10 @@ where
                 args: None,
             };
 
-            TRACE_EVENTS.lock().unwrap().push(event);
+            TRACE_EVENTS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .push(event);
         }
     }
 
@@ -123,13 +128,16 @@ where
             },
         };
 
-        TRACE_EVENTS.lock().unwrap().push(trace_event);
+        TRACE_EVENTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(trace_event);
     }
 }
 
 struct JsonVisitor<'a>(&'a mut serde_json::Map<String, serde_json::Value>);
 
-impl<'a> tracing::field::Visit for JsonVisitor<'a> {
+impl tracing::field::Visit for JsonVisitor<'_> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         self.0.insert(
             field.name().to_string(),
@@ -167,11 +175,14 @@ pub fn init() {
 }
 
 pub fn get_trace_json() -> String {
-    let events = TRACE_EVENTS.lock().unwrap();
+    let events = TRACE_EVENTS.lock().unwrap_or_else(|e| e.into_inner());
     serde_json::to_string(&*events).unwrap_or_else(|_| "[]".to_string())
 }
 
 pub fn clear() {
-    TRACE_EVENTS.lock().unwrap().clear();
-    *START_TIME.lock().unwrap() = None;
+    TRACE_EVENTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear();
+    *START_TIME.lock().unwrap_or_else(|e| e.into_inner()) = None;
 }

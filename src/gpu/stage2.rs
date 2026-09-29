@@ -96,7 +96,7 @@ static BREAKDOWN: Mutex<Breakdown> = Mutex::new(Breakdown {
 });
 
 pub fn take_breakdown() -> Breakdown {
-    std::mem::take(&mut *BREAKDOWN.lock().unwrap())
+    std::mem::take(&mut *BREAKDOWN.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 static INSTALL: Once = Once::new();
@@ -219,7 +219,13 @@ fn handles_for(
     args.push(sizes.len() as u32);
     args.extend_from_slice(&sizes);
     let created = mailbox::call(OP_ALLOC, &args, &[])?;
-    let [digits, base, ta_h, tb_h, partials] = created[..sizes.len()].try_into().unwrap();
+    let &[digits, base, ta_h, tb_h, partials, ..] = created.as_slice() else {
+        return Err(GpuError(format!(
+            "OP_ALLOC returned {} handles, expected {}",
+            created.len(),
+            sizes.len()
+        )));
+    };
     Ok((
         Handles {
             digits_cap: digits_bytes,
@@ -263,7 +269,7 @@ struct Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        *HANDLES.lock().unwrap() = self.handles.take();
+        *HANDLES.lock().unwrap_or_else(|e| e.into_inner()) = self.handles.take();
         SESSION_OPEN.store(false, Ordering::SeqCst);
     }
 }
@@ -282,6 +288,10 @@ fn push_u32s(out: &mut Vec<u8>, words: &[u32]) {
 }
 
 impl Session {
+    #[expect(
+        clippy::expect_used,
+        reason = "the handles are taken only when the session ends (tables(), Drop, or the upload-failure path)"
+    )]
     fn handles(&self) -> &Handles {
         self.handles
             .as_ref()
@@ -374,6 +384,7 @@ impl Session {
         let live_len = if k <= 1 { lay.len } else { lay.w_len(k - 1) };
         let src_w_off = if k >= 2 { lay.p_len(k - 1) } else { 0 };
         let dst_w_off = lay.p_len(k);
+        use std::cmp::Ordering::{Equal, Greater, Less};
         let wflags = match lay.kind {
             WeightsKind::Dense => {
                 if k == 0 {
@@ -382,15 +393,11 @@ impl Session {
                     4 | 2
                 }
             }
-            WeightsKind::Factored => {
-                if k < lay.coefficient_bits {
-                    1
-                } else if k == lay.coefficient_bits {
-                    1 | 2
-                } else {
-                    4 | 2
-                }
-            }
+            WeightsKind::Factored => match k.cmp(&lay.coefficient_bits) {
+                Less => 1,
+                Equal => 1 | 2,
+                Greater => 4 | 2,
+            },
         };
         // A thread's units must share one E_second entry, so ppt <= |E_first|.
         // With akita's split (E_first holds (n-1)/2 vars and pops first)
@@ -419,7 +426,7 @@ impl Session {
             wflags,
         ];
         for (i, limb) in r.chunks_exact(4).enumerate() {
-            params[8 + i] = u32::from_le_bytes(limb.try_into().unwrap());
+            params[8 + i] = u32::from_le_bytes([limb[0], limb[1], limb[2], limb[3]]);
         }
         // Factored rounds bind the lane weights at 6 and need any live buffer as src.
         let round_binds = vec![
@@ -586,7 +593,7 @@ impl RelationRangeSession for Session {
             )
             .into(),
         );
-        let mut b = BREAKDOWN.lock().unwrap();
+        let mut b = BREAKDOWN.lock().unwrap_or_else(|e| e.into_inner());
         b.instances += 1;
         b.gpu_rounds += self.layout.rounds;
         b.ops += self.ops;
@@ -642,7 +649,7 @@ fn open_session(job: &RelationRangeJob<'_>, rounds: usize) -> Result<Session, Gp
     // Additional pairs are at most one per witness pair (upper bound for the partials scratch).
     let max_pairs = (len / 2).min(1 << 22);
     let (handles, fresh) = handles_for(
-        &mut HANDLES.lock().unwrap(),
+        &mut HANDLES.lock().unwrap_or_else(|e| e.into_inner()),
         digits.len() as u32,
         base.len() as u32,
         &layout,
@@ -672,7 +679,10 @@ fn open_session(job: &RelationRangeJob<'_>, rounds: usize) -> Result<Session, Gp
         return Err(e);
     }
     session.upload_ms = now_ms() - t_open;
-    BREAKDOWN.lock().unwrap().upload_bytes += (digits.len() + base.len()) as u64;
+    BREAKDOWN
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .upload_bytes += (digits.len() + base.len()) as u64;
     Ok(session)
 }
 

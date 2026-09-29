@@ -32,17 +32,67 @@ jobs:
       - if: always()
         run: echo "frontend wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
-  rust-fmt:
+  rust-native:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 45
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       - run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
-      # Clippy's pinned Jolt graph is checked locally; CI does not compile it.
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo fmt -q --message-format=short -- --check
+      - uses: dtolnay/rust-toolchain@1.95
+        with:
+          components: clippy,rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: scripts/lint/rust.sh native
       - if: always()
-        run: echo "rust-fmt wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "rust-native wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
+
+  rust-device:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95
+        with:
+          components: clippy
+      - run: ./setup-wasm-deps.sh
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('setup-wasm-deps.sh', 'patches/**') }}
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: scripts/lint/rust.sh device
+      - if: always()
+        run: echo "rust-device wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
+
+  rust-wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95
+        with:
+          components: clippy,rust-src
+          targets: wasm32-unknown-unknown
+      - run: ./setup-wasm-deps.sh
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('setup-wasm-deps.sh', 'patches/**') }}
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: scripts/lint/rust.sh wasm
+      - if: always()
+        run: echo "rust-wasm wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
   shell-python:
     runs-on: ubuntu-latest

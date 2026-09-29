@@ -65,7 +65,7 @@ impl RelationRangeDevice for CpuReferenceDevice {
 }
 
 fn u32_at(bytes: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
+    u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
 }
 
 struct Segment {
@@ -112,12 +112,14 @@ pub fn fields_from_bytes(bytes: &[u8]) -> Result<Vec<F>, AkitaError> {
 pub fn fields_to_bytes(values: &[F]) -> Vec<u8> {
     values
         .iter()
-        .flat_map(|v| v.to_u128_checked().expect("canonical").to_le_bytes())
+        .flat_map(|v| v.to_canonical_u128().to_le_bytes())
         .collect()
 }
 
 fn field_from_bytes(bytes: &[u8]) -> F {
-    F::from_u128_reduced(u128::from_le_bytes(bytes.try_into().unwrap()))
+    let mut le = [0u8; FIELD_BYTES];
+    le.copy_from_slice(bytes);
+    F::from_u128_reduced(u128::from_le_bytes(le))
 }
 
 /// `left + r * (right - left)` over adjacent pairs, zero-padded (the CPU's
@@ -175,10 +177,6 @@ impl Session {
 /// The ten round terms over `live_pairs` pairs: `w0, w1` from `witness`,
 /// `p0, p1` from `weight`, `eq(j) = e_first[j & mask] * e_second[j >> bits]`
 /// on the norm terms only, plus the additional cubic over `pairs`.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "Round inputs mirror the relation-range device interface"
-)]
 pub fn round_terms(
     witness: impl Fn(usize) -> F + Sync,
     live_pairs: usize,
@@ -252,21 +250,20 @@ impl RelationRangeSession for Session {
         }
         if let Some(prev) = input.prev {
             let r = field_from_bytes(prev);
-            self.witness = Some(match self.witness.take() {
-                Some(w) => fold(&w, r),
-                None => {
-                    let d = &self.digits;
-                    (0..d.len().div_ceil(2))
-                        .into_par_iter()
-                        .map(|j| {
-                            let left = F::from_i64(i64::from(d[2 * j]));
-                            let right = d
-                                .get(2 * j + 1)
-                                .map_or_else(F::zero, |&v| F::from_i64(i64::from(v)));
-                            left + r * (right - left)
-                        })
-                        .collect()
-                }
+            self.witness = Some(if let Some(w) = self.witness.take() {
+                fold(&w, r)
+            } else {
+                let d = &self.digits;
+                (0..d.len().div_ceil(2))
+                    .into_par_iter()
+                    .map(|j| {
+                        let left = F::from_i64(i64::from(d[2 * j]));
+                        let right = d
+                            .get(2 * j + 1)
+                            .map_or_else(F::zero, |&v| F::from_i64(i64::from(v)));
+                        left + r * (right - left)
+                    })
+                    .collect()
             });
             if let Some(weights) = &self.weights {
                 self.weights = Some(fold(weights, r));
@@ -311,7 +308,9 @@ impl RelationRangeSession for Session {
             }
             terms
         } else {
-            let weights = self.weights.as_ref().expect("dense weights present");
+            let weights = self.weights.as_ref().ok_or_else(|| {
+                AkitaError::InvalidInput("relation-range reference: dense weights missing".into())
+            })?;
             round_terms(
                 witness_at,
                 live_pairs,

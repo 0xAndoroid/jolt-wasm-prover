@@ -89,7 +89,7 @@ pub fn is_dead() -> bool {
 }
 
 pub fn ptr() -> u32 {
-    &MAILBOX as *const Mailbox as u32
+    &raw const MAILBOX as u32
 }
 
 #[derive(Clone, Copy, Debug)]

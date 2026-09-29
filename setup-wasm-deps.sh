@@ -135,6 +135,12 @@ fetch_at_rev() { # fetch_at_rev <dir> <url> <rev>
     git -C "$dir" checkout -q --detach FETCH_HEAD
 }
 
+pin_mtimes() { # pin_mtimes <dir> — cargo fingerprints path deps by mtime; a fresh clone must not look newer than cached builds
+    local dir=$1 stamp
+    stamp=$(TZ=UTC git -C "$dir" log -1 --format=%cd --date=format-local:%Y%m%d%H%M.%S)
+    (cd "$dir" && git ls-files -z | xargs -0 touch -h -t "$stamp")
+}
+
 echo "Fetching a16z/jolt @ $JOLT_REV ..."
 fetch_at_rev "$DEPS/jolt" "$JOLT_URL" "$JOLT_REV"
 echo "Fetching a16z/arkworks-algebra @ $ARK_REV ..."
@@ -151,6 +157,9 @@ git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0005-akita-types-wasm32-shif
 git -C "$DEPS/jolt" apply --verbose "$ROOT/patches/0006-jolt-akita-trace-commit-device.patch"
 git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0007-akita-digit-range-device.patch"
 git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0008-akita-relation-range-device.patch"
+pin_mtimes "$DEPS/jolt"
+pin_mtimes "$DEPS/arkworks-algebra"
+pin_mtimes "$DEPS/akita"
 
 block="$(mktemp)"
 write_local_block "$block"
