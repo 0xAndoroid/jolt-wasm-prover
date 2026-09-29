@@ -1,6 +1,6 @@
 export type ProgramName = 'sha2' | 'ecdsa' | 'keccak'
 
-export type LoadState = 'idle' | 'loading' | 'ready'
+type LoadState = 'idle' | 'loading' | 'ready'
 
 export type AppStatus = 'loading' | 'ready' | 'proving' | 'error'
 
@@ -9,19 +9,21 @@ export type ProveMode = 'gpu' | 'cpu'
 // worker.js `initGpu()` report: 'ok' | 'disabled' | 'unavailable' | 'error: …'
 export interface GpuInfo {
   status: string
+  features?: string[]
+  limits?: Record<string, number>
   reason?: string
   adapter?: { vendor?: string; architecture?: string; device?: string; description?: string }
   selftestMs?: number
   roundtripUs?: number
 }
 
-export interface ProofSummary {
+interface ProofSummary {
   mode: ProveMode
   proveMs: number
   totalMs: number
-  commitMs?: number
-  digitRangeMs?: number
-  stage2Ms?: number
+  commitMs?: number | undefined
+  digitRangeMs?: number | undefined
+  stage2Ms?: number | undefined
 }
 
 export interface ProgramState {

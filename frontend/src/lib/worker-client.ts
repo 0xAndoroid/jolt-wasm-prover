@@ -8,7 +8,7 @@ export class WorkerClient {
     // lives in public/ and imports from /pkg/ which only exists at runtime.
     const workerUrl = new URL('/worker.js', window.location.origin)
     this.worker = new Worker(workerUrl, { type: 'module' })
-    this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => onMessage(e.data)
+    this.worker.onmessage = (e: MessageEvent<WorkerResponse>) => { onMessage(e.data) }
     this.worker.onerror = onError
   }
 

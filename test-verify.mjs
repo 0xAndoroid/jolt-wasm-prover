@@ -1,15 +1,9 @@
-import { chromium, webkit } from 'playwright';
+import { webkit } from 'playwright';
 
 const TIMEOUT = 120_000;
 
 async function run() {
-    // PW_BROWSER=webkit runs the bundled WebKit (Safari engine); default is
-    // the bundled Chromium, PW_CHANNEL=chrome selects system Chrome.
-    const engine = process.env.PW_BROWSER === 'webkit' ? webkit : chromium;
-    const browser = await engine.launch({
-        headless: true,
-        channel: engine === chromium ? process.env.PW_CHANNEL || undefined : undefined,
-    });
+    const browser = await webkit.launch({headless: true});
     const context = await browser.newContext();
     const page = await context.newPage();
 
@@ -24,7 +18,8 @@ async function run() {
     await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     await page.waitForFunction(
-        () => document.getElementById('status')?.classList.contains('ready'),
+        () => document.querySelector('#status')?.classList.contains('ready'),
+        undefined,
         { timeout: TIMEOUT },
     );
     console.log('WASM ready');
@@ -36,17 +31,18 @@ async function run() {
     // Wait for proof to complete or error
     const proveResult = await page.waitForFunction(
         () => {
-            const status = document.getElementById('status');
+            const status = document.querySelector('#status');
             const output = document.querySelector('#page-sha2 .output');
             if (status?.classList.contains('error')) return 'ERROR: ' + status.textContent;
             if (output?.textContent?.match(/Proof generated in/)) return 'PROVED';
             return null;
         },
+        undefined,
         { timeout: TIMEOUT },
     );
     const proveStatus = await proveResult.jsonValue();
     console.log(`Prove result: ${proveStatus}`);
-    if (proveStatus.startsWith('ERROR')) {
+    if (proveStatus?.startsWith('ERROR')) {
         await browser.close();
         console.log(`FAILURE: Proving failed: ${proveStatus}`);
         process.exit(1);
@@ -54,7 +50,8 @@ async function run() {
 
     // Wait for prove button to re-enable
     await page.waitForFunction(
-        () => !document.querySelector('#page-sha2 .prove-btn')?.disabled,
+        () => !document.querySelector('#page-sha2 .prove-btn')?.hasAttribute('disabled'),
+        undefined,
         { timeout: TIMEOUT },
     );
 
@@ -67,8 +64,8 @@ async function run() {
     // Wait for verification result or error — capture the FULL status text
     const verifyResult = await page.waitForFunction(
         () => {
-            const status = document.getElementById('status');
-            const statusSpan = status?.querySelector('span') || status;
+            const status = document.querySelector('#status');
+
             const output = document.querySelector('#page-sha2 .output');
             const text = output?.textContent || '';
             if (text.includes('Result: VALID')) return 'VALID';
@@ -83,6 +80,7 @@ async function run() {
             }
             return null;
         },
+        undefined,
         { timeout: TIMEOUT },
     );
 
@@ -104,4 +102,9 @@ async function run() {
     }
 }
 
-run().catch(e => { console.error(e); process.exit(1); });
+try {
+    await run();
+} catch (e) {
+    console.error(e);
+    process.exitCode = 1;
+}

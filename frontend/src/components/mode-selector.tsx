@@ -25,8 +25,7 @@ export function ModeSelector({
 }) {
   return (
     <div className={cn('flex min-w-0 flex-col items-start gap-1 sm:items-end', className)}>
-      <div
-        role="radiogroup"
+      <fieldset
         aria-label="Prover mode"
         className="inline-flex rounded-md border border-border bg-background p-0.5"
       >
@@ -35,19 +34,18 @@ export function ModeSelector({
           return (
             <Button
               key={o.value}
-              role="radio"
-              aria-checked={selected}
+              aria-pressed={selected}
               size="sm"
               variant={selected ? 'outline' : 'ghost'}
               className={cn('h-7 px-2.5 text-xs', !selected && 'text-muted-foreground')}
               disabled={disabled || (o.value === 'gpu' && !gpuAvailable)}
-              onClick={() => !selected && onChange(o.value)}
+              onClick={() => { if (!selected) onChange(o.value) }}
             >
               {o.label}
             </Button>
           )
         })}
-      </div>
+      </fieldset>
       {reason && (
         <span className="max-w-full truncate text-xs text-muted-foreground" title={reason}>
           GPU unavailable: {reason}

@@ -10,19 +10,13 @@ export function OutputLog({
 }) {
   const preRef = useRef<HTMLPreElement>(null)
   const [showPlaceholder, setShowPlaceholder] = useState(true)
-  const [animatingOut, setAnimatingOut] = useState(false)
+  const animatingOut = Boolean(content)
 
   useEffect(() => {
     if (preRef.current) {
       preRef.current.scrollTop = preRef.current.scrollHeight
     }
   }, [content])
-
-  useEffect(() => {
-    if (content && showPlaceholder && !animatingOut) {
-      setAnimatingOut(true)
-    }
-  }, [content, showPlaceholder, animatingOut])
 
   return (
     <pre
@@ -38,7 +32,7 @@ export function OutputLog({
             'absolute inset-0 flex items-center justify-center text-muted-foreground/50',
             animatingOut && 'animate-out fade-out duration-300',
           )}
-          onAnimationEnd={() => setShowPlaceholder(false)}
+          onAnimationEnd={() => { setShowPlaceholder(false) }}
         >
           Output will appear here...
         </span>

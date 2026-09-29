@@ -3,9 +3,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import fs from 'fs'
-import { fileURLToPath } from 'url'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = import.meta.dirname
 
 function servePkg(): Plugin {
   const pkgDir = path.resolve(__dirname, '..', 'pkg')

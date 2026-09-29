@@ -1,3 +1,4 @@
+/// <reference lib="webworker" />
 // Dedicated Worker that owns the WebGPU device for the wasm prover.
 //
 // The prover threads block synchronously, so they cannot await WebGPU
@@ -6,6 +7,8 @@
 // bump the doorbell and Atomics.wait on `status`; this worker never blocks:
 // it Atomics.waitAsync's on the doorbell, runs the op, writes the result
 // back into wasm memory and flips `status`.
+
+/** @typedef {{ptr: number, len: number, flags: number}} Region */
 
 const MAX_ARGS = 64;
 const MAX_REGIONS = 8;
@@ -42,24 +45,34 @@ const SHADERS = [
     ['fp128', 'stage2/common', 'stage2/reduce'],
 ];
 
-let memory = null;
+/** @type {WebAssembly.Memory} */
+let memory;
 let base = 0;
-let device = null;
+/** @type {GPUDevice} */
+let device;
+/** @type {Map<string, string>} */
 const shaderSources = new Map();
+/** @type {Map<string, GPUComputePipeline>} */
 const pipelines = new Map();
+/** @type {Map<number, GPUBuffer>} */
 const handles = new Map();
 let nextHandle = 1;
-let uniformBuffer = null;
+/** @type {GPUBuffer} */
+let uniformBuffer;
 // One 64 B uniform buffer per pass of a RUN_SEQ (writeBuffer between passes would race).
+/** @type {GPUBuffer[]} */
 const uniformPool = [];
+/** @type {GPUError | null} */
 let uncapturedError = null;
 // Test hook: stop serving the mailbox so the prover's op deadline fires.
 let hung = false;
 
 const i32 = () => new Int32Array(memory.buffer);
 const u32 = () => new Uint32Array(memory.buffer);
+/** @param {number} n */
 const align4 = (n) => (n + 3) & ~3;
 
+/** @param {string} name */
 async function fetchText(name) {
     const r = await fetch(`/wgsl/${name}.wgsl`);
     if (!r.ok) throw new Error(`fetch ${name}.wgsl: ${r.status}`);
@@ -68,6 +81,7 @@ async function fetchText(name) {
 
 // `chunk` != 0 sets the kernel's `CHUNK` override constant (commit_accumulate.wgsl);
 // pipelines are cached per (shader, chunk).
+/** @param {number} id @param {number} chunk */
 function pipelineFor(id, chunk) {
     const key = `${id}:${chunk}`;
     let p = pipelines.get(key);
@@ -82,15 +96,16 @@ function pipelineFor(id, chunk) {
 }
 
 function readRegions() {
-    const m = u32();
+    const view = new DataView(memory.buffer);
     const regions = [];
     for (let i = 0; i < MAX_REGIONS; i++) {
         const o = base + W.REGIONS + i * 3;
-        regions.push({ ptr: m[o], len: m[o + 1], flags: m[o + 2] });
+        regions.push({ ptr: view.getUint32(o * 4, true), len: view.getUint32((o + 1) * 4, true), flags: view.getUint32((o + 2) * 4, true) });
     }
     return regions;
 }
 
+/** @param {number} size */
 function storageBuffer(size) {
     return device.createBuffer({
         size: Math.max(4, align4(size)),
@@ -98,10 +113,12 @@ function storageBuffer(size) {
     });
 }
 
+/** @param {GPUBuffer} buf @param {number} offset @param {number} ptr @param {number} len */
 function upload(buf, offset, ptr, len) {
     if (len > 0) device.queue.writeBuffer(buf, offset, memory.buffer, ptr, len);
 }
 
+/** @param {GPUBuffer} buf @param {number} ptr @param {number} len */
 async function readback(buf, ptr, len) {
     const staging = device.createBuffer({ size: align4(len), usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
     try {
@@ -116,46 +133,56 @@ async function readback(buf, ptr, len) {
     }
 }
 
+/** @param {number} h */
 function getHandle(h) {
     const buf = handles.get(h);
     if (!buf) throw new Error(`unknown buffer handle ${h}`);
     return buf;
 }
 
+/** @param {number} op @param {DataView} args @param {Region[]} regions @param {Uint32Array} ret */
 async function runOp(op, args, regions, ret) {
+    /** @param {number} index */
+    const arg = (index) => args.getUint32(index * 4, true);
     switch (op) {
         case OP.NOP:
             return;
         case OP.CREATE_BUFFER: {
             const h = nextHandle++;
-            handles.set(h, storageBuffer(args[0]));
+            handles.set(h, storageBuffer(arg(0)));
             ret[0] = h;
             return;
         }
         case OP.UPLOAD: {
             const r = regions[0];
-            upload(getHandle(args[0]), args[1], r.ptr, r.len);
+            if (!r) throw new RangeError("unknown region 0");
+            upload(getHandle(arg(0)), arg(1), r.ptr, r.len);
             await device.queue.onSubmittedWorkDone();
             return;
         }
         case OP.DESTROY: {
-            getHandle(args[0]).destroy();
-            handles.delete(args[0]);
+            getHandle(arg(0)).destroy();
+            handles.delete(arg(0));
             return;
         }
         case OP.RUN: {
-            const [shader, wx, wy, wz, nparams] = args;
+            const shader = arg(0);
+            const wx = arg(1), wy = arg(2), wz = arg(3);
+            const nparams = arg(4);
             const params = new Uint32Array(16);
-            params.set(args.subarray(5, 5 + nparams));
-            const nbind = args[21];
-            const pipeline = pipelineFor(shader, args[22]);
+            params.set(new Uint32Array(args.buffer, args.byteOffset + 5 * 4, nparams));
+            const nbind = arg(21);
+            const pipeline = pipelineFor(shader, arg(22));
             device.queue.writeBuffer(uniformBuffer, 0, params);
             const entries = [{ binding: 0, resource: { buffer: uniformBuffer } }];
+            /** @type {GPUBuffer[]} */
             const temps = [];
+            /** @type {{buf: GPUBuffer, ptr: number, len: number}[]} */
             const readbacks = [];
             try {
                 for (let i = 0; i < nbind; i++) {
                     const r = regions[i];
+                    if (!r) throw new RangeError(`unknown region ${i}`);
                     let buf;
                     if (r.flags & REGION.HANDLE) {
                         // ptr is a handle here, not a wasm address: a readback would land at address `handle`.
@@ -187,17 +214,20 @@ async function runOp(op, args, regions, ret) {
         case OP.RUN_SEQ: {
             // args = [npasses, {shader, wx, nbind, (binding, region)...}...];
             // region 0 holds npasses x 64 B params; other regions are shared by the passes.
-            const npasses = args[0];
-            while (uniformPool.length < npasses) {
-                uniformPool.push(device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST }));
-            }
-            const bufs = new Array(MAX_REGIONS).fill(null);
+            const npasses = arg(0);
+            /** @type {(GPUBuffer | undefined)[]} */
+            const bufs = Array.from({length: MAX_REGIONS});
+            /** @type {GPUBuffer[]} */
             const temps = [];
+            /** @type {{buf: GPUBuffer, ptr: number, len: number}[]} */
             const readbacks = [];
             try {
+                /** @param {number} i */
                 const resolve = (i) => {
-                    if (bufs[i]) return bufs[i];
+                    const cached = bufs[i];
+                    if (cached) return cached;
                     const r = regions[i];
+                    if (!r) throw new RangeError(`unknown region ${i}`);
                     let buf;
                     if (r.flags & REGION.HANDLE) {
                         // ptr is a handle here, not a wasm address: a readback would land at address `handle`.
@@ -213,15 +243,17 @@ async function runOp(op, args, regions, ret) {
                     return buf;
                 };
                 const params = regions[0];
+                if (!params) throw new RangeError("missing parameter region");
                 const enc = device.createCommandEncoder();
                 let a = 1;
                 for (let p = 0; p < npasses; p++) {
-                    const [shader, wx, nbind] = [args[a], args[a + 1], args[a + 2]];
+                    const [shader, wx, nbind] = [arg(a), arg(a + 1), arg(a + 2)];
                     a += 3;
-                    device.queue.writeBuffer(uniformPool[p], 0, memory.buffer, params.ptr + p * 64, 64);
-                    const entries = [{ binding: 0, resource: { buffer: uniformPool[p] } }];
+                    const uniform = uniformPool[p] ??= device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+                    device.queue.writeBuffer(uniform, 0, memory.buffer, params.ptr + p * 64, 64);
+                    const entries = [{ binding: 0, resource: { buffer: uniform } }];
                     for (let b = 0; b < nbind; b++, a += 2) {
-                        entries.push({ binding: args[a], resource: { buffer: resolve(args[a + 1]) } });
+                        entries.push({ binding: arg(a), resource: { buffer: resolve(arg(a + 1)) } });
                     }
                     const pipeline = pipelineFor(shader, 0);
                     const pass = enc.beginComputePass();
@@ -230,8 +262,8 @@ async function runOp(op, args, regions, ret) {
                     pass.dispatchWorkgroups(wx);
                     pass.end();
                 }
-                const copyLen = args[RUN_SEQ_COPY + 3];
-                if (copyLen) enc.copyBufferToBuffer(resolve(args[RUN_SEQ_COPY]), 0, resolve(args[RUN_SEQ_COPY + 1]), args[RUN_SEQ_COPY + 2], copyLen);
+                const copyLen = arg(RUN_SEQ_COPY + 3);
+                if (copyLen) enc.copyBufferToBuffer(resolve(arg(RUN_SEQ_COPY)), 0, resolve(arg(RUN_SEQ_COPY + 1)), arg(RUN_SEQ_COPY + 2), copyLen);
                 device.queue.submit([enc.finish()]);
                 for (const rb of readbacks) await readback(rb.buf, rb.ptr, rb.len);
                 if (readbacks.length === 0) await device.queue.onSubmittedWorkDone();
@@ -242,30 +274,32 @@ async function runOp(op, args, regions, ret) {
         }
         case OP.DOWNLOAD: {
             const r = regions[0];
-            await readback(getHandle(args[0]), r.ptr, r.len);
+            if (!r) throw new RangeError("unknown region 0");
+            await readback(getHandle(arg(0)), r.ptr, r.len);
             return;
         }
         case OP.ALLOC: {
             // args = [nDestroy, handles..., nCreate, sizes...]; ret = the new handles.
             let a = 1;
-            for (const end = a + args[0]; a < end; a++) {
-                getHandle(args[a]).destroy();
-                handles.delete(args[a]);
+            for (const end = a + arg(0); a < end; a++) {
+                getHandle(arg(a)).destroy();
+                handles.delete(arg(a));
             }
-            const nc = args[a++];
+            const nc = arg(a++);
             if (nc > ret.length) throw new Error(`alloc: ${nc} handles exceed the RET slots`);
             for (let i = 0; i < nc; i++, a++) {
                 const h = nextHandle++;
-                handles.set(h, storageBuffer(args[a]));
+                handles.set(h, storageBuffer(arg(a)));
                 ret[i] = h;
             }
             return;
         }
         case OP.UPLOAD_MULTI: {
             // args = [n, {handle, byteOffset, region}...]
-            for (let i = 0, a = 1; i < args[0]; i++, a += 3) {
-                const r = regions[args[a + 2]];
-                upload(getHandle(args[a]), args[a + 1], r.ptr, r.len);
+            for (let a = 1, i = 0; i < arg(0); i++, a += 3) {
+                const r = regions[arg(a + 2)];
+                if (!r) throw new RangeError(`unknown region ${arg(a + 2)}`);
+                upload(getHandle(arg(a)), arg(a + 1), r.ptr, r.len);
             }
             await device.queue.onSubmittedWorkDone();
             return;
@@ -275,6 +309,7 @@ async function runOp(op, args, regions, ret) {
     }
 }
 
+/** @param {string} msg */
 function writeError(msg) {
     const bytes = new TextEncoder().encode(msg).slice(0, W.ERROR_BYTES);
     new Uint8Array(memory.buffer, (base + W.ERROR) * 4, W.ERROR_BYTES).set(bytes);
@@ -283,7 +318,7 @@ function writeError(msg) {
 
 async function serve() {
     const m = u32();
-    const args = new Uint32Array(m.buffer, (base + W.ARGS) * 4, MAX_ARGS);
+    const args = new DataView(m.buffer, (base + W.ARGS) * 4, MAX_ARGS * 4);
     const ret = new Uint32Array(m.buffer, (base + W.RET) * 4, 8);
     const op = Atomics.load(m, base + W.OP);
     const regions = readRegions();
@@ -291,6 +326,7 @@ async function serve() {
     try {
         device.pushErrorScope('validation');
         device.pushErrorScope('out-of-memory');
+        /** @type {unknown} */
         let thrown = null;
         try {
             await runOp(op, args, regions, ret);
@@ -302,23 +338,24 @@ async function serve() {
         const validation = await device.popErrorScope();
         const err = validation || oom || uncapturedError;
         uncapturedError = null;
-        if (thrown) throw thrown;
+        if (thrown) throw thrown instanceof Error ? thrown : new Error("GPU operation failed", {cause: thrown});
         if (err) throw new Error(err.message);
     } catch (e) {
-        writeError(e && e.message ? e.message : String(e));
+        writeError(e instanceof Error ? e.message : String(e));
         status = STATUS.ERROR;
     }
     Atomics.store(i32(), base + W.STATUS, status);
     Atomics.notify(i32(), base + W.STATUS);
 }
 
+/** @param {number} seen */
 async function waitDoorbell(seen) {
     const view = i32();
     if (typeof Atomics.waitAsync === 'function') {
         const r = Atomics.waitAsync(view, base + W.DOORBELL, seen, 1000);
         if (r.async) await r.value;
     } else {
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
     }
 }
 
@@ -336,16 +373,18 @@ async function loop() {
     }
 }
 
+/** @param {Extract<import("../types/runtime").ProxyRequest, {type: "init"}>} data */
 async function init(data) {
     memory = data.memory;
     base = data.mailboxPtr >>> 2;
     if (!navigator.gpu) return { type: 'unavailable', reason: 'navigator.gpu missing (WebGPU unsupported or insecure context)' };
     const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
     if (!adapter) return { type: 'unavailable', reason: 'requestAdapter returned null' };
+    /** @type {Record<string, number>} */
     const limits = {};
-    for (const k of ['maxBufferSize', 'maxStorageBufferBindingSize', 'maxComputeWorkgroupsPerDimension',
+    for (const k of /** @type {const} */ (['maxBufferSize', 'maxStorageBufferBindingSize', 'maxComputeWorkgroupsPerDimension',
         'maxComputeWorkgroupSizeX', 'maxComputeInvocationsPerWorkgroup', 'maxStorageBuffersPerShaderStage',
-        'maxComputeWorkgroupStorageSize']) {
+        'maxComputeWorkgroupStorageSize'])) {
         limits[k] = adapter.limits[k];
     }
     device = await adapter.requestDevice({
@@ -358,11 +397,15 @@ async function init(data) {
         },
     });
     device.addEventListener('uncapturederror', (e) => { uncapturedError = e.error; });
-    device.lost.then((info) => console.error('[gpu-proxy] device lost:', info.message));
+    void device.lost.then((info) => {
+        console.error('[gpu-proxy] device lost:', info.message);
+    });
     uniformBuffer = device.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
     for (const name of new Set(SHADERS.flat())) shaderSources.set(name, await fetchText(name));
     const info = adapter.info || {};
-    loop();
+    void loop().catch((/** @type {unknown} */ err) => {
+        console.error("[gpu-proxy] mailbox stopped:", err);
+    });
     return {
         type: 'ready',
         adapter: { vendor: info.vendor, architecture: info.architecture, device: info.device, description: info.description },
@@ -371,12 +414,12 @@ async function init(data) {
     };
 }
 
-self.onmessage = async (e) => {
+self.onmessage = async (/** @type {MessageEvent<import("../types/runtime").ProxyRequest>} */ e) => {
     if (e.data.type === 'hang') hung = true;
     if (e.data.type !== 'init') return;
     try {
         self.postMessage(await init(e.data));
     } catch (err) {
-        self.postMessage({ type: 'unavailable', reason: err && err.message ? err.message : String(err) });
+        self.postMessage({ type: 'unavailable', reason: err instanceof Error ? err.message : String(err) });
     }
 };

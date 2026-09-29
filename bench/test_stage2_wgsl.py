@@ -16,7 +16,11 @@ from playwright.sync_api import sync_playwright
 C = 0xFFFF_A7F7
 P = (1 << 128) - C
 WGSL = Path(__file__).resolve().parent.parent / "frontend" / "public" / "wgsl"
-SHADERS = {"round": ["fp128", "stage2/common", "stage2/round"], "additional": ["fp128", "stage2/common", "stage2/additional"], "reduce": ["fp128", "stage2/common", "stage2/reduce"]}
+SHADERS = {
+    "round": ["fp128", "stage2/common", "stage2/round"],
+    "additional": ["fp128", "stage2/common", "stage2/additional"],
+    "reduce": ["fp128", "stage2/common", "stage2/reduce"],
+}
 WG = 256
 NT = 6
 HDR = 7  # vec4 slots of aux header
@@ -102,7 +106,10 @@ def pack_digits(digits, bw):
 
 
 def fold(table, r):
-    return [fe(table[2 * j] + r * ((table[2 * j + 1] if 2 * j + 1 < len(table) else 0) - table[2 * j])) for j in range((len(table) + 1) // 2)]
+    return [
+        fe(table[2 * j] + r * ((table[2 * j + 1] if 2 * j + 1 < len(table) else 0) - table[2 * j]))
+        for j in range((len(table) + 1) // 2)
+    ]
 
 
 def reference_terms(w, p, e_first, e_second, n_units):
@@ -111,17 +118,17 @@ def reference_terms(w, p, e_first, e_second, n_units):
     bits = len(e_first).bit_length() - 1
     acc = [0] * 6
     for j in range(n_units):
-        L = w[2 * j] if 2 * j < len(w) else 0
-        R = w[2 * j + 1] if 2 * j + 1 < len(w) else 0
-        dw = R - L
-        P0, P1 = p[2 * j], p[2 * j + 1]
-        dp = P1 - P0
+        left = w[2 * j] if 2 * j < len(w) else 0
+        right = w[2 * j + 1] if 2 * j + 1 < len(w) else 0
+        dw = right - left
+        p0, p1 = p[2 * j], p[2 * j + 1]
+        dp = p1 - p0
         e = e_first[j & mask] * e_second[j >> bits]
-        acc[0] += e * (L * (L + 1))
-        acc[1] += e * (dw * (2 * L + 1))
+        acc[0] += e * (left * (left + 1))
+        acc[1] += e * (dw * (2 * left + 1))
         acc[2] += e * dw * dw
-        acc[3] += L * P0
-        acc[4] += L * dp + dw * P0
+        acc[3] += left * p0
+        acc[4] += left * dp + dw * p0
         acc[5] += dw * dp
     return [fe(a) for a in acc]
 
@@ -135,18 +142,18 @@ def reference_additional(w, sparse):
         lin = [0, 0]
         bin_ = [0, 0]
         while i < len(sparse) and sparse[i][0] >> 1 == parent:
-            idx, l, b = sparse[i]
-            lin[idx & 1] = l
+            idx, lane, b = sparse[i]
+            lin[idx & 1] = lane
             bin_[idx & 1] = b
             i += 1
-        L = w[2 * parent] if 2 * parent < len(w) else 0
-        R = w[2 * parent + 1] if 2 * parent + 1 < len(w) else 0
-        dw = R - L
+        left = w[2 * parent] if 2 * parent < len(w) else 0
+        right = w[2 * parent + 1] if 2 * parent + 1 < len(w) else 0
+        dw = right - left
         dl = lin[1] - lin[0]
         db = bin_[1] - bin_[0]
-        q0, q1, q2 = L * (L + 1), dw * (2 * L + 1), dw * dw
-        acc[0] += L * lin[0] + bin_[0] * q0
-        acc[1] += L * dl + dw * lin[0] + bin_[0] * q1 + db * q0
+        q0, q1, q2 = left * (left + 1), dw * (2 * left + 1), dw * dw
+        acc[0] += left * lin[0] + bin_[0] * q0
+        acc[1] += left * dl + dw * lin[0] + bin_[0] * q1 + db * q0
         acc[2] += dw * dl + bin_[0] * q2 + db * q1
         acc[3] += db * q2
     return [fe(a) for a in acc]
@@ -159,9 +166,9 @@ def bind_sparse(sparse, r):
         parent = sparse[i][0] >> 1
         lin = bin_ = 0
         while i < len(sparse) and sparse[i][0] >> 1 == parent:
-            idx, l, b = sparse[i]
+            idx, lane, b = sparse[i]
             scale = r if idx & 1 else (1 - r)
-            lin += scale * l
+            lin += scale * lane
             bin_ += scale * b
             i += 1
         lin, bin_ = fe(lin), fe(bin_)
@@ -180,8 +187,8 @@ def pairs_blob(sparse):
         lin = [0, 0]
         bin_ = [0, 0]
         while i < len(sparse) and sparse[i][0] >> 1 == parent:
-            idx, l, b = sparse[i]
-            lin[idx & 1] = l
+            idx, lane, b = sparse[i]
+            lin[idx & 1] = lane
             bin_[idx & 1] = b
             i += 1
         out += u32s([parent, 0, 0, 0]) + to_bytes([lin[0], lin[1], bin_[0], bin_[1]])
@@ -196,7 +203,7 @@ def ppt_for(units):
     return ppt
 
 
-def run_instance(rng, log_domain, factored, addends=True):
+def run_instance(rng, log_domain, factored, *, addends=True):
     """Build the GPU jobs and the Python expectations for one instance; returns (buffers, jobs, expected_terms, final_tables).
 
     `addends=False` runs without sparse additional terms (no additional pass, zero-count reduce)."""
@@ -211,13 +218,21 @@ def run_instance(rng, log_domain, factored, addends=True):
     digits = [rng.randrange(-4, 4) for _ in range(live_len)]
     alpha = [rng.getrandbits(128) % P for _ in range(cc)]
     lane_w = [rng.getrandbits(128) % P for _ in range(cap)]
-    sources = [[rng.getrandbits(128) % P for _ in range(4 * cc)], [rng.getrandbits(128) % P for _ in range(5 * cc)]]
-    # (target_lane_start, lane_count, source_lane_start, source_index, factor)
-    segments = [(3, 2, 1, 0, rng.getrandbits(128) % P), (10, 3, 0, 1, rng.getrandbits(128) % P), (live_lanes - 3, 2, 2, 1, rng.getrandbits(128) % P), (live_lanes - 1, 1, 3, 0, rng.getrandbits(128) % P)]
+    sources = [
+        [rng.getrandbits(128) % P for _ in range(4 * cc)],
+        [rng.getrandbits(128) % P for _ in range(5 * cc)],
+    ]
+    # Segments encode target start/count, source start/index, and factor.
+    segments = [
+        (3, 2, 1, 0, rng.getrandbits(128) % P),
+        (10, 3, 0, 1, rng.getrandbits(128) % P),
+        (live_lanes - 3, 2, 2, 1, rng.getrandbits(128) % P),
+        (live_lanes - 1, 1, 3, 0, rng.getrandbits(128) % P),
+    ]
     # per-lane expansion: lane_map[lane] = start << 8 | count into per-lane segments (source_lane, source_index, factor)
     lane_segs = []
     lane_map = [0] * live_lanes
-    for (t0, n, s0, si, f) in segments:
+    for t0, n, s0, si, f in segments:
         for lane in range(t0, t0 + n):
             lane_map[lane] = (len(lane_segs) << 8) | 1
             lane_segs.append((s0 + lane - t0, si, f))
@@ -227,7 +242,7 @@ def run_instance(rng, log_domain, factored, addends=True):
     lane_segs.extend((sl, si, f) for (_, sl, si, f) in multi)
     p0 = [alpha[i & (cc - 1)] * lane_w[i >> cc_bits] % P for i in range(domain)]
     for lane, m in enumerate(lane_map):
-        for (sl, si, f) in lane_segs[m >> 8 : (m >> 8) + (m & 0xFF)]:
+        for sl, si, f in lane_segs[m >> 8 : (m >> 8) + (m & 0xFF)]:
             for c in range(cc):
                 p0[lane * cc + c] = fe(p0[lane * cc + c] + f * sources[si][sl * cc + c])
     sparse = {}
@@ -236,7 +251,7 @@ def run_instance(rng, log_domain, factored, addends=True):
     start = rng.randrange(live_len - 200)
     for i in range(start, start + 150):
         sparse.setdefault(i, [0, 0])[1] = rng.getrandbits(128) % P
-    sparse = sorted((i, l, b) for i, (l, b) in sparse.items()) if addends else []
+    sparse = sorted((i, lane, b) for i, (lane, b) in sparse.items()) if addends else []
 
     w = [d % P for d in digits]
     p = p0[:]
@@ -252,7 +267,17 @@ def run_instance(rng, log_domain, factored, addends=True):
         "TB": {"size": tb_cap * 16},
         "partials": {"size": 8192 * NT * 16},
         "out": {"size": 16 * 16},
-        "aux": {"size": (HDR + 2 * (1 << (log_domain // 2 + 1)) + cc + sum(len(s) for s in sources) + 2 * len(lane_segs) + 5 * 4096) * 16},
+        "aux": {
+            "size": (
+                HDR
+                + 2 * (1 << (log_domain // 2 + 1))
+                + cc
+                + sum(len(s) for s in sources)
+                + 2 * len(lane_segs)
+                + 5 * 4096
+            )
+            * 16
+        },
     }
     jobs, expected = [], []
     alpha_k, src_k, sparse_k = alpha[:], [s[:] for s in sources], sparse
@@ -273,7 +298,17 @@ def run_instance(rng, log_domain, factored, addends=True):
             if k <= cc_bits:
                 alpha_k = fold(alpha_k, r_prev)
                 cck = cc >> k
-                src_k = [[fe(s[lane * (2 * cck) + 2 * c] + r_prev * (s[lane * (2 * cck) + 2 * c + 1] - s[lane * (2 * cck) + 2 * c])) for lane in range(len(s) // (2 * cck)) for c in range(cck)] for s in src_k]
+                src_k = [
+                    [
+                        fe(
+                            s[lane * (2 * cck) + 2 * c]
+                            + r_prev * (s[lane * (2 * cck) + 2 * c + 1] - s[lane * (2 * cck) + 2 * c])
+                        )
+                        for lane in range(len(s) // (2 * cck))
+                        for c in range(cck)
+                    ]
+                    for s in src_k
+                ]
         expected.append(reference_terms(w, p, e_first, e_second, n_units) + reference_additional(w, sparse_k))
         cw = max(cc_bits - k, 0)
         off_first = HDR
@@ -287,10 +322,14 @@ def run_instance(rng, log_domain, factored, addends=True):
         seg_off = o
         pairs_off = seg_off + 2 * len(lane_segs)
         pblob, n_pairs = pairs_blob(sparse_k)
-        aux = u32s([cw, alpha_off, seg_off, len(lane_segs), 0, 0, pairs_off, n_pairs, cap, len(src_k), live_lanes, 0])
+        aux = u32s(
+            [cw, alpha_off, seg_off, len(lane_segs), 0, 0, pairs_off, n_pairs, cap, len(src_k), live_lanes, 0]
+        )
         aux += u32s(src_offs + [0] * (16 - len(src_offs)))
-        aux += to_bytes(e_first) + to_bytes(e_second) + to_bytes(alpha_k) + b"".join(to_bytes(s) for s in src_k)
-        for (sl, si, f) in lane_segs:
+        aux += (
+            to_bytes(e_first) + to_bytes(e_second) + to_bytes(alpha_k) + b"".join(to_bytes(s) for s in src_k)
+        )
+        for sl, si, f in lane_segs:
             aux += u32s([sl, si, 0, 0]) + to_bytes([f])
         aux += pblob
         src_mode = 0 if k == 0 else (1 if k == 1 else 2)
@@ -298,25 +337,65 @@ def run_instance(rng, log_domain, factored, addends=True):
         dst_w_off, src_w_off = d_k, 2 * d_k
         if factored and k <= cc_bits:
             wflags = 1 | (2 if k == cc_bits else 0)
+        elif k == 0:
+            wflags = 0
         else:
-            wflags = 0 if k == 0 else 6
+            wflags = 6
         ppt = min(ppt_for(n_units), nf)
         wgs = -(-n_units // (WG * ppt))
         live_param = live_len if k <= 1 else len(w_prev)
-        r_words = [int.from_bytes((r_prev or 0).to_bytes(16, "little")[i : i + 4], "little") for i in range(0, 16, 4)]
-        params = [n_units, nf.bit_length() - 1, off_first, off_second, ppt, bw, src_mode, 0] + r_words + [live_param, src_w_off, dst_w_off, wflags]
+        r_words = [
+            int.from_bytes((r_prev or 0).to_bytes(16, "little")[i : i + 4], "little") for i in range(0, 16, 4)
+        ]
+        params = [
+            n_units,
+            nf.bit_length() - 1,
+            off_first,
+            off_second,
+            ppt,
+            bw,
+            src_mode,
+            0,
+            *r_words,
+            live_param,
+            src_w_off,
+            dst_w_off,
+            wflags,
+        ]
         add_wgs = -(-n_pairs // WG)
         add_off = NT * wgs
-        add_params = [n_pairs, 0, add_off, 0, 1, bw, src_mode, 0] + [0] * 4 + [live_len if k == 0 else len(w), 0, dst_w_off, 0]
+        add_params = (
+            [n_pairs, 0, add_off, 0, 1, bw, src_mode, 0]
+            + [0] * 4
+            + [live_len if k == 0 else len(w), 0, dst_w_off, 0]
+        )
         red_params = [wgs, add_wgs, add_off, 0, 1, 0, 0, 0] + [0] * 8
-        passes = [{"shader": "round", "wgs": wgs, "params": params, "binds": [[1, "digits"], [2, "aux"], [3, "partials"], [4, src], [5, dst], [6, "lane_w"]]}]
+        passes = [
+            {
+                "shader": "round",
+                "wgs": wgs,
+                "params": params,
+                "binds": [[1, "digits"], [2, "aux"], [3, "partials"], [4, src], [5, dst], [6, "lane_w"]],
+            }
+        ]
         if n_pairs:
-            passes.append({"shader": "additional", "wgs": add_wgs, "params": add_params, "binds": [[1, "digits"], [2, "aux"], [3, "partials"], [5, dst]]})
-        passes.append({"shader": "reduce", "wgs": 1, "params": red_params, "binds": [[3, "partials"], [4, "out"]]})
+            passes.append(
+                {
+                    "shader": "additional",
+                    "wgs": add_wgs,
+                    "params": add_params,
+                    "binds": [[1, "digits"], [2, "aux"], [3, "partials"], [5, dst]],
+                }
+            )
+        passes.append(
+            {"shader": "reduce", "wgs": 1, "params": red_params, "binds": [[3, "partials"], [4, "out"]]}
+        )
         readback = [["out", 160]]
         if k == rounds - 1:
             readback.append([dst, (d_k + len(w)) * 16])
-        jobs.append({"upload": {"aux": base64.b64encode(aux).decode()}, "passes": passes, "readback": readback})
+        jobs.append(
+            {"upload": {"aux": base64.b64encode(aux).decode()}, "passes": passes, "readback": readback}
+        )
         r_prev = rng.getrandbits(128) % P
     return buffers, jobs, expected, (w, p)
 
@@ -327,36 +406,52 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--browser", default="webkit", choices=["webkit", "chromium-unsafe"])
     args = ap.parse_args()
-    sources = {name: "\n".join((WGSL / f"{part}.wgsl").read_text() for part in parts) for name, parts in SHADERS.items()}
+    sources = {
+        name: "\n".join((WGSL / f"{part}.wgsl").read_text() for part in parts)
+        for name, parts in SHADERS.items()
+    }
     rng = random.Random(args.seed)
     failed = 0
     pairs_total = 0
     with sync_playwright() as pw:
-        browser = pw.webkit.launch(headless=True) if args.browser == "webkit" else pw.chromium.launch(headless=True, args=["--enable-unsafe-webgpu", "--use-angle=metal"])
+        browser = (
+            pw.webkit.launch(headless=True)
+            if args.browser == "webkit"
+            else pw.chromium.launch(headless=True, args=["--enable-unsafe-webgpu", "--use-angle=metal"])
+        )
         page = browser.new_page()
-        page.route("http://localhost/stage2-test", lambda route: route.fulfill(status=200, content_type="text/html", body="<!doctype html><title>stage2</title>"))
+        page.route(
+            "http://localhost/stage2-test",
+            lambda route: route.fulfill(
+                status=200, content_type="text/html", body="<!doctype html><title>stage2</title>"
+            ),
+        )
         page.goto("http://localhost/stage2-test")
         for factored, addends in ((True, True), (False, True), (True, False)):
             buffers, jobs, expected, (w, p) = run_instance(rng, args.log_domain, factored, addends)
             results = page.evaluate(PAGE_JS, {"sources": sources, "buffers": buffers, "jobs": jobs})
             mode = ("factored" if factored else "dense") + ("" if addends else "/noadd")
-            for k, (res, exp) in enumerate(zip(results, expected)):
+            for k, (res, exp) in enumerate(zip(results, expected, strict=True)):
                 got = from_bytes(base64.b64decode(res["out"]))[:10]
                 pairs_total += (1 << args.log_domain) >> (k + 1)
                 bad = [t for t in range(10) if got[t] != exp[t]]
                 status = "PASS" if not bad else "FAIL"
                 if bad or k < 3 or k == len(expected) - 1:
-                    print(f"{mode:14s} round {k:2d} {status} n_units={(1 << args.log_domain) >> (k + 1)} bad_terms={bad}")
+                    print(
+                        f"{mode:14s} round {k:2d} {status} n_units={(1 << args.log_domain) >> (k + 1)} bad_terms={bad}"
+                    )
                 for t in bad[:3]:
                     print(f"   term {t}: got={got[t]:#x} exp={exp[t]:#x}")
                 failed += len(bad)
             final = results[-1]
-            dst_name = [n for n in final if n != "out"][0]
+            dst_name = next(n for n in final if n != "out")
             tab = from_bytes(base64.b64decode(final[dst_name]))
             d_k = len(p)
             p_ok = tab[:d_k] == p
             w_ok = tab[d_k : d_k + len(w)] == w
-            print(f"{mode:14s} final tables: P {'PASS' if p_ok else 'FAIL'} ({d_k} entries) W {'PASS' if w_ok else 'FAIL'} ({len(w)} entries)")
+            print(
+                f"{mode:14s} final tables: P {'PASS' if p_ok else 'FAIL'} ({d_k} entries) W {'PASS' if w_ok else 'FAIL'} ({len(w)} entries)"
+            )
             failed += (not p_ok) + (not w_ok)
         browser.close()
     print(f"pairs evaluated: {pairs_total}, failures: {failed}")

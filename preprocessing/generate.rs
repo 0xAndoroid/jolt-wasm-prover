@@ -18,6 +18,7 @@
 //! the pinned jolt rev); jolt-sdk's host machinery is Dory-only and does not
 //! compile against a jolt-prover built with `akita`.
 
+use std::error::Error;
 use std::path::{Path, PathBuf};
 
 use common::jolt_device::{MemoryConfig, MemoryLayout};
@@ -74,7 +75,7 @@ const GUESTS: &[Guest] = &[
     },
 ];
 
-fn emit(guest: &Guest, public_dir: &Path, target_root: &Path) {
+fn emit(guest: &Guest, public_dir: &Path, target_root: &Path) -> Result<(), Box<dyn Error>> {
     let name = guest.name;
     println!(
         "[{name}] Compiling guest {}::{} ...",
@@ -89,16 +90,16 @@ fn emit(guest: &Guest, public_dir: &Path, target_root: &Path) {
     program.set_std(false);
     program.set_memory_config(memory_config);
     let target_dir = target_root.join(name);
-    program.build(target_dir.to_str().expect("utf-8 target dir"));
+    program.build(target_dir.to_str().ok_or("non-UTF-8 target directory")?);
 
-    let elf_contents = program.get_elf_contents().expect("ELF contents");
+    let elf_contents = program.get_elf_contents().ok_or("missing ELF contents")?;
     write_file(
         public_dir,
         &format!("{name}.elf"),
         name,
         "ELF",
         &elf_contents,
-    );
+    )?;
 
     println!("[{name}] Decoding program ...");
     let (bytecode, memory_init, program_size, entry_address) = program.decode();
@@ -113,18 +114,17 @@ fn emit(guest: &Guest, public_dir: &Path, target_root: &Path) {
         entry_address,
         guest.max_trace_length,
         program.instruction_profile(),
-    )
-    .expect("program preprocessing");
+    )?;
 
-    let bytes = bincode::serde::encode_to_vec(&preprocessing, bincode::config::standard())
-        .expect("program preprocessing encode");
+    let bytes = bincode::serde::encode_to_vec(&preprocessing, bincode::config::standard())?;
     write_file(
         public_dir,
         &format!("{name}_program.bin"),
         name,
         "Program preprocessing",
         &bytes,
-    );
+    )?;
+    Ok(())
 }
 
 /// Catalog files under `jolt_akita::AkitaScheduleArtifacts::packaged_directory()`,
@@ -145,24 +145,27 @@ const USIZE_SCHEDULE_FIELDS: [&str; 2] = ["input_witness_len", "live_ring_elemen
 /// array is broken one row per line at indent depth two.
 const ROW_SEPARATOR: &str = ",\n    ";
 
-fn emit_schedule_artifacts(public_dir: &Path) {
+fn emit_schedule_artifacts(public_dir: &Path) -> Result<(), Box<dyn Error>> {
     let directory = AkitaScheduleArtifacts::packaged_directory();
-    println!("[akita] Loading schedule catalogs from {directory:?} ...");
+    println!(
+        "[akita] Loading schedule catalogs from {} ...",
+        directory.display()
+    );
     let [dense, one_hot_k16, one_hot_k256] = SCHEDULE_FILES.map(|file| {
-        let bytes = std::fs::read(directory.join(file)).expect("read schedule catalog");
+        let bytes = std::fs::read(directory.join(file))?;
         trim_catalog_for_wasm32(file, &bytes)
     });
-    let artifacts = AkitaScheduleArtifacts::new(dense, one_hot_k16, one_hot_k256);
-    validate_schedule_artifacts(&artifacts);
-    let bytes = bincode::serde::encode_to_vec(&artifacts, bincode::config::standard())
-        .expect("schedule artifacts encode");
+    let artifacts = AkitaScheduleArtifacts::new(dense?, one_hot_k16?, one_hot_k256?);
+    validate_schedule_artifacts(&artifacts)?;
+    let bytes = bincode::serde::encode_to_vec(&artifacts, bincode::config::standard())?;
     write_file(
         public_dir,
         "akita_schedules.bin",
         "akita",
         "Schedule catalogs",
         &bytes,
-    );
+    )?;
+    Ok(())
 }
 
 /// Drops the catalog rows a 32-bit target cannot deserialize. Those rows
@@ -173,29 +176,28 @@ fn emit_schedule_artifacts(public_dir: &Path) {
 /// The catalog digest bound into the transcript does change: proofs made with
 /// these artifacts verify against the verifier preprocessing the prover emits,
 /// not against jolt's full packaged catalogs.
-fn trim_catalog_for_wasm32(file: &str, bytes: &[u8]) -> Vec<u8> {
+fn trim_catalog_for_wasm32(file: &str, bytes: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
     #[derive(serde::Deserialize)]
     struct Envelope<'a> {
         #[serde(borrow)]
         rows: Vec<&'a RawValue>,
     }
-    let text = std::str::from_utf8(bytes).expect("schedule catalog is UTF-8");
-    let envelope: Envelope = serde_json::from_str(text).expect("schedule catalog envelope");
+    let text = std::str::from_utf8(bytes)?;
+    let envelope: Envelope = serde_json::from_str(text)?;
     let (first, last) = match (envelope.rows.first(), envelope.rows.last()) {
         (Some(first), Some(last)) => (first.get(), last.get()),
-        _ => panic!("{file}: schedule catalog has no rows"),
+        _ => return Err(format!("{file}: schedule catalog has no rows").into()),
     };
-    let start = text.find(first).expect("first row is in the catalog text");
-    let end = text.rfind(last).expect("last row is in the catalog text") + last.len();
-    let kept: Vec<&str> = envelope
-        .rows
-        .iter()
-        .map(|row| row.get())
-        .filter(|row| {
-            let value: Value = serde_json::from_str(row).expect("schedule catalog row");
-            !exceeds_u32_usize(&value, None)
-        })
-        .collect();
+    let start = text.find(first).ok_or("first row missing from catalog")?;
+    let end = text.rfind(last).ok_or("last row missing from catalog")? + last.len();
+    let mut kept = Vec::new();
+    for row in &envelope.rows {
+        let raw = row.get();
+        let value: Value = serde_json::from_str(raw)?;
+        if !exceeds_u32_usize(&value, None) {
+            kept.push(raw);
+        }
+    }
     println!(
         "[akita] {file}: keeping {} of {} rows (dropped rows need a 64-bit usize)",
         kept.len(),
@@ -205,7 +207,7 @@ fn trim_catalog_for_wasm32(file: &str, bytes: &[u8]) -> Vec<u8> {
     out.push_str(&text[..start]);
     out.push_str(&kept.join(ROW_SEPARATOR));
     out.push_str(&text[end..]);
-    out.into_bytes()
+    Ok(out.into_bytes())
 }
 
 fn exceeds_u32_usize(value: &Value, key: Option<&str>) -> bool {
@@ -222,19 +224,29 @@ fn exceeds_u32_usize(value: &Value, key: Option<&str>) -> bool {
 
 /// Runs the same trusted-catalog decoding the prover and verifier run at
 /// setup (family binding, policy digest, canonical re-encoding, row audit).
-fn validate_schedule_artifacts(artifacts: &AkitaScheduleArtifacts) {
-    artifacts.dense_catalog().expect("dense catalog validates");
+fn validate_schedule_artifacts(artifacts: &AkitaScheduleArtifacts) -> Result<(), Box<dyn Error>> {
+    artifacts.dense_catalog()?;
     for k in [AKITA_ONE_HOT_K16, AKITA_ONE_HOT_K256] {
-        artifacts
-            .one_hot_catalog(k)
-            .unwrap_or_else(|error| panic!("one-hot K={k} catalog validates: {error}"));
+        artifacts.one_hot_catalog(k)?;
     }
+    Ok(())
 }
 
-fn write_file(public_dir: &Path, filename: &str, program: &str, kind: &str, bytes: &[u8]) {
+fn write_file(
+    public_dir: &Path,
+    filename: &str,
+    program: &str,
+    kind: &str,
+    bytes: &[u8],
+) -> Result<(), Box<dyn Error>> {
     let path = public_dir.join(filename);
-    std::fs::write(&path, bytes).expect("write file");
-    println!("[{program}] {kind}: {} bytes -> {path:?}", bytes.len());
+    std::fs::write(&path, bytes)?;
+    println!(
+        "[{program}] {kind}: {} bytes -> {}",
+        bytes.len(),
+        path.display()
+    );
+    Ok(())
 }
 
 // Inline registration is inventory-based (link-time); keeping the crates
@@ -243,20 +255,20 @@ use jolt_inlines_keccak256 as _;
 use jolt_inlines_secp256k1 as _;
 use jolt_inlines_sha2 as _;
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let public_dir = root.join("frontend/public");
-    std::fs::create_dir_all(&public_dir).expect("create frontend/public");
+    std::fs::create_dir_all(&public_dir)?;
     let target_root = std::env::var_os("JOLT_GUEST_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| root.join("target/guests"));
+        .map_or_else(|| root.join("target/guests"), PathBuf::from);
 
     // `jolt build -p` resolves the guest against the workspace of the current
     // directory, and the guests keep their own (guests/Cargo.toml).
-    std::env::set_current_dir(root.join("guests")).expect("enter guests/ workspace");
-    emit_schedule_artifacts(&public_dir);
+    std::env::set_current_dir(root.join("guests"))?;
+    emit_schedule_artifacts(&public_dir)?;
     for guest in GUESTS {
-        emit(guest, &public_dir, &target_root);
+        emit(guest, &public_dir, &target_root)?;
     }
     println!("Done!");
+    Ok(())
 }

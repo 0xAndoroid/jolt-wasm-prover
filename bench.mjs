@@ -1,16 +1,10 @@
-import { chromium, webkit } from 'playwright';
+import { webkit } from 'playwright';
 
-const RUNS = parseInt(process.argv[2] || '3', 10);
-const TIMEOUT = parseInt(process.env.BENCH_TIMEOUT || '120000', 10);
+const RUNS = Math.trunc(Number(process.argv[2] || '3'));
+const TIMEOUT = Math.trunc(Number(process.env['BENCH_TIMEOUT'] || '120000'));
 
 async function run() {
-    // PW_BROWSER=webkit runs the bundled WebKit (Safari engine); default is
-    // the bundled Chromium, PW_CHANNEL=chrome selects system Chrome.
-    const engine = process.env.PW_BROWSER === 'webkit' ? webkit : chromium;
-    const browser = await engine.launch({
-        headless: true,
-        channel: engine === chromium ? process.env.PW_CHANNEL || undefined : undefined,
-    });
+    const browser = await webkit.launch({headless: true});
     const context = await browser.newContext();
     const page = await context.newPage();
 
@@ -19,10 +13,11 @@ async function run() {
         if (text.startsWith('[sha2]')) process.stderr.write(text + '\n');
     });
 
-    await page.goto(process.env.BENCH_URL || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
+    await page.goto(process.env['BENCH_URL'] || 'http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     await page.waitForFunction(
-        () => document.getElementById('status')?.classList.contains('ready'),
+        () => document.querySelector('#status')?.classList.contains('ready'),
+        undefined,
         { timeout: TIMEOUT },
     );
 
@@ -41,15 +36,16 @@ async function run() {
             { timeout: TIMEOUT },
         );
         const seconds = await page.evaluate(() => {
-            const m = document.querySelector('#page-sha2 .output')
-                .textContent.match(/Proof generated in ([\d.]+)s/g);
-            return parseFloat(m[m.length - 1].match(/([\d.]+)s/)[1]);
+            const text = document.querySelector('#page-sha2 .output')?.textContent ?? '';
+            const match = [...text.matchAll(/Proof generated in ([\d.]+)s/g)].at(-1)?.[1];
+            if (match === undefined) throw new Error('proof timing missing');
+            return Number(match);
         });
         timings.push(seconds);
         process.stderr.write(`  run ${i + 1}: ${seconds.toFixed(2)}s\n`);
 
         await page.waitForFunction(
-            () => !document.querySelector('#page-sha2 .prove-btn').disabled,
+            () => !document.querySelector('button.prove-btn')?.hasAttribute('disabled'),
             { timeout: TIMEOUT },
         );
     }
@@ -62,4 +58,9 @@ async function run() {
     console.log(JSON.stringify({ runs: timings, avg: +avg.toFixed(3), min: +min.toFixed(3), max: +max.toFixed(3) }));
 }
 
-run().catch(e => { console.error(e); process.exit(1); });
+try {
+    await run();
+} catch (e) {
+    console.error(e);
+    process.exitCode = 1;
+}

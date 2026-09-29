@@ -136,3 +136,64 @@ jolt-field = { git = "https://github.com/0xAndoroid/jolt", rev = "d39bd518a65ea8
 # Drop once LayerZero-Labs/akita bumps spongefish >= 0.7.2.
 [patch."https://github.com/arkworks-rs/spongefish"]
 spongefish = { git = "https://github.com/0xAndoroid/spongefish", rev = "4ee5f2b22a6ef628f7b6e162ab72cc285b9a850e" }
+
+[lints.rust]
+# WASM mailbox and JS shared-memory views require unsafe blocks.
+unsafe_code = "allow"
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+# Pedantic baseline; priority -1 lets individual lints override.
+pedantic = { level = "warn", priority = -1 }
+
+case_sensitive_file_extension_comparisons = "allow"
+default_trait_access = "allow"
+doc_markdown = "allow"
+fn_params_excessive_bools = "allow"
+format_push_string = "allow"
+implicit_hasher = "allow"
+items_after_statements = "allow"
+manual_let_else = "allow"
+match_same_arms = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow"
+no_effect_underscore_binding = "allow"
+redundant_closure_for_method_calls = "allow"
+ref_option = "allow"
+ref_option_ref = "allow"
+return_self_not_must_use = "allow"
+similar_names = "allow"
+struct_excessive_bools = "allow"
+too_many_lines = "allow"
+trivially_copy_pass_by_ref = "allow"
+uninlined_format_args = "allow"
+unnecessary_wraps = "allow"
+unused_async = "allow"
+used_underscore_binding = "allow"
+
+# Cast lints — many false positives where range is known.
+# Note: cast_lossless is NOT allowed — prefer From::from() for clarity.
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+
+expect_used = "deny"
+panic = "deny"
+unwrap_used = "deny"
+
+allow_attributes = "deny"
+
+result_large_err = "allow"
+
+# The native preprocessing binaries produce CLI output; print lints are omitted.
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+
+enum_variant_names = "allow"
+large_futures = "allow"
+significant_drop_tightening = "allow"

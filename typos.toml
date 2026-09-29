@@ -4,3 +4,5 @@ extend-exclude = ["frontend/public/"]
 [default.extend-words]
 # Akita schedule catalog file extension
 aks = "aks"
+# Ruff's copyright-rule prefix.
+CPY = "CPY"

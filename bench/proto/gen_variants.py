@@ -8,6 +8,7 @@ Each variant: workgroup = (chunk of CHUNK positions, group of COLS columns, bloc
 workgroup memory as 32-bit limbs; every thread owns CPT coefficients (i, i + 512/CPT, ...) x COLS
 columns, accumulated as 16-bit digits in 8 u32 (2 vec4) per (column, coefficient).
 """
+
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -59,14 +60,20 @@ fn main(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid
 
 SCHEMES = {
     # inner add for one staged coefficient x (vec4<u32>), and how the two accumulators map to PART digits
-    "digits": dict(add="lo{a} += x & vec4<u32>(0xFFFFu); hi{a} += x >> vec4<u32>(16u);",
-                   store="PART[o * 2u] = lo{a}; PART[o * 2u + 1u] = hi{a};"),
+    "digits": {
+        "add": "lo{a} += x & vec4<u32>(0xFFFFu); hi{a} += x >> vec4<u32>(16u);",
+        "store": "PART[o * 2u] = lo{a}; PART[o * 2u + 1u] = hi{a};",
+    },
     # lo holds the wrapping full-limb sum, hi the high-half sum; low digits = lo - (hi << 16) (exact mod 2^32)
-    "fullhi": dict(add="lo{a} += x; hi{a} += x >> vec4<u32>(16u);",
-                   store="PART[o * 2u] = lo{a} - (hi{a} << vec4<u32>(16u)); PART[o * 2u + 1u] = hi{a};"),
+    "fullhi": {
+        "add": "lo{a} += x; hi{a} += x >> vec4<u32>(16u);",
+        "store": "PART[o * 2u] = lo{a} - (hi{a} << vec4<u32>(16u)); PART[o * 2u + 1u] = hi{a};",
+    },
     # lo = wrapping limb sum, hi = carry count per limb; PART mode 1 (reduce.wgsl handles (acc, carry) pairs)
-    "lazycarry": dict(add="let t{a} = lo{a} + x; hi{a} += vec4<u32>(t{a} < x); lo{a} = t{a};",
-                      store="PART[o * 2u] = lo{a}; PART[o * 2u + 1u] = hi{a};"),
+    "lazycarry": {
+        "add": "let t{a} = lo{a} + x; hi{a} += vec4<u32>(t{a} < x); lo{a} = t{a};",
+        "store": "PART[o * 2u] = lo{a}; PART[o * 2u + 1u] = hi{a};",
+    },
 }
 
 
@@ -75,8 +82,7 @@ def build(title, cols, cpt, scheme):
     step = 512 // cpt
     acc = []
     for c in range(cols):
-        for t in range(cpt):
-            acc.append(f"  var lo{c}_{t} = vec4<u32>(0u);\n  var hi{c}_{t} = vec4<u32>(0u);")
+        acc.extend(f"  var lo{c}_{t} = vec4<u32>(0u);\n  var hi{c}_{t} = vec4<u32>(0u);" for t in range(cpt))
     words = "\n".join(f"      let w{k} = HOT[hbase + {k}u];" for k in range(max(1, cols // 4)))
     cols_code = []
     for c in range(cols):
@@ -93,11 +99,21 @@ def build(title, cols, cpt, scheme):
       }}""")
     store = []
     for c in range(cols):
-        for t in range(cpt):
-            store.append(f"  {{ let o = ((chunk * P.colcap + cbase + {c}u) * P.blocks + b) * 512u + i + {t * step}u; "
-                         + sch["store"].format(a=f"{c}_{t}") + " }")
-    return HEAD.format(title=title, cols=cols, cpt=cpt, acc_decl="\n".join(acc), words=words,
-                       cols_code="\n".join(cols_code), store="\n".join(store))
+        store.extend(
+            f"  {{ let o = ((chunk * P.colcap + cbase + {c}u) * P.blocks + b) * 512u + i + {t * step}u; "
+            + sch["store"].format(a=f"{c}_{t}")
+            + " }"
+            for t in range(cpt)
+        )
+    return HEAD.format(
+        title=title,
+        cols=cols,
+        cpt=cpt,
+        acc_decl="\n".join(acc),
+        words=words,
+        cols_code="\n".join(cols_code),
+        store="\n".join(store),
+    )
 
 
 VARIANTS = {
@@ -123,8 +139,13 @@ BEST = "v9"
 def source(name):
     cols, cpt, scheme = VARIANTS[name]
     label = f"CHOSEN KERNEL (= {BEST})" if name == BEST else name.upper()
-    return build(f"{label}: {cols} columns x {cpt} coefficients per thread ({512 // cpt} threads), "
-                 f"{cols * cpt * 8} accumulator words, scheme={scheme}.", cols, cpt, scheme)
+    return build(
+        f"{label}: {cols} columns x {cpt} coefficients per thread ({512 // cpt} threads), "
+        f"{cols * cpt * 8} accumulator words, scheme={scheme}.",
+        cols,
+        cpt,
+        scheme,
+    )
 
 
 if __name__ == "__main__":

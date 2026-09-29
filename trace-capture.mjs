@@ -1,10 +1,10 @@
-import { chromium } from 'playwright';
+import { webkit } from 'playwright';
 import { readFileSync, writeFileSync } from 'fs';
 
 const TIMEOUT = 120_000;
 
 async function run() {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await webkit.launch({ headless: true });
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
 
@@ -16,7 +16,8 @@ async function run() {
     await page.goto('http://localhost:8080', { waitUntil: 'domcontentloaded' });
 
     await page.waitForFunction(
-        () => document.getElementById('status')?.classList.contains('ready'),
+        () => document.querySelector('#status')?.classList.contains('ready'),
+        undefined,
         { timeout: TIMEOUT },
     );
 
@@ -35,7 +36,7 @@ async function run() {
             if (m) { obs.disconnect(); resolve(m[1]); }
         }),
     );
-    const seconds = parseFloat(await result.jsonValue());
+    const seconds = Number(await result.jsonValue());
     process.stderr.write(`Proof generated in ${seconds.toFixed(2)}s\n`);
 
     // Click trace download button and capture the download
@@ -52,4 +53,9 @@ async function run() {
     await browser.close();
 }
 
-run().catch(e => { console.error(e); process.exit(1); });
+try {
+    await run();
+} catch (e) {
+    console.error(e);
+    process.exitCode = 1;
+}

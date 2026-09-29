@@ -16,11 +16,12 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-RADIO = '[role=radiogroup] [role=radio]'
-PANEL = '[role=tabpanel][data-state=active]'
+RADIO = "[role=radiogroup] [role=radio]"
+PANEL = "[role=tabpanel][data-state=active]"
 CHECKED = f'{RADIO}[aria-checked="true"]'
 SHA_RE = re.compile(r"Proof SHA-256: ([0-9a-f]{64})")
 
@@ -103,12 +104,12 @@ def no_overflow(page):
 def shoot(page, shots, name):
     if not shots:
         return
-    os.makedirs(shots, exist_ok=True)
+    Path(shots).mkdir(parents=True, exist_ok=True)
     for width in (375, 1440):
         page.set_viewport_size({"width": width, "height": 900})
         page.wait_for_timeout(300)
         check(no_overflow(page), f"no horizontal overflow at {width}px ({name})")
-        page.screenshot(path=os.path.join(shots, f"{name}-{width}.png"), full_page=True)
+        page.screenshot(path=Path(shots) / f"{name}-{width}.png", full_page=True)
 
 
 def main():
@@ -125,7 +126,14 @@ def main():
 
         def open_page():
             page = context.new_page()
-            page.on("console", lambda m: sys.stderr.write(f"[webkit] {m.text}\n") if m.text.startswith("[gpu") or "error" in m.type else None)
+            page.on(
+                "console",
+                lambda m: (
+                    sys.stderr.write(f"[webkit] {m.text}\n")
+                    if m.text.startswith("[gpu") or "error" in m.type
+                    else None
+                ),
+            )
             page.goto(args.url, wait_until="domcontentloaded")
             wait_ready(page)
             return page
@@ -133,7 +141,10 @@ def main():
         page = open_page()
         check(checked_label(page).startswith("GPU"), f"default mode is GPU ({checked_label(page)})")
         check(page.locator("text=GPU unavailable").count() == 0, "no unavailability reason shown")
-        check(page.evaluate("() => localStorage.getItem('jolt-prover-mode')") is None, "default mode leaves localStorage untouched")
+        check(
+            page.evaluate("() => localStorage.getItem('jolt-prover-mode')") is None,
+            "default mode leaves localStorage untouched",
+        )
         sha_gpu, mode = prove(page)
         check(mode == "gpu", f"first proof ran in GPU mode (badge {mode})")
         verify(page, "SHA-256 GPU")
@@ -156,7 +167,9 @@ def main():
         select_tab(page, "Keccak Chain")
         keccak_cpu, mode = prove(page)
         check(mode == "cpu", f"Keccak Chain proof ran in CPU mode (badge {mode})")
-        check(keccak_cpu == keccak_gpu, f"Keccak Chain CPU proof bytes == GPU proof bytes ({keccak_cpu[:16]})")
+        check(
+            keccak_cpu == keccak_gpu, f"Keccak Chain CPU proof bytes == GPU proof bytes ({keccak_cpu[:16]})"
+        )
         verify(page, "Keccak Chain CPU")
         select_tab(page, "SHA-256")
         sha_cpu, mode = prove(page)
@@ -164,7 +177,10 @@ def main():
         check(sha_cpu == sha_gpu, f"SHA-256 CPU proof bytes == GPU proof bytes ({sha_cpu[:16]})")
         verify(page, "SHA-256 CPU")
         shoot(page, args.shots, "webkit-cpu")
-        check(page.evaluate("() => localStorage.getItem('jolt-prover-mode')") == "cpu", "choice persisted as 'cpu'")
+        check(
+            page.evaluate("() => localStorage.getItem('jolt-prover-mode')") == "cpu",
+            "choice persisted as 'cpu'",
+        )
 
         # A fresh page in the same context stands in for a reload: WebKit crashes when a
         # second 4 GB wasm memory is instantiated in a page whose first worker just died.
@@ -176,7 +192,9 @@ def main():
         page.wait_for_function(f"() => document.querySelector('{CHECKED}')?.innerText.includes('GPU')")
         wait_ready(page)
         sha_gpu2, mode = prove(page)
-        check(mode == "gpu" and sha_gpu2 == sha_gpu, f"GPU re-enabled without reload, proof identical ({mode})")
+        check(
+            mode == "gpu" and sha_gpu2 == sha_gpu, f"GPU re-enabled without reload, proof identical ({mode})"
+        )
         shoot(page, args.shots, "webkit-gpu")
         page.close()
         browser.close()
@@ -203,11 +221,18 @@ def main():
         r = page.evaluate(DEAD_PROXY_JS, {"iters": args.iters})
         sys.stderr.write(f"dead-proxy: {r}\n")
         check(r["init"]["status"] == "ok", "dead-proxy session started with the GPU on")
-        check(r["dead"]["type"] == "error" and "gpu proxy unresponsive" in (r["dead"]["error"] or ""), f"prove failed with the timeout error in {r['dead']['ms'] / 1000:.1f}s")
+        check(
+            r["dead"]["type"] == "error" and "gpu proxy unresponsive" in (r["dead"]["error"] or ""),
+            f"prove failed with the timeout error in {r['dead']['ms'] / 1000:.1f}s",
+        )
         check(r["dead"]["ms"] < 10_000, "time to error under 10 s")
         check((r["dead"]["gpu"] or {}).get("status") == "unavailable", "error carries gpu.status unavailable")
-        check(r["again"]["type"] == "prove-done" and r["again"]["gpuStatus"] == "unavailable" and r["again"]["valid"] is True,
-              f"next prove in the same session ran on the CPU and verified ({time.time() - t0:.0f}s total)")
+        check(
+            r["again"]["type"] == "prove-done"
+            and r["again"]["gpuStatus"] == "unavailable"
+            and r["again"]["valid"] is True,
+            f"next prove in the same session ran on the CPU and verified ({time.time() - t0:.0f}s total)",
+        )
         page.close()
         browser.close()
     print("test_ui_modes: all checks passed")

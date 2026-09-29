@@ -1,0 +1,29 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": [
+        "*.mjs"
+      ],
+      "project": [
+        "*.mjs"
+      ]
+    },
+    "frontend": {
+      "entry": [
+        "public/*.js",
+        "src/index.css"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "public/*.js",
+        "types/*.d.ts",
+        "src/**/*.css"
+      ],
+      // Root Playwright scripts resolve their types through this npm tree.
+      "ignoreDependencies": [
+        "playwright"
+      ]
+    }
+  }
+}

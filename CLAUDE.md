@@ -37,18 +37,32 @@ cargo run --release --features native --bin test-roundtrip
 JOLT_TRACE_COMMIT_DEVICE=cpu-ref cargo run --release --features native,trace-commit-device --bin test-roundtrip
 RUST_LOG=jolt_akita=info cargo run --release --features native,trace-commit-device --bin test-roundtrip  # prints the stage-0 shape + extraction time
 
-# Clippy / format (root package only — the guest crates are riscv-only and
-# their jolt-sdk host glue does not compile against an akita jolt-prover)
-cargo clippy --all --all-targets --message-format=short -q   # root workspace; guests/ is its own workspace
-cargo fmt -q
+# Native Clippy is local-only: compiling the pinned Jolt graph is too slow for CI.
+cargo clippy -q --all-targets --features native --message-format=short -- -D warnings
+cargo fmt -q --message-format=short -- --check
 
 # Dev server (serves on http://localhost:8080)
 node server.mjs
 ```
 
+## Contributing
+
+Install web tools with `npm ci --ignore-scripts --prefix frontend`; versions are pinned in `frontend/package-lock.json`.
+
+- `scripts/lint/web.sh` — strict TypeScript/checkJs, type-aware oxlint, knip, stylelint, html-validate.
+- `npm run lint --prefix frontend` — oxlint with React, hooks, accessibility, and typed rules.
+- `scripts/lint/python.sh` — Ruff ALL and formatter, via `uvx ruff@0.16.9`.
+- `scripts/lint/shell.sh` — ShellCheck and shfmt; whitespace comes from `.editorconfig`.
+- `scripts/lint/rust.sh` — root crate format and native Clippy; local-only, never a CI dependency build.
+
+`scripts/pre-commit.sh` dispatches each language script in `--staged` mode; irrelevant files and missing toolchains exit silently.
+The guest workspace is built only via `jolt build`. Patched-device features require existing `.wasm-deps/` checkouts; without them only `native` is checked.
+HTML integrity checks cover external assets except Google Fonts: its CSS varies by user agent and has no fixed SRI digest. Local asset names are hashed by Vite.
+Static checks do not generate or modify `pkg/`, preprocessing artifacts, WGSL, or patch files.
+
 ## Benchmarking
 
-Requires: `npm install`, dev server running. Scripts default to the Playwright-bundled Chromium; `PW_BROWSER=webkit` runs the bundled WebKit (Safari engine); `PW_CHANNEL=chrome` selects system Chrome.
+Requires: `npm install`, dev server running. Node scripts use Playwright's bundled headless WebKit.
 
 ```bash
 node server.mjs &
