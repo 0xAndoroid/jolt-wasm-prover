@@ -85,7 +85,7 @@ static BREAKDOWN: Mutex<CommitBreakdown> = Mutex::new(CommitBreakdown {
 });
 
 pub fn take_breakdown() -> CommitBreakdown {
-    std::mem::take(&mut *BREAKDOWN.lock().unwrap())
+    std::mem::take(&mut *BREAKDOWN.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 static INSTALL: Once = Once::new();
@@ -186,14 +186,15 @@ fn buffers_for<'a>(
             part: create_buffer(part_bytes)?,
         });
     }
-    Ok(slot.as_ref().unwrap())
+    slot.as_ref()
+        .ok_or_else(|| GpuError("trace commit buffers were not allocated".into()))
 }
 
 impl WebGpuTraceCommit {
     fn commit(&self, job: &TraceCommitJob<'_>) -> Result<Vec<u32>, GpuError> {
         let _span = tracing::info_span!("trace_onehot_commit_gpu").entered();
         let shape = &job.shape;
-        let chunk = chunk_for(shape).expect("qualified shape");
+        let chunk = chunk_for(shape).ok_or_else(|| GpuError("shape has no commit chunk".into()))?;
         let t0 = now_ms();
         let codes = pack_codes(job);
         let t1 = now_ms();
@@ -289,7 +290,7 @@ impl WebGpuTraceCommit {
             )
             .into(),
         );
-        let mut b = BREAKDOWN.lock().unwrap();
+        let mut b = BREAKDOWN.lock().unwrap_or_else(|e| e.into_inner());
         b.calls += 1;
         b.pack_ms += pack_ms;
         b.upload_ms += upload_ms;

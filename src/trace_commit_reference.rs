@@ -36,7 +36,7 @@ struct Wide {
 }
 
 impl Wide {
-    #[inline(always)]
+    #[inline]
     fn add(&mut self, value: u128) {
         let (lo, carry) = self.lo.overflowing_add(value);
         self.lo = lo;
@@ -149,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn matches_naive_field_arithmetic() {
+    fn matches_naive_field_arithmetic() -> Result<(), Box<dyn std::error::Error>> {
         let shape = TraceCommitShape {
             one_hot_k: K,
             ring_dimension: D,
@@ -215,11 +215,14 @@ mod tests {
             write_u128(limbs, value);
         }
 
-        let actual = CpuReferenceDevice.commit_accumulate(&job).unwrap().unwrap();
+        let actual = CpuReferenceDevice
+            .commit_accumulate(&job)
+            .ok_or("reference device declined a qualifying shape")??;
         assert_eq!(actual, expected_limbs);
         assert!(expected[..shape.num_columns * shape.blocks_per_column * D]
             .iter()
             .any(|&value| value != 0));
+        Ok(())
     }
 
     #[test]

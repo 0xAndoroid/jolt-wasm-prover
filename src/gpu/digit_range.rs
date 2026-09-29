@@ -41,7 +41,7 @@ const MIN_LEN_BITS: u32 = 16;
 const CPU_TAIL_BITS: u32 = 12;
 /// Rounds 0..3 read the packed digits; a table only exists from round 3 on.
 const MIN_ROUNDS: usize = 4;
-const RANGE_V: [i64; 4] = [0, 2, 6, 12];
+const RANGE_V: [i32; 4] = [0, 2, 6, 12];
 
 /// Region slots of one round's RUN_SEQ; slot 0 is the params block the proxy
 /// reads directly.
@@ -111,7 +111,7 @@ static BREAKDOWN: Mutex<Breakdown> = Mutex::new(Breakdown {
 });
 
 pub fn take_breakdown() -> Breakdown {
-    std::mem::take(&mut *BREAKDOWN.lock().unwrap())
+    std::mem::take(&mut *BREAKDOWN.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 static INSTALL: Once = Once::new();
@@ -145,7 +145,7 @@ fn lut0_bytes() -> Vec<u8> {
                 d2 * (fl + sl),
                 d2 * d2,
             ][c];
-            out.extend_from_slice(&(i32::try_from(coeff).unwrap()).to_le_bytes());
+            out.extend_from_slice(&coeff.to_le_bytes());
         }
     }
     out
@@ -191,7 +191,13 @@ fn handles_for(
     args.push(sizes.len() as u32);
     args.extend_from_slice(&sizes);
     let created = mailbox::call(OP_ALLOC, &args, &[])?;
-    let [digits, ta, tb, lut0, lut1, lut2f, partials] = created[..sizes.len()].try_into().unwrap();
+    let &[digits, ta, tb, lut0, lut1, lut2f, partials, ..] = created.as_slice() else {
+        return Err(GpuError(format!(
+            "OP_ALLOC returned {} handles, expected {}",
+            created.len(),
+            sizes.len()
+        )));
+    };
     Ok((
         Handles {
             digits_cap: digits_bytes,
@@ -261,13 +267,20 @@ fn params(
         n_units, inner_bits, 0, off_second, ppt, bit_width, src_mode, case_c, 0, 0, 0, 0, 0, 0, 0,
         0,
     ];
-    for (i, limb) in r.chunks_exact(4).enumerate() {
-        p[8 + i] = u32::from_le_bytes(limb.try_into().unwrap());
-    }
-    for (i, limb) in r_aux.chunks_exact(4).enumerate() {
-        p[12 + i] = u32::from_le_bytes(limb.try_into().unwrap());
-    }
+    p[8..12].copy_from_slice(&le_words(r));
+    p[12..16].copy_from_slice(&le_words(r_aux));
     p
+}
+
+fn le_words(bytes: &[u8; FIELD_BYTES]) -> [u32; 4] {
+    std::array::from_fn(|i| {
+        u32::from_le_bytes([
+            bytes[4 * i],
+            bytes[4 * i + 1],
+            bytes[4 * i + 2],
+            bytes[4 * i + 3],
+        ])
+    })
 }
 
 /// round0 / round1: digits, eq, partials, lut.
@@ -295,12 +308,16 @@ const BINDS_REDUCE: &[(u32, u32)] = &[(3, R_PARTIALS), (4, R_OUT)];
 /// hands the buffers back so the next qualifying instance can open.
 impl Drop for Session {
     fn drop(&mut self) {
-        *HANDLES.lock().unwrap() = self.handles.take();
+        *HANDLES.lock().unwrap_or_else(|e| e.into_inner()) = self.handles.take();
         SESSION_OPEN.store(false, Ordering::SeqCst);
     }
 }
 
 impl Session {
+    #[expect(
+        clippy::expect_used,
+        reason = "the handles are only taken by table(), which consumes the session"
+    )]
     fn handles(&self) -> &Handles {
         self.handles
             .as_ref()
@@ -387,7 +404,7 @@ impl Session {
                         ppt,
                         bw,
                         2,
-                        (inner < ppt) as u32,
+                        u32::from(inner < ppt),
                         prev,
                         &zero,
                     ),
@@ -415,7 +432,7 @@ impl Session {
                         ppt,
                         bw,
                         src_mode,
-                        (inner < ppt) as u32,
+                        u32::from(inner < ppt),
                         prev,
                         &zero,
                     ),
@@ -554,7 +571,7 @@ impl DigitRangeSession for Session {
             )
             .into(),
         );
-        let mut b = BREAKDOWN.lock().unwrap();
+        let mut b = BREAKDOWN.lock().unwrap_or_else(|e| e.into_inner());
         b.instances += 1;
         b.gpu_rounds += self.rounds as u32;
         b.ops += self.ops;
@@ -579,7 +596,11 @@ fn open_session(job: &DigitRangeJob<'_>, rounds: usize) -> Result<Session, GpuEr
     // Padded to a whole number of words for writeBuffer.
     let mut digits = job.digits.to_vec();
     digits.resize(digits.len().div_ceil(4) * 4, 0);
-    let (handles, fresh) = handles_for(&mut HANDLES.lock().unwrap(), digits.len() as u32, n)?;
+    let (handles, fresh) = handles_for(
+        &mut HANDLES.lock().unwrap_or_else(|e| e.into_inner()),
+        digits.len() as u32,
+        n,
+    )?;
     let mut session = Session {
         handles: Some(handles),
         n,

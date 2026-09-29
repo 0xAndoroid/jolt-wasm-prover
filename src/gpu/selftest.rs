@@ -53,7 +53,7 @@ impl SplitMix {
     /// Raw u128: about 1/2^32 of the draws are ≥ p, so the shader also sees
     /// non-canonical inputs on the edge cases seeded below.
     fn u128(&mut self) -> u128 {
-        (self.next() as u128) << 64 | self.next() as u128
+        u128::from(self.next()) << 64 | u128::from(self.next())
     }
 }
 
@@ -66,7 +66,7 @@ pub fn run() -> Result<GpuReport, GpuError> {
     for _ in 0..NOP_ROUNDS {
         mailbox::call(OP_NOP, &[], &[])?;
     }
-    let roundtrip_us = (now_ms() - t0) * 1000.0 / NOP_ROUNDS as f64;
+    let roundtrip_us = (now_ms() - t0) * 1000.0 / f64::from(NOP_ROUNDS);
 
     let mut rng = SplitMix(0x5EED_A7F7);
     let p = u128::MAX - 0xFFFF_A7F6;
@@ -121,11 +121,12 @@ pub fn run() -> Result<GpuReport, GpuError> {
     let selftest_ms = now_ms() - t1;
 
     let mut mismatches = 0u32;
-    for i in 0..N {
+    for (i, chunk) in out.chunks_exact(16).enumerate() {
         let expected = AkitaField::from_u128_reduced(a[i]) * AkitaField::from_u128_reduced(b[i])
             + AkitaField::from_u128_reduced(c[i]);
-        let got = u128::from_le_bytes(out[i * 16..i * 16 + 16].try_into().unwrap());
-        if got != expected.to_canonical_u128() {
+        let mut le = [0u8; 16];
+        le.copy_from_slice(chunk);
+        if u128::from_le_bytes(le) != expected.to_canonical_u128() {
             mismatches += 1;
         }
     }

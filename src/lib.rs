@@ -49,29 +49,29 @@ mod wasm {
 
     #[wasm_bindgen]
     pub fn set_gpu_enabled() {
-        crate::gpu::set_enabled()
+        crate::gpu::set_enabled();
     }
 
     #[wasm_bindgen]
     pub fn set_gpu_unavailable() {
-        crate::gpu::set_unavailable()
+        crate::gpu::set_unavailable();
     }
 
     #[wasm_bindgen]
     pub fn set_gpu_disabled() {
-        crate::gpu::set_disabled()
+        crate::gpu::set_disabled();
     }
 
     /// Once-per-session GPU self-test (cached afterwards); JSON `GpuReport`.
     #[wasm_bindgen]
     pub fn gpu_selftest() -> String {
-        serde_json::to_string(&crate::gpu::selftest()).expect("plain struct")
+        serde_json::to_string(&crate::gpu::selftest()).unwrap_or_default()
     }
 
     /// Mailbox op deadline; a timeout marks the proxy dead for the session.
     #[wasm_bindgen]
     pub fn set_gpu_op_timeout_ms(ms: u32) {
-        crate::gpu::set_op_timeout_ms(ms)
+        crate::gpu::set_op_timeout_ms(ms);
     }
 
     #[wasm_bindgen]
@@ -83,14 +83,14 @@ mod wasm {
     /// (isolates later waves' increments in the bench).
     #[wasm_bindgen]
     pub fn set_gpu_commit_enabled(enabled: bool) {
-        crate::gpu::set_commit_enabled(enabled)
+        crate::gpu::set_commit_enabled(enabled);
     }
 
     /// W2 knob: keep the GPU on but leave the stage-1 digit-range rounds on
     /// the CPU (isolates the W1 increment in the bench).
     #[wasm_bindgen]
     pub fn set_gpu_digit_range_enabled(enabled: bool) {
-        crate::gpu::set_digit_range_enabled(enabled)
+        crate::gpu::set_digit_range_enabled(enabled);
     }
 
     /// Compare the first `rounds` GPU digit-range messages against the CPU
@@ -107,7 +107,7 @@ mod wasm {
     /// rounds on the CPU.
     #[wasm_bindgen]
     pub fn set_gpu_stage2_enabled(enabled: bool) {
-        crate::gpu::set_stage2_enabled(enabled)
+        crate::gpu::set_stage2_enabled(enabled);
     }
 
     /// Keep the CPU stage-2 prover authoritative and compare the device's
@@ -344,7 +344,7 @@ mod wasm {
 
         pub fn verify(&self, proof_bytes: &[u8], program_io_bytes: &[u8]) -> Result<bool, JsValue> {
             engine::verify(&self.preprocessing, proof_bytes, program_io_bytes)
-                .map(|_| true)
+                .map(|()| true)
                 .map_err(|e| JsValue::from_str(&e))
         }
     }

@@ -39,9 +39,10 @@ use std::sync::Mutex;
 #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
 fn now_ms() -> f64 {
     use wasm_bindgen::JsCast;
-    js_sys::Reflect::get(&js_sys::global(), &"performance".into())
-        .map(|p| p.unchecked_into::<web_sys::Performance>().now())
-        .unwrap_or_else(|_| js_sys::Date::now())
+    js_sys::Reflect::get(&js_sys::global(), &"performance".into()).map_or_else(
+        |_| js_sys::Date::now(),
+        |p| p.unchecked_into::<web_sys::Performance>().now(),
+    )
 }
 
 const STATE_DISABLED: u32 = 0;
@@ -241,7 +242,7 @@ pub fn take_commit_report() -> String {
     {
         let b = trace_commit::take_breakdown();
         if b.calls > 0 {
-            return serde_json::to_string(&b).expect("plain struct");
+            return serde_json::to_string(&b).unwrap_or_default();
         }
     }
     String::new()
@@ -258,7 +259,7 @@ pub fn take_digit_range_report() -> String {
     {
         let b = digit_range::take_breakdown();
         if b.instances > 0 {
-            return serde_json::to_string(&b).expect("plain struct");
+            return serde_json::to_string(&b).unwrap_or_default();
         }
     }
     String::new()
@@ -312,7 +313,7 @@ pub fn take_stage2_report() -> String {
     {
         let b = stage2::take_breakdown();
         if b.instances > 0 {
-            return serde_json::to_string(&b).expect("plain struct");
+            return serde_json::to_string(&b).unwrap_or_default();
         }
     }
     String::new()
