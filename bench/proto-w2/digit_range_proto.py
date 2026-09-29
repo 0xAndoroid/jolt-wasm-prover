@@ -142,7 +142,6 @@ def check_instance(inst, out, tau, tables, meta, v, exact, fixed):
     msgs = [[limbs_to_int(m[4 * c : 4 * c + 4]) for c in range(5)] for m in out["msgs"]]
     rs = [limbs_to_int(r) for r in out["challenges"]]
     res = {"rounds": R, "checks": {}}
-    # challenges derived as specified
     ok_ch = all(
         (rs[k] == limbs_to_int(fixed[k]))
         if fixed
@@ -412,7 +411,6 @@ def main():
         }
     if out.get("mulbench"):
         mb = out["mulbench"]
-        # spot-check first 3 outputs against Python
         ok = True
         for i in range(3):
             x = limbs_to_int(
@@ -440,7 +438,6 @@ def main():
     js = json.dumps(summary, indent=1)
     if args.out:
         Path(args.out).write_text(js)
-    # compact print: drop per-round detail unless small
     for i in summary["instances"]:
         if i["rounds"] > 12:
             i["timing"] = {k: v for k, v in i["timing"].items() if k != "per_round"} | {

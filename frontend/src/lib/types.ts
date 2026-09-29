@@ -42,7 +42,6 @@ export interface ProgramFiles {
   elf: string
 }
 
-// Messages sent to the worker
 export type WorkerRequest =
   | { type: 'init'; data: { numThreads: number; cacheBust?: string; gpu?: boolean } }
   | { type: 'set-gpu'; data: { enabled: boolean } }
@@ -77,7 +76,6 @@ export type WorkerRequest =
   | { type: 'get-trace' }
   | { type: 'clear-trace' }
 
-// Messages received from the worker
 export type WorkerResponse =
   | { type: 'init-done'; gpu: GpuInfo }
   | { type: 'gpu-status'; gpu: GpuInfo }

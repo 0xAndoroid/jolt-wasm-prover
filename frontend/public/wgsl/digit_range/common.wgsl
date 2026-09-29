@@ -92,7 +92,6 @@ fn wg_reduce_store(acc: array<vec4<u32>, 5>, lid: u32, wg: u32) {
   if (lid < 5u) { partials[wg * 5u + lid] = red[lid * WG]; }
 }
 
-// ---------- thread -> units mapping ----------
 // Threads of one workgroup cover WG*ppt consecutive units split into blocks of blk = min(inner, WG*ppt)
 // units that share one E_second entry, so each thread multiplies by e_out once (case_c == 0).
 struct Map { unit0: u32, stride: u32, count: u32 }

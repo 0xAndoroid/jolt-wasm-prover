@@ -59,7 +59,6 @@ window.result = (async () => {
   const timedUpload = async (buf, data) => { const t0 = performance.now(); device.queue.writeBuffer(buf, 0, data); await device.queue.onSubmittedWorkDone(); return +(performance.now() - t0).toFixed(2); };
   const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 
-  // ---------- timestamp bookkeeping ----------
   const QN = 2048;
   const qs = hasTs ? device.createQuerySet({ type: 'timestamp', count: QN }) : null;
   const qBuf = hasTs ? mk(8 * QN, GPUBufferUsage.QUERY_RESOLVE | CS) : null;
@@ -89,7 +88,6 @@ window.result = (async () => {
     return u;
   };
 
-  // ---------- one instance ----------
   async function runInstance(inst) {
     const R = inst.rounds, n = 1 << R;
     const t00 = performance.now();
@@ -145,7 +143,6 @@ window.result = (async () => {
     }
     await device.queue.onSubmittedWorkDone();
 
-    // Dependent chain.
     const rs = [], msgs = [], roundWall = [], hostMs = [], dumps = [];
     const tInst0 = performance.now();
     for (let k = 0; k < R; k++) {
@@ -182,7 +179,6 @@ window.result = (async () => {
       msgs, challenges: rs.map((r) => Array.from(r)), round_wall_ms: roundWall, host_ms: hostMs, inst_wall_ms: +instWall.toFixed(2), ts, dumps };
   }
 
-  // ---------- dependent round-trip floor ----------
   async function floor(iters) {
     const p = paramsBuf({ n_units: 7, inner_bits: 0, off_first: 0, off_second: 0, ppt: 1, packed: 0, src_mode: 0 });
     const bg = mkBG({ 0: p, 8: outBuf });
@@ -205,7 +201,6 @@ window.result = (async () => {
     return { iters, total_ms: +total.toFixed(2), per_iter_ms: +(total / iters).toFixed(3), walls, ts };
   }
 
-  // ---------- fp128 mul throughput ----------
   async function mulbench(nElems, k, reps) {
     const p = paramsBuf({ n_units: nElems, inner_bits: 0, off_first: 0, off_second: 0, ppt: k, packed: 0, src_mode: 0 });
     const ob = mk(nElems * 16, ST | CS);

@@ -326,7 +326,6 @@ impl Session {
         let factored_phase = lay.kind == WeightsKind::Factored && k <= lay.coefficient_bits;
         let cw = lay.coefficient_bits.saturating_sub(k);
         let mut aux = Vec::with_capacity((pairs_off as usize + 5 * n_pairs as usize) * FIELD_BYTES);
-        // Source value offsets (elements of aux) for this round's coefficient width.
         let mut source_offsets = [0u32; MAX_SOURCES];
         let mut off = src_off;
         for (slot, lanes) in source_offsets.iter_mut().zip(&self.source_lanes) {

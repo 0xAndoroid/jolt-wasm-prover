@@ -306,7 +306,6 @@ impl RelationRangeSession for Session {
                 input.pairs,
             );
             if round == self.coefficient_bits {
-                // First lane round: the factored weights become a flat lane table.
                 let domain = self.lane_weights.len();
                 self.weights = Some((0..domain).into_par_iter().map(weight).collect());
             }
