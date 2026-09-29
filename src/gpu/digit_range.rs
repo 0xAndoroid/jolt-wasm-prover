@@ -316,7 +316,7 @@ impl Drop for Session {
 impl Session {
     #[expect(
         clippy::expect_used,
-        reason = "the handles are only taken by table(), which consumes the session"
+        reason = "the handles are taken only when the session ends (table(), Drop, or the upload-failure path)"
     )]
     fn handles(&self) -> &Handles {
         self.handles

@@ -290,7 +290,7 @@ fn push_u32s(out: &mut Vec<u8>, words: &[u32]) {
 impl Session {
     #[expect(
         clippy::expect_used,
-        reason = "the handles are only taken by tables(), which consumes the session"
+        reason = "the handles are taken only when the session ends (tables(), Drop, or the upload-failure path)"
     )]
     fn handles(&self) -> &Handles {
         self.handles
