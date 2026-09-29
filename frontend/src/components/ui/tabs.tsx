@@ -65,11 +65,9 @@ function TabsTrigger({
       data-slot="tabs-trigger"
       className={cn(
         "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring relative inline-flex items-center justify-center gap-1.5 text-sm font-medium whitespace-nowrap transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        // Default variant styles
         "group-data-[variant=default]/tabs-list:h-[calc(100%-1px)] group-data-[variant=default]/tabs-list:flex-1 group-data-[variant=default]/tabs-list:rounded-md group-data-[variant=default]/tabs-list:border group-data-[variant=default]/tabs-list:border-transparent group-data-[variant=default]/tabs-list:px-2 group-data-[variant=default]/tabs-list:py-1",
         "group-data-[variant=default]/tabs-list:text-muted-foreground group-data-[variant=default]/tabs-list:hover:text-foreground",
         "group-data-[variant=default]/tabs-list:data-[state=active]:bg-background group-data-[variant=default]/tabs-list:data-[state=active]:text-foreground group-data-[variant=default]/tabs-list:data-[state=active]:shadow-sm",
-        // Folder variant styles
         "group-data-[variant=folder]/tabs-list:rounded-t-md group-data-[variant=folder]/tabs-list:border group-data-[variant=folder]/tabs-list:border-b-0 group-data-[variant=folder]/tabs-list:border-transparent group-data-[variant=folder]/tabs-list:px-4 group-data-[variant=folder]/tabs-list:py-2",
         "group-data-[variant=folder]/tabs-list:text-muted-foreground group-data-[variant=folder]/tabs-list:hover:text-foreground",
         "group-data-[variant=folder]/tabs-list:data-[state=active]:border-border group-data-[variant=folder]/tabs-list:data-[state=active]:bg-card group-data-[variant=folder]/tabs-list:data-[state=active]:text-foreground",

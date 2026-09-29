@@ -170,7 +170,6 @@ fn fp128_muladd(a: vec4<u32>, b: vec4<u32>, c: vec4<u32>) -> vec4<u32> {
     return fp128_add(fp128_mul(a, b), c);
 }
 
-// ---------- small-integer multiplies (shared by the sumcheck kernels) ----------
 const ZERO4: vec4<u32> = vec4<u32>(0u, 0u, 0u, 0u);
 fn fp_small(k: u32) -> vec4<u32> { return vec4<u32>(k, 0u, 0u, 0u); }
 

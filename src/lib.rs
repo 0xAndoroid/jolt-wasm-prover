@@ -32,9 +32,6 @@ mod wasm {
         crate::wasm_tracing::clear();
     }
 
-    /// Inline registration is inventory-based (link-time ctors, run by
-    /// `__wasm_call_ctors` at instantiation). Kept as a no-op so worker.js
-    /// doesn't change.
     #[wasm_bindgen]
     pub fn init_inlines() -> Result<(), JsValue> {
         use jolt_inlines_keccak256 as _;

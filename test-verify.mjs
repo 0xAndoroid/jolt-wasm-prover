@@ -29,11 +29,9 @@ async function run() {
     );
     console.log('WASM ready');
 
-    // Click prove
     await page.click('#page-sha2 .prove-btn');
     console.log('Prove clicked, waiting...');
 
-    // Wait for proof to complete or error
     const proveResult = await page.waitForFunction(
         () => {
             const status = document.querySelector('#status');
@@ -53,20 +51,17 @@ async function run() {
         process.exit(1);
     }
 
-    // Wait for prove button to re-enable
     await page.waitForFunction(
         () => !document.querySelector('#page-sha2 .prove-btn')?.hasAttribute('disabled'),
         undefined,
         { timeout: TIMEOUT },
     );
 
-    // Click verify
     const verifyBtn = page.locator('#page-sha2 .verify-btn');
     await verifyBtn.waitFor({ state: 'visible', timeout: TIMEOUT });
     await verifyBtn.click();
     console.log('Verify clicked, waiting...');
 
-    // Wait for verification result or error — capture the FULL status text
     const verifyResult = await page.waitForFunction(
         () => {
             const status = document.querySelector('#status');
@@ -75,9 +70,7 @@ async function run() {
             const text = output?.textContent || '';
             if (text.includes('Result: VALID')) return 'VALID';
             if (text.includes('Result: INVALID')) return 'INVALID';
-            // Get ALL text from the status area when error
             if (status?.classList.contains('error')) {
-                // Traverse all text nodes in status to get full message
                 const walker = document.createTreeWalker(status, NodeFilter.SHOW_TEXT);
                 let fullText = '';
                 while (walker.nextNode()) fullText += walker.currentNode.textContent;
@@ -92,7 +85,6 @@ async function run() {
     const result = await verifyResult.jsonValue();
     console.log(`Verification result: ${result}`);
 
-    // Also grab the full page output for diagnostics
     const outputText = await page.locator('#page-sha2 .output').textContent();
     console.log(`Output log:\n${outputText}`);
 

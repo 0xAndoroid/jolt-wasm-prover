@@ -109,7 +109,6 @@ window.result = (async () => {
   await device.queue.onSubmittedWorkDone();
   const wallBatch = performance.now() - t0;
 
-  // Readback.
   const tr0 = performance.now();
   const enc = device.createCommandEncoder();
   enc.copyBufferToBuffer(bufRes, 0, bufMap, 0, nCoef * 16);

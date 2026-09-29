@@ -296,7 +296,6 @@ impl Clock {
         Self { last: now_ms() }
     }
 
-    /// Milliseconds since the previous lap (or start).
     fn lap(&mut self) -> f64 {
         let now = now_ms();
         let elapsed = now - self.last;

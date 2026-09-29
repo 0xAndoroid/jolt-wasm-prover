@@ -7,7 +7,6 @@ const OPTIONS: { value: ProveMode; label: string }[] = [
   { value: 'cpu', label: 'CPU only' },
 ]
 
-// Neutral segmented control: the mode is a fact, not a verdict, so no accent.
 export function ModeSelector({
   mode,
   gpuAvailable,

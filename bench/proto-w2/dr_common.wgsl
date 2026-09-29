@@ -103,7 +103,6 @@ fn octet_classes(o: u32) -> u32 {
 
 const RANGE_V = array<u32, 4>(0u, 2u, 6u, 12u);
 
-// ---------- round polynomial coefficients of Q(L + D X) ----------
 fn entry_coeffs(L: vec4<u32>, D: vec4<u32>) -> array<vec4<u32>, 5> {
   let twice = fp128_add(L, L);
   let four = fp128_add(twice, twice);
@@ -139,7 +138,6 @@ fn wg_reduce_store(acc: array<vec4<u32>, 5>, lid: u32, wg: u32) {
   if (lid < 5u) { partials[wg * 5u + lid] = red[lid * WG]; }
 }
 
-// ---------- thread -> units mapping ----------
 // A workgroup covers WG*ppt consecutive units, split into blocks of blk = min(inner, WG*ppt) units that share
 // one e_out; each thread walks ppt units of one block with stride tpb, so it multiplies by e_out once at the end.
 // The harness guarantees inner >= ppt (so tpb >= 1).

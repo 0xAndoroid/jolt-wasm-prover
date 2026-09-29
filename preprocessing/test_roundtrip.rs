@@ -183,7 +183,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     roundtrip(&public_dir, &schedules, "ecdsa", &inputs)?;
 
     let mut inputs = postcard::to_allocvec(&[5u8; 32])?;
-    // 17 → 2^16, 69 → 2^18 (default 100), 278 → 2^20, 556 → 2^21 padded cycles.
     let iters = std::env::var("SHA2_CHAIN_ITERS").map_or(Ok(100u32), |v| v.parse())?;
     inputs.extend_from_slice(&postcard::to_allocvec(&iters)?);
     roundtrip(&public_dir, &schedules, "sha2_chain", &inputs)?;

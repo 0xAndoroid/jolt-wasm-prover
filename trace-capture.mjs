@@ -39,7 +39,6 @@ async function run() {
     const seconds = Number(await result.jsonValue());
     process.stderr.write(`Proof generated in ${seconds.toFixed(2)}s\n`);
 
-    // Click trace download button and capture the download
     const [download] = await Promise.all([
         page.waitForEvent('download', { timeout: 30000 }),
         page.click('#page-sha2 .trace-btn'),
