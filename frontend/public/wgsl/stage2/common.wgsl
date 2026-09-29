@@ -58,6 +58,7 @@ fn fold_digits(w0: i32, w1: i32) -> vec4<u32> {
   return fp128_add(fp_signed(w0), fp128_mul_signed(params.r, u32(w1 - w0)));
 }
 
+// ---------- thread -> units mapping (blocks of units sharing one E_second entry) ----------
 // The host clamps ppt <= |E_first|, so a thread's ppt units always sit in one block.
 struct Map { unit0: u32, stride: u32, count: u32 }
 fn map_units(lid: u32, wg: u32) -> Map {

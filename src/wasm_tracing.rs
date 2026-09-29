@@ -25,6 +25,7 @@ struct TraceEvent {
 }
 
 fn now_micros() -> f64 {
+    // Use js_sys to get performance.now() - works in both window and worker contexts
     let global = js_sys::global();
     let performance = js_sys::Reflect::get(&global, &"performance".into())
         .ok()
