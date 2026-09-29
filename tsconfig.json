@@ -1,0 +1,38 @@
+{
+  "extends": "./frontend/tsconfig.app.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node",
+      "@webgpu/types",
+      "vite/client"
+    ],
+    "typeRoots": [
+      "./frontend/node_modules/@types",
+      "./frontend/node_modules"
+    ],
+    "paths": {
+      "@/*": [
+        "./frontend/src/*"
+      ],
+      "playwright": [
+        "./frontend/node_modules/playwright"
+      ],
+      "/pkg/jolt_wasm_prover.js": [
+        "./frontend/types/wasm.d.ts"
+      ]
+    },
+    "noEmit": true
+  },
+  "include": [
+    "*.mjs",
+    "frontend/src/**/*",
+    "frontend/public/*.js",
+    "frontend/types/*.d.ts"
+  ]
+}

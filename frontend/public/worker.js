@@ -1,3 +1,4 @@
+/// <reference lib="webworker" />
 import init, {
     initThreadPool,
     init_tracing,
@@ -26,11 +27,16 @@ import init, {
 const THREAD_STACK_SIZE = 32 * 1024 * 1024;
 const SCHEDULES_URL = '/akita_schedules.bin';
 
-let wasmExports = null;
-let scheduleArtifacts = null;
+/** @type {{memory: WebAssembly.Memory}} */
+let wasmExports;
+/** @type {Uint8Array} */
+let scheduleArtifacts;
+/** @type {Worker | null} */
 let gpuProxy = null;
+/** @type {Record<string, WasmProver>} */
 const provers = {};
 
+/** @param {string} url */
 async function fetchBytes(url) {
     const r = await fetch(url);
     if (!r.ok) throw new Error(`fetch ${url}: ${r.status}`);
@@ -41,6 +47,7 @@ async function fetchBytes(url) {
 // talks to Rust through a mailbox in the shared wasm memory (src/gpu/).
 // Resolves to {status: 'ok' | 'unavailable' | 'error: …', reason?, adapter?,
 // selftestMs, roundtripUs}; the self-test runs once per session. Never throws.
+/** @returns {Promise<import("../src/lib/types").GpuInfo>} */
 async function initGpu() {
     if (gpu_is_dead()) return { status: 'unavailable', reason: DEAD_PROXY_REASON };
     if (gpuProxy) {
@@ -52,15 +59,17 @@ async function initGpu() {
         set_gpu_unavailable();
         return { status: 'unavailable', reason: 'wasm built without the webgpu feature' };
     }
-    if (typeof navigator.gpu === 'undefined') {
+    if (navigator.gpu === undefined) {
         set_gpu_unavailable();
         return { status: 'unavailable', reason: 'navigator.gpu missing (WebGPU unsupported or insecure context)' };
     }
     gpuProxy = new Worker('/gpu-proxy.js', { type: 'module' });
+    const proxy = gpuProxy;
+    /** @type {import("../types/runtime").ProxyReport} */
     const report = await new Promise((resolve) => {
-        gpuProxy.onmessage = (e) => resolve(e.data);
-        gpuProxy.onerror = (e) => resolve({ type: 'unavailable', reason: e.message || 'gpu-proxy failed to load' });
-        gpuProxy.postMessage({ type: 'init', memory: wasmExports.memory, mailboxPtr });
+        proxy.onmessage = (/** @type {MessageEvent<import("../types/runtime").ProxyReport>} */ e) => { resolve(e.data); };
+        proxy.onerror = (e) => { resolve({ type: 'unavailable', reason: e.message || 'gpu-proxy failed to load' }); };
+        proxy.postMessage({ type: 'init', memory: wasmExports.memory, mailboxPtr });
     });
     if (report.type !== 'ready') {
         gpuProxy.terminate();
@@ -73,7 +82,8 @@ async function initGpu() {
 }
 
 function selftest() {
-    const st = JSON.parse(gpu_selftest());
+    const st = /** @type {{status: string, selftest_ms: number, roundtrip_us: number}} */ (JSON.parse(gpu_selftest()));
+    /** @type {import("../src/lib/types").GpuInfo} */
     const gpu = { status: st.status, selftestMs: st.selftest_ms, roundtripUs: st.roundtrip_us };
     if (st.status !== 'ok') {
         set_gpu_unavailable();
@@ -93,14 +103,16 @@ function dropDeadProxy() {
     return { status: 'unavailable', reason: DEAD_PROXY_REASON };
 }
 
-self.onmessage = async (e) => {
-    const { type, data } = e.data;
+self.onmessage = async (/** @type {MessageEvent<import("../types/runtime").RuntimeRequest>} */ e) => {
+    const message = e.data;
+    const { type } = message;
 
     try {
         switch (type) {
             case 'init': {
+                const { data } = message;
                 if (typeof SharedArrayBuffer === 'undefined') {
-                    throw new Error('Your browser does not support SharedArrayBuffer (requires iOS 15.2+, Chrome 91+, Firefox 79+, Safari 15.2+).');
+                    throw new TypeError('Your browser does not support SharedArrayBuffer (requires iOS 15.2+, Chrome 91+, Firefox 79+, Safari 15.2+).');
                 }
                 const [exports, schedules] = await Promise.all([
                     init({ module_or_path: '/pkg/jolt_wasm_prover_bg.wasm', thread_stack_size: THREAD_STACK_SIZE }),
@@ -124,6 +136,7 @@ self.onmessage = async (e) => {
             }
 
             case 'set-gpu': {
+                const { data } = message;
                 let gpu;
                 if (data.enabled) {
                     gpu = await initGpu();
@@ -137,6 +150,7 @@ self.onmessage = async (e) => {
 
             // Bench probe: `n` dependent one-dispatch RUN_SEQ trips with a 96 B readback each.
             case 'gpu-trip-probe': {
+                const { data } = message;
                 self.postMessage({ type: 'gpu-trip-probe-done', msPerTrip: gpu_trip_probe(data.n) });
                 break;
             }
@@ -148,6 +162,7 @@ self.onmessage = async (e) => {
             }
 
             case 'load-program': {
+                const { data } = message;
                 const name = data.program;
                 provers[name] = new WasmProver(
                     scheduleArtifacts,
@@ -159,7 +174,9 @@ self.onmessage = async (e) => {
             }
 
             case 'prove': {
+                const { data } = message;
                 const prover = provers[data.program];
+                if (!prover) throw new Error(`program not loaded: ${data.program}`);
                 const start = performance.now();
                 let result;
 
@@ -218,6 +235,7 @@ self.onmessage = async (e) => {
             }
 
             case 'verify': {
+                const { data } = message;
                 // The Akita verifier setup is exact in the proof shape, so the
                 // verifier is built from the preprocessing the prover emitted
                 // for this proof (a real deployment pins it per program+shape).
@@ -251,7 +269,7 @@ self.onmessage = async (e) => {
             }
         }
     } catch (err) {
-        const msg = err.message || String(err);
+        const msg = err instanceof Error ? err.message : String(err);
         console.error('[worker error]', msg);
         const gpu = dropDeadProxy();
         self.postMessage(gpu ? { type: 'error', error: msg, gpu } : { type: 'error', error: msg });

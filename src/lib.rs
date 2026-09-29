@@ -279,17 +279,17 @@ mod wasm {
 
         #[wasm_bindgen(getter)]
         pub fn trace_ms(&self) -> f64 {
-            self.out.timings.trace_ms
+            self.out.timings.trace
         }
 
         #[wasm_bindgen(getter)]
         pub fn setup_ms(&self) -> f64 {
-            self.out.timings.setup_ms
+            self.out.timings.setup
         }
 
         #[wasm_bindgen(getter)]
         pub fn prove_ms(&self) -> f64 {
-            self.out.timings.prove_ms
+            self.out.timings.prove
         }
 
         #[wasm_bindgen(getter)]

@@ -9,32 +9,53 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+      - run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # `npm run lint` is not gated yet: main has pre-existing eslint errors.
-      - run: npm ci && npm run build
+      - run: npm ci --ignore-scripts
         working-directory: frontend
+      - run: scripts/lint/web.sh
+      - run: npm run build
+        working-directory: frontend
+      - if: always()
+        run: echo "frontend wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
   rust-fmt:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+      - run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
-      # rustup honours rust-toolchain.toml (1.95). Only rustfmt runs here: clippy/build would
-      # fetch and compile the pinned a16z/jolt + akita git graph (tens of
-      # minutes), too slow for a PR gate.
+      # Clippy's pinned Jolt graph is checked locally; CI does not compile it.
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo fmt --all -- --check
+      - run: cargo fmt -q --message-format=short -- --check
+      - if: always()
+        run: echo "rust-fmt wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
-  python-syntax:
+  shell-python:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
+      - run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
-      - run: python3 -m py_compile bench/*.py bench/proto/*.py
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: shellcheck@0.11.0,shfmt@3.14.1,typos@1.50.3
+      - uses: astral-sh/setup-uv@v7
+      - run: scripts/lint/shell.sh
+      - run: scripts/lint/python.sh
+      - run: typos
+      - if: always()
+        run: echo "shell-python wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"

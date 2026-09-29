@@ -21,9 +21,9 @@ P = (1 << 128) - C
 WGSL_DIR = Path(__file__).resolve().parent.parent / "frontend" / "public" / "wgsl"
 EDGES = [0, 1, P - 1, P, P + 1, (1 << 128) - 1, C, 1 << 64, (1 << 64) - 1, 1 << 127]
 OPS = {
-    "mul": lambda a, b, c: (a * b) % P,
-    "add": lambda a, b, c: (a + b) % P,
-    "sub": lambda a, b, c: (a - b) % P,
+    "mul": lambda a, b, _c: (a * b) % P,
+    "add": lambda a, b, _c: (a + b) % P,
+    "sub": lambda a, b, _c: (a - b) % P,
     "muladd": lambda a, b, c: (a * b + c) % P,
 }
 
@@ -117,7 +117,12 @@ def main():
         else:
             browser = p.chromium.launch(headless=True, args=["--enable-unsafe-webgpu", "--use-angle=metal"])
         page = browser.new_page()
-        page.route("http://localhost/fp128-test", lambda route: route.fulfill(status=200, content_type="text/html", body="<!doctype html><title>fp128</title>"))
+        page.route(
+            "http://localhost/fp128-test",
+            lambda route: route.fulfill(
+                status=200, content_type="text/html", body="<!doctype html><title>fp128</title>"
+            ),
+        )
         page.goto("http://localhost/fp128-test")
         out = page.evaluate(
             PAGE_JS,
@@ -141,11 +146,15 @@ def main():
             if g != e:
                 mismatches.append((i, a[i], b[i], c[i], g, e))
         status = "PASS" if not mismatches else "FAIL"
-        print(f"{name:7s} {status} n={n} mismatches={len(mismatches)} gpu_ms={out['results'][name]['ms']:.1f}")
+        print(
+            f"{name:7s} {status} n={n} mismatches={len(mismatches)} gpu_ms={out['results'][name]['ms']:.1f}"
+        )
         for i, x, y, z, g, e in mismatches[:5]:
             print(f"  #{i}: a={x:#x} b={y:#x} c={z:#x}\n      got={g:#x}\n      exp={e:#x}")
         failed += len(mismatches)
-    print(f"adapter={out['adapter']} browser={args.browser} vectors={n} ({len(EDGES) ** 3} edge, {args.n} random)")
+    print(
+        f"adapter={out['adapter']} browser={args.browser} vectors={n} ({len(EDGES) ** 3} edge, {args.n} random)"
+    )
     sys.exit(1 if failed else 0)
 
 

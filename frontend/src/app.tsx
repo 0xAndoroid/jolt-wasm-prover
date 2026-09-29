@@ -80,8 +80,8 @@ export function App() {
               appStatus={status}
               wasmReady={wasmReady}
               output={outputLogs.sha2}
-              onProve={() => proveSha2(sha2MessageRef.current)}
-              onVerify={() => verify('sha2')}
+              onProve={() => { void proveSha2(sha2MessageRef.current) }}
+              onVerify={() => { verify('sha2') }}
               onTrace={downloadTrace}
             >
               <Sha2Inputs
@@ -98,10 +98,10 @@ export function App() {
               appStatus={status}
               wasmReady={wasmReady}
               output={outputLogs.keccak}
-              onProve={() =>
-                proveKeccak(keccakMessageRef.current, keccakItersRef.current)
-              }
-              onVerify={() => verify('keccak')}
+              onProve={() => {
+                void proveKeccak(keccakMessageRef.current, keccakItersRef.current)
+              }}
+              onVerify={() => { verify('keccak') }}
               onTrace={downloadTrace}
             >
               <KeccakInputs
@@ -119,8 +119,8 @@ export function App() {
               appStatus={status}
               wasmReady={wasmReady}
               output={outputLogs.ecdsa}
-              onProve={proveEcdsa}
-              onVerify={() => verify('ecdsa')}
+              onProve={() => { void proveEcdsa() }}
+              onVerify={() => { verify('ecdsa') }}
               onTrace={downloadTrace}
             >
               <EcdsaInputs />

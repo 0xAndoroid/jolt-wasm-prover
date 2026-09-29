@@ -175,7 +175,10 @@ impl Session {
 /// The ten round terms over `live_pairs` pairs: `w0, w1` from `witness`,
 /// `p0, p1` from `weight`, `eq(j) = e_first[j & mask] * e_second[j >> bits]`
 /// on the norm terms only, plus the additional cubic over `pairs`.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Round inputs mirror the relation-range device interface"
+)]
 pub fn round_terms(
     witness: impl Fn(usize) -> F + Sync,
     live_pairs: usize,

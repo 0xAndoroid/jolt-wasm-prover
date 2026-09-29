@@ -71,8 +71,10 @@ const ms = (v: number) => `${Math.round(v)} ms`
 
 export function useProver() {
   const [state, setState] = useState<ProverState>({
-    status: 'loading',
-    statusText: 'Initializing WASM...',
+    status: crossOriginIsolated ? 'loading' : 'error',
+    statusText: crossOriginIsolated
+      ? `Initializing WASM (${Math.min(navigator.hardwareConcurrency || 6, 8)} threads)...`
+      : 'This page requires SharedArrayBuffer support. Please open in Chrome or Safari.',
     wasmReady: false,
     programStates: initialProgramStates(),
     outputLogs: { sha2: '', ecdsa: '', keccak: '' },
@@ -82,9 +84,7 @@ export function useProver() {
   })
 
   const clientRef = useRef<WorkerClient | null>(null)
-  const programLoadResolvers = useRef<Record<string, () => void>>({})
-  const programStatesRef = useRef(state.programStates)
-  programStatesRef.current = state.programStates
+  const programLoadResolvers = useRef(new Map<ProgramName, () => void>())
 
   const log = useCallback((program: ProgramName, msg: string) => {
     setState((prev) => ({
@@ -146,8 +146,8 @@ export function useProver() {
           },
         }))
         log(p, 'Ready')
-        programLoadResolvers.current[p]?.()
-        delete programLoadResolvers.current[p]
+        programLoadResolvers.current.get(p)?.()
+        programLoadResolvers.current.delete(p)
         return
       }
 
@@ -199,11 +199,15 @@ export function useProver() {
         log(
           p,
           `  mode ${mode.toUpperCase()}` +
-            (lastProof.commitMs != null ? ` · commit ${ms(lastProof.commitMs)}` : '') +
-            (lastProof.digitRangeMs != null ? ` · digit range ${ms(lastProof.digitRangeMs)}` : '') +
-            (lastProof.stage2Ms != null ? ` · stage 2 ${ms(lastProof.stage2Ms)}` : ''),
+            (lastProof.commitMs == null ? '' : ` · commit ${ms(lastProof.commitMs)}`) +
+            (lastProof.digitRangeMs == null ? '' : ` · digit range ${ms(lastProof.digitRangeMs)}`) +
+            (lastProof.stage2Ms == null ? '' : ` · stage 2 ${ms(lastProof.stage2Ms)}`),
         )
-        sha256Digest(msg.proof).then((d) => log(p, `Proof SHA-256: ${hex(d)}`))
+        void sha256Digest(msg.proof).then((d) => {
+          log(p, `Proof SHA-256: ${hex(d)}`)
+        }).catch((error: unknown) => {
+          log(p, `Proof digest failed: ${String(error)}`)
+        })
         if (msg.numCycles != null)
           log(p, `RISC-V cycles: ${msg.numCycles.toLocaleString()}`)
         log(p, `Proof size: ${(msg.proofSize / 1024).toFixed(2)} KB`)
@@ -233,20 +237,13 @@ export function useProver() {
         }))
         log(p, `Verification completed in ${(msg.elapsed / 1000).toFixed(2)}s`)
         log(p, `Result: ${msg.valid ? 'VALID' : 'INVALID'}`)
-        return
       }
     },
-    [log, setStatus],
+    [log],
   )
 
   useEffect(() => {
-    if (!crossOriginIsolated) {
-      setStatus(
-        'This page requires SharedArrayBuffer support. Please open in Chrome or Safari.',
-        'error',
-      )
-      return
-    }
+    if (!crossOriginIsolated) return () => {}
 
     const client = new WorkerClient(handleMessage, (e) => {
       const msg = e.message || 'Failed to load WASM module. Run: wasm-pack build --release --target web'
@@ -256,12 +253,11 @@ export function useProver() {
     clientRef.current = client
 
     const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
-    setStatus(`Initializing WASM (${numThreads} threads)...`, 'loading')
     // GPU unless the user chose CPU; the worker reports why when it cannot.
     const gpu = storedMode() !== 'cpu'
     client.send({ type: 'init', data: { numThreads, cacheBust: CACHE_BUST, gpu } })
 
-    return () => client.terminate()
+    return () => { client.terminate() }
   }, [handleMessage, setStatus])
 
   const loadProgram = useCallback(
@@ -314,7 +310,7 @@ export function useProver() {
 
   const ensureProgramLoaded = useCallback(
     async (name: ProgramName): Promise<boolean> => {
-      const currentState = programStatesRef.current[name]
+      const currentState = state.programStates[name]
       if (!currentState) return false
 
       if (currentState.loadState === 'ready') return true
@@ -337,10 +333,10 @@ export function useProver() {
       }
 
       return new Promise<boolean>((resolve) => {
-        programLoadResolvers.current[name] = () => resolve(true)
+        programLoadResolvers.current.set(name, () => { resolve(true) })
       })
     },
-    [loadProgram, log, setStatus],
+    [loadProgram, log, setStatus, state.programStates],
   )
 
   const proveSha2 = useCallback(

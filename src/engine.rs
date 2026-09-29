@@ -147,10 +147,10 @@ impl ProverContext {
 /// Wall-clock milliseconds per phase, measured inside the engine so the
 /// browser and the native roundtrip report the same split.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct PhaseTimings {
-    pub trace_ms: f64,
-    pub setup_ms: f64,
-    pub prove_ms: f64,
+pub struct PhaseTimingsMs {
+    pub trace: f64,
+    pub setup: f64,
+    pub prove: f64,
 }
 
 pub struct ProveOutput {
@@ -160,7 +160,7 @@ pub struct ProveOutput {
     pub verifier_preprocessing_bytes: Vec<u8>,
     pub unpadded_cycles: usize,
     pub padded_cycles: usize,
-    pub timings: PhaseTimings,
+    pub timings: PhaseTimingsMs,
     #[cfg(target_arch = "wasm32")]
     pub gpu: crate::gpu::GpuReport,
 }
@@ -263,10 +263,10 @@ pub(crate) fn prove_inner(
         verifier_preprocessing_bytes: encode(&prep.verifier, "verifier preprocessing")?,
         unpadded_cycles,
         padded_cycles: config.trace_length,
-        timings: PhaseTimings {
-            trace_ms,
-            setup_ms,
-            prove_ms,
+        timings: PhaseTimingsMs {
+            trace: trace_ms,
+            setup: setup_ms,
+            prove: prove_ms,
         },
         #[cfg(target_arch = "wasm32")]
         gpu,
@@ -315,6 +315,5 @@ fn now_ms() -> f64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs_f64() * 1000.0)
-        .unwrap_or(0.0)
+        .map_or(0.0, |d| d.as_secs_f64() * 1000.0)
 }

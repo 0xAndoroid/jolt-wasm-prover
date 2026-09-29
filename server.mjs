@@ -6,6 +6,7 @@ import zlib from 'zlib';
 const DIST_ROOT = path.resolve('frontend/dist');
 const PKG_ROOT = path.resolve('pkg');
 
+/** @type {Record<string, string>} */
 const mimeTypes = {
   '.html': 'text/html',
   '.js': 'application/javascript',
@@ -19,14 +20,17 @@ const mimeTypes = {
 };
 
 const MAX_CACHE_ENTRIES = 64;
+/** @type {Map<string, {br: Buffer, gzip: Buffer, raw: Buffer}>} */
 const compressCache = new Map();
 
+/** @param {string} filePath @param {Buffer} content */
 function getCompressed(filePath, content) {
-  if (compressCache.has(filePath)) return compressCache.get(filePath);
+  const cached = compressCache.get(filePath);
+  if (cached) return cached;
 
   if (compressCache.size >= MAX_CACHE_ENTRIES) {
     const oldest = compressCache.keys().next().value;
-    compressCache.delete(oldest);
+    if (oldest !== undefined) compressCache.delete(oldest);
   }
 
   const entry = {
@@ -56,6 +60,7 @@ const securityHeaders = {
   ].join('; '),
 };
 
+/** @param {import("node:http").ServerResponse} res */
 function setSecurityHeaders(res) {
   for (const [k, v] of Object.entries(securityHeaders)) {
     res.setHeader(k, v);
@@ -71,7 +76,7 @@ const server = http.createServer((req, res) => {
 
   setSecurityHeaders(res);
 
-  let filePath = req.url.split('?')[0];
+  let filePath = (req.url ?? '/').split('?')[0] ?? '/';
 
   if (filePath === '/pkg/' || filePath === '/pkg') {
     res.writeHead(302, { 'Location': '/pkg/jolt_wasm_prover.js' });
@@ -120,5 +125,5 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const PORT = Number(process.env.PORT) || 8080;
-server.listen(PORT, '127.0.0.1', () => console.log(`http://localhost:${PORT}`));
+const PORT = Number(process.env['PORT']) || 8080;
+server.listen(PORT, '127.0.0.1', () =>{  console.log(`http://localhost:${PORT}`); });

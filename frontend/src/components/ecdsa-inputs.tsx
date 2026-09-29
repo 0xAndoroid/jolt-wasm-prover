@@ -2,8 +2,7 @@ import { ECDSA_TEST_VECTOR } from '@/lib/constants'
 
 const beHex = (limbs: string[]) =>
   limbs
-    .slice()
-    .reverse()
+    .toReversed()
     .map((l) => l.slice(2).padStart(16, '0'))
     .join('')
 

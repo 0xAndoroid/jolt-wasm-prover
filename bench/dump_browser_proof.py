@@ -10,8 +10,8 @@
 
 import argparse
 import hashlib
-import os
 import sys
+from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
@@ -42,7 +42,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://localhost:8080")
     ap.add_argument("--out", required=True, help="directory for sha2_{proof,io,verifier_preprocessing}.bin")
-    ap.add_argument("--input", default="jolt wasm prover roundtrip test input", help="sha2 guest input (UTF-8)")
+    ap.add_argument(
+        "--input", default="jolt wasm prover roundtrip test input", help="sha2 guest input (UTF-8)"
+    )
     ap.add_argument("--browser", default="chromium", choices=["chromium", "webkit"])
     args = ap.parse_args()
 
@@ -54,10 +56,9 @@ def main():
         r = page.evaluate(PROVE_JS, {"input": list(args.input.encode())})
         browser.close()
 
-    os.makedirs(args.out, exist_ok=True)
+    Path(args.out).mkdir(parents=True, exist_ok=True)
     for key, suffix in (("proof", "proof"), ("io", "io"), ("vp", "verifier_preprocessing")):
-        with open(os.path.join(args.out, f"sha2_{suffix}.bin"), "wb") as f:
-            f.write(bytes(r[key]))
+        (Path(args.out) / f"sha2_{suffix}.bin").write_bytes(bytes(r[key]))
     print(
         f"sha2: {r['cycles']} cycles, padded {r['padded']}, proof {len(r['proof'])} bytes, "
         f"verify={r['valid']}, sha256 {hashlib.sha256(bytes(r['proof'])).hexdigest()}, "

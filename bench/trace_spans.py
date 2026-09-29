@@ -9,10 +9,11 @@
 import argparse
 import json
 from collections import defaultdict
+from pathlib import Path
 
 
 def load(path):
-    with open(path) as f:
+    with Path(path).open() as f:
         t = json.load(f)
     return t if isinstance(t, list) else t["traceEvents"]
 
@@ -35,7 +36,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("trace")
     ap.add_argument("--top", type=int, default=40)
-    ap.add_argument("--rounds", action="store_true", help="print every sumcheck_round of every stage2_sumcheck")
+    ap.add_argument(
+        "--rounds", action="store_true", help="print every sumcheck_round of every stage2_sumcheck"
+    )
     args = ap.parse_args()
     events = load(args.trace)
     spans = list(pair_spans(events))
@@ -49,7 +52,12 @@ def main():
         print(f"{name[:70]:70} {us / 1e6:9.3f} {n:6}")
 
     # Log lines (instant events carry their fields in args).
-    plans = [e for e in events if e.get("ph") == "i" and (e.get("args") or {}).get("message") in ("stage2_plan", "digit_range_direct_leaf_plan")]
+    plans = [
+        e
+        for e in events
+        if e.get("ph") == "i"
+        and (e.get("args") or {}).get("message") in ("stage2_plan", "digit_range_direct_leaf_plan")
+    ]
     if plans:
         print("\nlog lines:")
         for e in plans:
@@ -60,10 +68,16 @@ def main():
     # Per-level stage2: rounds nested inside each stage2_sumcheck span (same tid, by time).
     stage2 = sorted([(s, e, tid) for name, tid, s, e, _ in spans if name == "stage2_sumcheck"])
     rounds = [(s, e, tid, a) for name, tid, s, e, a in spans if name == "sumcheck_round"]
-    folds = [(s, e, tid) for name, tid, s, e, _ in spans if name in ("RelationRangeImageProver::fold_round", "sumcheck_round_fold")]
+    [
+        (s, e, tid)
+        for name, tid, s, e, _ in spans
+        if name in ("RelationRangeImageProver::fold_round", "sumcheck_round_fold")
+    ]
     new_spans = [(s, e, tid) for name, tid, s, e, _ in spans if name == "RelationRangeImageProver::new"]
     if stage2:
-        print("\nstage2_sumcheck per level (inclusive ms; rounds = sumcheck_round spans inside; new = RelationRangeImageProver::new):")
+        print(
+            "\nstage2_sumcheck per level (inclusive ms; rounds = sumcheck_round spans inside; new = RelationRangeImageProver::new):"
+        )
         grand = 0.0
         eligible = 0.0
         for i, (s, e, tid) in enumerate(stage2):
@@ -72,19 +86,34 @@ def main():
             nv = len(inner)
             per_round = [(re - rs) / 1e3 for rs, re, _ in inner]
             # eligible = rounds whose live table is >= 2^12 pairs*2 (table_len field) plus setup
-            elig = new_ms + sum(ms for (rs, re, a), ms in zip(inner, per_round) if int(a.get("table_len", 0)) > (1 << 12))
+            elig = new_ms + sum(
+                ms
+                for (rs, re, a), ms in zip(inner, per_round, strict=True)
+                if int(a.get("table_len", 0)) > (1 << 12)
+            )
             grand += (e - s) / 1e3
             eligible += elig
-            print(f"  level {i}: total {(e - s) / 1e3:8.1f} ms  num_vars {nv:3}  new {new_ms:6.1f}  eligible(table>2^12 + new) {elig:7.1f}  rounds: " + " ".join(f"{ms:.1f}" for ms in per_round[:16]) + (" …" if nv > 16 else ""))
+            print(
+                f"  level {i}: total {(e - s) / 1e3:8.1f} ms  num_vars {nv:3}  new {new_ms:6.1f}  eligible(table>2^12 + new) {elig:7.1f}  rounds: "
+                + " ".join(f"{ms:.1f}" for ms in per_round[:16])
+                + (" …" if nv > 16 else "")
+            )
             if args.rounds:
-                for (rs, re, a), ms in zip(inner, per_round):
+                for (_rs, _re, a), ms in zip(inner, per_round, strict=True):
                     print(f"      round {a.get('round')} table_len {a.get('table_len')} {ms:.2f} ms")
         print(f"  all levels: {grand:.1f} ms; eligible {eligible:.1f} ms")
 
     dr = [(s, e, tid) for name, tid, s, e, _ in spans if name == "digit_range_prove"]
     if dr:
-        print(f"\ndigit_range_prove: {len(dr)} instances, {sum(e - s for s, e, _ in dr) / 1e3:.1f} ms inclusive (subtract the [gpu] digit range wall for the CPU remainder)")
-        for name in ("digit_range_direct_leaf", "digit_range_product_substage", "physical_l2_norm", "digit_range_direct_leaf_fold"):
+        print(
+            f"\ndigit_range_prove: {len(dr)} instances, {sum(e - s for s, e, _ in dr) / 1e3:.1f} ms inclusive (subtract the [gpu] digit range wall for the CPU remainder)"
+        )
+        for name in (
+            "digit_range_direct_leaf",
+            "digit_range_product_substage",
+            "physical_l2_norm",
+            "digit_range_direct_leaf_fold",
+        ):
             if name in totals:
                 print(f"  {name}: {totals[name][0] / 1e3:.1f} ms x{totals[name][1]}")
 

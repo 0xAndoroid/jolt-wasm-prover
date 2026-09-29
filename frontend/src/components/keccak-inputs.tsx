@@ -37,7 +37,7 @@ export function KeccakInputs({
           max={100}
           value={iterations}
           onChange={(e) => {
-            const val = parseInt(e.target.value, 10)
+            const val = Math.trunc(Number(e.target.value))
             setIterations(val)
             onInputsChange(message, val)
           }}

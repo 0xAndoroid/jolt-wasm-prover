@@ -1,0 +1,31 @@
+target-version = "py312"
+line-length = 110
+
+[lint]
+select = ["ALL"]
+ignore = [
+  "ANN", # Standalone arithmetic scripts have no published typed Python API.
+  "CPY001", # Licensing is repository-level, not per-file banners.
+  "INP001", # These are CLI scripts, not importable packages.
+  "C901", # Keep the sequential benchmark procedure together.
+  "PLR0912", # Benchmark mode dispatch is kept in one CLI.
+  "PLR0913", # Arithmetic inputs mirror GPU kernel parameters.
+  "PLR0915", # Benchmark procedures stay linear rather than splitting for size.
+  "PLR0917", # Arithmetic inputs mirror GPU kernel parameters.
+  "D", # Bench scripts and arithmetic helpers do not need API docstrings.
+  "COM812", # The formatter owns trailing commas.
+  "ISC001", # The formatter owns string layout.
+  "E501", # Embedded JavaScript and WGSL retain their source line layout.
+  "PLR2004", # Field arithmetic and GPU ABI constants are local to the formulas.
+]
+
+[lint.per-file-ignores]
+"bench/**/*.py" = [
+  "T201", # CLI results and progress are the scripts' output.
+  "N8", # Mathematical notation matches the GPU kernels.
+  "E741", # Single-letter mathematical variables match the kernels.
+  "E743", # Single-letter local polynomial functions use the same notation.
+  "S101", # Assertions are the oracle's checks, not production input validation.
+]
+
+"bench/test_*_wgsl.py" = ["S311"] # Seeded oracle vectors are public test data, never cryptographic secrets.

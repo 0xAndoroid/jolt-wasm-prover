@@ -8,7 +8,14 @@ Serves harness.html + kernels + data via page.route on http://localhost:7778 in 
 R-round dependent chain per instance, checks every message against a Python big-int reference (small shape:
 exact per-round messages + folded tables; every shape: sumcheck consistency + final Q check), prints JSON.
 """
-import argparse, base64, json, mimetypes, sys, time
+
+import argparse
+import base64
+import itertools
+import json
+import mimetypes
+import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +30,11 @@ M32 = 0xFFFFFFFF
 
 
 def fmix(x):
-    x ^= x >> 16; x = (x * 0x85EBCA6B) & M32; x ^= x >> 13; x = (x * 0xC2B2AE35) & M32; x ^= x >> 16
+    x ^= x >> 16
+    x = (x * 0x85EBCA6B) & M32
+    x ^= x >> 13
+    x = (x * 0xC2B2AE35) & M32
+    x ^= x >> 16
     return x
 
 
@@ -75,7 +86,7 @@ def lut0():
         co = q_coeffs(V[cp & 3], V[cp >> 2])
         for c in range(5):
             v = co[c] if co[c] < P // 2 else co[c] - P
-            assert -2**31 <= v < 2**31
+            assert -(2**31) <= v < 2**31
             out[c * 16 + cp] = v
     return out
 
@@ -86,11 +97,11 @@ def eq_rounds(tau):
     split = 1 + (R - 1) // 2
     data, meta, tables = [], [], []
     for k in range(R):
-        first = tau[k + 1:split] if k + 1 < split else []
-        second = tau[split:] if k + 1 <= split else tau[k + 1:]
+        first = tau[k + 1 : split] if k + 1 < split else []
+        second = tau[split:] if k + 1 <= split else tau[k + 1 :]
         ef, es = eq_table(first), eq_table(second)
         assert len(ef) * len(es) * 2 == (1 << (R - k))
-        meta.append(dict(inner_bits=len(first), off_first=len(data), off_second=len(data) + len(ef)))
+        meta.append({"inner_bits": len(first), "off_first": len(data), "off_second": len(data) + len(ef)})
         data += ef + es
         tables.append((ef, es))
     arr = np.array([int_to_limbs(x) for x in data], dtype=np.uint32)
@@ -128,28 +139,48 @@ def fold(table, r):
 def check_instance(inst, out, tau, tables, meta, v, exact, fixed):
     """Returns dict of verdicts. `v` = range-image ints (None for big shapes)."""
     R = inst["rounds"]
-    msgs = [[limbs_to_int(m[4 * c:4 * c + 4]) for c in range(5)] for m in out["msgs"]]
+    msgs = [[limbs_to_int(m[4 * c : 4 * c + 4]) for c in range(5)] for m in out["msgs"]]
     rs = [limbs_to_int(r) for r in out["challenges"]]
-    res = dict(rounds=R, checks={})
+    res = {"rounds": R, "checks": {}}
     # challenges derived as specified
-    ok_ch = all((rs[k] == limbs_to_int(fixed[k])) if fixed else (rs[k] == limbs_to_int(hash_challenge(out["msgs"][k]))) for k in range(R))
+    ok_ch = all(
+        (rs[k] == limbs_to_int(fixed[k]))
+        if fixed
+        else (rs[k] == limbs_to_int(hash_challenge(out["msgs"][k])))
+        for k in range(R)
+    )
     res["checks"]["challenge_derivation"] = ok_ch
+
     # sumcheck consistency: P_k(X) = s_k * l_k(X) * q_k(X); P_k(0)+P_k(1) == P_{k-1}(r_{k-1}); claim 0.
     def evalp(co, x):
         return sum(c * pow(x, i, P) for i, c in enumerate(co)) % P
+
     s, prev, ok_sc = 1, 0, True
     for k in range(R):
-        l = lambda x, t=tau[k]: ((1 - t) * (1 - x) + t * x) % P
-        Pk = lambda x: s * l(x) * evalp(msgs[k], x) % P
+
+        def l(x, t=tau[k]):
+            return ((1 - t) * (1 - x) + t * x) % P
+
+        def Pk(x, s=s, l=l, co=msgs[k]):
+            return s * l(x) * evalp(co, x) % P
+
         if (Pk(0) + Pk(1)) % P != prev:
             ok_sc = False
         prev = Pk(rs[k])
         s = s * l(rs[k]) % P
     res["checks"]["sumcheck_consistency"] = ok_sc
-    final_tab = [limbs_to_int(w) for w in np.frombuffer(base64.b64decode(next(d["b64"] for d in out["dumps"] if d["tag"] == "final_table")), dtype=np.uint32).reshape(2, 4).tolist()]
+    final_tab = [
+        limbs_to_int(w)
+        for w in np.frombuffer(
+            base64.b64decode(next(d["b64"] for d in out["dumps"] if d["tag"] == "final_table")),
+            dtype=np.uint32,
+        )
+        .reshape(2, 4)
+        .tolist()
+    ]
     final = fold(final_tab, rs[-1])[0]
     Qf = final * (final - 2) % P * (final - 6) % P * (final - 12) % P
-    res["checks"]["final_claim"] = (s * Qf % P) == prev   # eq(tau, r) * Q(final) == P_{R-1}(r_{R-1})
+    res["checks"]["final_claim"] = (s * Qf % P) == prev  # eq(tau, r) * Q(final) == P_{R-1}(r_{R-1})
     if exact:
         table = list(v)
         mism_msgs, mism_tables = 0, 0
@@ -159,20 +190,34 @@ def check_instance(inst, out, tau, tables, meta, v, exact, fixed):
             ref = reference_round(table, ef, es, meta[k]["inner_bits"])
             if ref != msgs[k]:
                 mism_msgs += 1
-            tag = f"table_in_r{k}"   # table written by round k = digits folded by r_0..r_{k-1}
+            tag = f"table_in_r{k}"  # table written by round k = digits folded by r_0..r_{k-1}
             if tag in dumps:
-                got = [limbs_to_int(w) for w in np.frombuffer(base64.b64decode(dumps[tag]), dtype=np.uint32).reshape(-1, 4).tolist()]
+                got = [
+                    limbs_to_int(w)
+                    for w in np.frombuffer(base64.b64decode(dumps[tag]), dtype=np.uint32)
+                    .reshape(-1, 4)
+                    .tolist()
+                ]
                 if got != table:
                     mism_tables += 1
             if k == R - 1:
-                last_in = list(table)   # 2-element table the last round wrote; final fold happens on the host
+                last_in = list(table)  # 2-element table the last round wrote; final fold happens on the host
             table = fold(table, rs[k])
-        res["checks"]["exact_messages"] = dict(rounds=R, mismatched=mism_msgs)
-        res["checks"]["exact_tables"] = dict(dumped=len([t for t in dumps if t.startswith("table_in")]), mismatched=mism_tables)
+        res["checks"]["exact_messages"] = {"rounds": R, "mismatched": mism_msgs}
+        res["checks"]["exact_tables"] = {
+            "dumped": len([t for t in dumps if t.startswith("table_in")]),
+            "mismatched": mism_tables,
+        }
         res["checks"]["final_table"] = final_tab == last_in
-        mle = sum(a * b for a, b in zip(eq_table(rs), v)) % P
+        mle = sum(a * b for a, b in zip(eq_table(rs), v, strict=True)) % P
         res["checks"]["final_equals_mle"] = mle == final
-    res["verdict"] = "PASS" if all(c is True or (isinstance(c, dict) and c.get("mismatched", 1) == 0) for c in res["checks"].values()) else "FAIL"
+    res["verdict"] = (
+        "PASS"
+        if all(
+            c is True or (isinstance(c, dict) and c.get("mismatched", 1) == 0) for c in res["checks"].values()
+        )
+        else "FAIL"
+    )
     return res
 
 
@@ -191,15 +236,34 @@ def timing(out):
         ps = rounds[k]
         busy = sum(p["end"] - p["begin"] for p in ps)
         gap = rounds[k + 1][0]["begin"] - ps[-1]["end"] if k + 1 in rounds else None
-        per.append(dict(k=k, busy_ms=round(busy, 4), gap_ms=None if gap is None else round(gap, 4), passes={p["tag"].split(":")[1]: round(p["end"] - p["begin"], 4) for p in ps}))
+        per.append(
+            {
+                "k": k,
+                "busy_ms": round(busy, 4),
+                "gap_ms": None if gap is None else round(gap, 4),
+                "passes": {p["tag"].split(":")[1]: round(p["end"] - p["begin"], 4) for p in ps},
+            }
+        )
+
     def phase(lo, hi):
         return round(sum(p["busy_ms"] for p in per if lo <= p["k"] < hi), 3)
+
     R = len(ks)
     gaps = [p["gap_ms"] for p in per if p["gap_ms"] is not None]
     span = ts[-1]["end"] - ts[0]["begin"]
-    return dict(compact_ms=phase(0, 3), materialize_r3_ms=phase(3, 4), field_ms=phase(4, R), gpu_busy_ms=round(sum(p["busy_ms"] for p in per), 3),
-                gap_median_ms=round(sorted(gaps)[len(gaps) // 2], 4), gap_mean_ms=round(sum(gaps) / len(gaps), 4), gap_max_ms=round(max(gaps), 4),
-                gpu_span_ms=round(span, 3), inst_wall_ms=out["inst_wall_ms"], host_ms_total=round(sum(out["host_ms"]), 3), per_round=per)
+    return {
+        "compact_ms": phase(0, 3),
+        "materialize_r3_ms": phase(3, 4),
+        "field_ms": phase(4, R),
+        "gpu_busy_ms": round(sum(p["busy_ms"] for p in per), 3),
+        "gap_median_ms": round(sorted(gaps)[len(gaps) // 2], 4),
+        "gap_mean_ms": round(sum(gaps) / len(gaps), 4),
+        "gap_max_ms": round(max(gaps), 4),
+        "gpu_span_ms": round(span, 3),
+        "inst_wall_ms": out["inst_wall_ms"],
+        "host_ms_total": round(sum(out["host_ms"]), 3),
+        "per_round": per,
+    }
 
 
 def main():
@@ -228,17 +292,48 @@ def main():
         assert 12 <= R <= 27
         n = 1 << R
         w = rng.integers(-4, 4, size=n, dtype=np.int8)
-        tau = [int(x) for x in rng.integers(0, 1 << 62, size=(R, 2), dtype=np.int64) @ np.array([1, 1 << 62], dtype=object) % P]
+        tau = [
+            int(x)
+            for x in rng.integers(0, 1 << 62, size=(R, 2), dtype=np.int64)
+            @ np.array([1, 1 << 62], dtype=object)
+            % P
+        ]
         eq_arr, meta, tables = eq_rounds(tau)
-        fixed = [int_to_limbs(int(x)) for x in (rng.integers(0, 1 << 62, size=(R, 2), dtype=np.int64) @ np.array([1, 1 << 62], dtype=object) % P)] if args.host == "fixed" else None
+        fixed = (
+            [
+                int_to_limbs(int(x))
+                for x in (
+                    rng.integers(0, 1 << 62, size=(R, 2), dtype=np.int64)
+                    @ np.array([1, 1 << 62], dtype=object)
+                    % P
+                )
+            ]
+            if args.host == "fixed"
+            else None
+        )
         files[f"/d{idx}_i8.bin"] = ("application/octet-stream", w.tobytes())
         files[f"/d{idx}_p3.bin"] = ("application/octet-stream", pack3(w).tobytes())
         files[f"/d{idx}_eq.bin"] = ("application/octet-stream", eq_arr.tobytes())
-        instances.append(dict(rounds=R, i8_url=f"/d{idx}_i8.bin", packed_url=f"/d{idx}_p3.bin", eq_url=f"/d{idx}_eq.bin", eq_rounds=meta, lut0=lut0(),
-                              packed=args.source == "packed", fixed_challenges=fixed, dump=exact))
+        instances.append(
+            {
+                "rounds": R,
+                "i8_url": f"/d{idx}_i8.bin",
+                "packed_url": f"/d{idx}_p3.bin",
+                "eq_url": f"/d{idx}_eq.bin",
+                "eq_rounds": meta,
+                "lut0": lut0(),
+                "packed": args.source == "packed",
+                "fixed_challenges": fixed,
+                "dump": exact,
+            }
+        )
         v = [int(x) for x in (w.astype(np.int64) * (w.astype(np.int64) + 1))] if exact else None
         refs.append((tau, tables, meta, v, fixed))
-    cfg = dict(instances=instances, floor_iters=args.floor_iters, mulbench=dict(n=1 << 22, k=16, reps=5) if args.mulbench else None)
+    cfg = {
+        "instances": instances,
+        "floor_iters": args.floor_iters,
+        "mulbench": {"n": 1 << 22, "k": 16, "reps": 5} if args.mulbench else None,
+    }
     files["/config.json"] = ("application/json", json.dumps(cfg).encode())
     gen_s = time.time() - t0
 
@@ -249,8 +344,11 @@ def main():
             return r.fulfill(status=200, content_type=ct, body=body)
         f = HERE / path.lstrip("/")
         if f.is_file():
-            return r.fulfill(status=200, content_type=mimetypes.guess_type(f.name)[0] or "text/plain", body=f.read_bytes())
+            return r.fulfill(
+                status=200, content_type=mimetypes.guess_type(f.name)[0] or "text/plain", body=f.read_bytes()
+            )
         r.fulfill(status=404, body="nope")
+        return None
 
     t0 = time.time()
     with sync_playwright() as p:
@@ -262,38 +360,81 @@ def main():
         browser.close()
     browser_s = time.time() - t0
     if args.out:
-        Path(args.out + ".raw.json").write_text(json.dumps(dict(out=out, refs=[dict(tau=r[0], meta=r[2], v=r[3], fixed=r[4]) for r in refs])))
+        Path(args.out + ".raw.json").write_text(
+            json.dumps(
+                {"out": out, "refs": [{"tau": r[0], "meta": r[2], "v": r[3], "fixed": r[4]} for r in refs]}
+            )
+        )
     if "error" in out or out.get("errors"):
         print(json.dumps(out, indent=1)[:6000])
         sys.exit(1)
 
-    summary = dict(adapter=out["adapter"], hasTs=out["hasTs"], limits=out["limits"], compile_ms={k: v["ms"] for k, v in out["compileInfo"].items()},
-                   source=args.source, host=args.host, data_gen_s=round(gen_s, 1), browser_s=round(browser_s, 1), instances=[])
+    summary = {
+        "adapter": out["adapter"],
+        "hasTs": out["hasTs"],
+        "limits": out["limits"],
+        "compile_ms": {k: v["ms"] for k, v in out["compileInfo"].items()},
+        "source": args.source,
+        "host": args.host,
+        "data_gen_s": round(gen_s, 1),
+        "browser_s": round(browser_s, 1),
+        "instances": [],
+    }
     all_ts = [x for inst in out["instances"] for p in (inst["ts"] or []) for x in (p["begin"], p["end"])]
     if all_ts:
-        d = sorted(set(all_ts)); deltas = [b - a for a, b in zip(d, d[1:]) if b - a > 0]
+        d = sorted(set(all_ts))
+        deltas = [b - a for a, b in itertools.pairwise(d) if b - a > 0]
         summary["ts_min_delta_us"] = round(min(deltas) * 1000, 3) if deltas else None
     fail = False
-    for inst, (tau, tables, meta, v, fixed), spec in zip(out["instances"], refs, instances):
+    for inst, (tau, tables, meta, v, fixed), spec in zip(out["instances"], refs, instances, strict=True):
         chk = check_instance(spec, inst, tau, tables, meta, v, exact, fixed)
         fail |= chk["verdict"] != "PASS"
-        summary["instances"].append(dict(rounds=inst["rounds"], upload=inst["upload"], fetch_ms=inst["fetch_ms"], timing=timing(inst), plan=inst["plan"], correctness=chk))
+        summary["instances"].append(
+            {
+                "rounds": inst["rounds"],
+                "upload": inst["upload"],
+                "fetch_ms": inst["fetch_ms"],
+                "timing": timing(inst),
+                "plan": inst["plan"],
+                "correctness": chk,
+            }
+        )
     if out.get("floor"):
-        fl = out["floor"]; ts = fl["ts"] or []
-        gaps = [b["begin"] - a["end"] for a, b in zip(ts, ts[1:])]
-        summary["floor"] = dict(iters=fl["iters"], wall_per_iter_ms=fl["per_iter_ms"], wall_median_ms=round(sorted(fl["walls"])[len(fl["walls"]) // 2], 3),
-                                gpu_gap_median_ms=round(sorted(gaps)[len(gaps) // 2], 4) if gaps else None, gpu_gap_max_ms=round(max(gaps), 4) if gaps else None)
+        fl = out["floor"]
+        ts = fl["ts"] or []
+        gaps = [b["begin"] - a["end"] for a, b in itertools.pairwise(ts)]
+        summary["floor"] = {
+            "iters": fl["iters"],
+            "wall_per_iter_ms": fl["per_iter_ms"],
+            "wall_median_ms": round(sorted(fl["walls"])[len(fl["walls"]) // 2], 3),
+            "gpu_gap_median_ms": round(sorted(gaps)[len(gaps) // 2], 4) if gaps else None,
+            "gpu_gap_max_ms": round(max(gaps), 4) if gaps else None,
+        }
     if out.get("mulbench"):
         mb = out["mulbench"]
         # spot-check first 3 outputs against Python
         ok = True
         for i in range(3):
-            x = limbs_to_int([(i * 2654435761 + 1) & M32, i ^ 0x9E3779B9, (i * 40503 + 7) & M32, ((i >> 3) + 0x12345) & M32])
+            x = limbs_to_int(
+                [
+                    (i * 2654435761 + 1) & M32,
+                    i ^ 0x9E3779B9,
+                    (i * 40503 + 7) & M32,
+                    ((i >> 3) + 0x12345) & M32,
+                ]
+            )
             b = limbs_to_int([(i + 3) & M32, (i * 7 + 1) & M32, 0xDEADBEEF ^ i, (i * 31) & 0x7FFFFFFF])
             for _ in range(mb["k"]):
                 x = x * b % P
-            ok &= limbs_to_int(mb["sample_first64"][4 * i:4 * i + 4]) == x
-        summary["mulbench"] = dict(n=mb["n"], k=mb["k"], gpu_ms=[round(t, 3) for t in mb["gpu_ms"]], median_ms=round(mb["median_ms"], 3) if mb["median_ms"] else None, gmul_s=mb["gmul_s"], spot_check=ok)
+            ok &= limbs_to_int(mb["sample_first64"][4 * i : 4 * i + 4]) == x
+        summary["mulbench"] = {
+            "n": mb["n"],
+            "k": mb["k"],
+            "gpu_ms": [round(t, 3) for t in mb["gpu_ms"]],
+            "median_ms": round(mb["median_ms"], 3) if mb["median_ms"] else None,
+            "gmul_s": mb["gmul_s"],
+            "spot_check": ok,
+        }
         fail |= not ok
     summary["verdict"] = "FAIL" if fail else "PASS"
     js = json.dumps(summary, indent=1)
@@ -302,7 +443,9 @@ def main():
     # compact print: drop per-round detail unless small
     for i in summary["instances"]:
         if i["rounds"] > 12:
-            i["timing"] = {k: v for k, v in i["timing"].items() if k != "per_round"} | {"per_round_gaps_ms": [p["gap_ms"] for p in i["timing"].get("per_round", [])]}
+            i["timing"] = {k: v for k, v in i["timing"].items() if k != "per_round"} | {
+                "per_round_gaps_ms": [p["gap_ms"] for p in i["timing"].get("per_round", [])]
+            }
             i.pop("plan", None)
     print(json.dumps(summary, indent=1))
     sys.exit(1 if fail else 0)

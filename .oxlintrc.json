@@ -1,0 +1,91 @@
+{
+  // oxlint (JSONC) — run through scripts/lint/web.sh (hook + CI) with --type-aware,
+  // which reads tsconfig.json for the typed rules. Bar: every correctness /
+  // suspicious / pedantic / perf rule is an error. Config-level offs below are
+  // limited to genuinely stylistic rules, each with its reason.
+  "$schema": "./frontend/node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "jsdoc", "react", "react-hooks", "jsx-a11y"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "pedantic": "error",
+    "perf": "error"
+  },
+  "rules": {
+    // Terminal handlers consume results for logging or UI updates.
+    "promise/always-return": ["error", {"ignoreLastCallback": true}],
+    // React 19 uses the automatic JSX runtime.
+    "react/react-in-jsx-scope": "off",
+    // The React Compiler is not enabled; effect invalidation may include values used only to trigger DOM synchronization.
+    "react/exhaustive-effect-dependencies": "off",
+    // Browser workers have no target origin; their second postMessage argument is a transfer list.
+    "unicorn/require-post-message-target-origin": "off",
+    // WASM worker assets are served at origin-root URLs, outside Vite's module graph.
+    "import/no-absolute-path": "off",
+    // CSS imports are Vite entry-point side effects.
+    "import/no-unassigned-import": ["error", {"allow": ["**/*.css"]}],
+    // Mailbox operations and measured proof runs must complete in order.
+    "eslint/no-await-in-loop": "off",
+    // Assigning an exclusive worker handler replaces the previous initialization callback.
+    "unicorn/prefer-add-event-listener": "off",
+    // The GPU opcode dispatcher follows the mailbox ABI in a single switch.
+    "eslint/max-depth": "off",
+    // Restriction-category rules worth having (the category itself is opt-in noise).
+    "typescript/no-explicit-any": "error",
+    "typescript/no-non-null-assertion": "error",
+    "eslint/no-eval": "error",
+    "eslint/no-implied-eval": "error",
+    "eslint/no-var": "error",
+    "eslint/prefer-const": "error",
+    // Strict typed rules outside the enabled categories.
+    "typescript/use-unknown-in-catch-callback-variable": "error",
+    "typescript/no-invalid-void-type": "error",
+    "typescript/no-dynamic-delete": "error",
+    "typescript/unified-signatures": "error",
+    "typescript/no-non-null-asserted-nullish-coalescing": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/prefer-reduce-type-parameter": "error",
+    "typescript/prefer-return-this-type": "error",
+    // Feature probes test browser capabilities that ambient types cannot guarantee.
+    "typescript/no-unnecessary-condition": "off",
+    // `== null` / `!= null` is the idiomatic nullish check; every other comparison is strict.
+    "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
+    // Not in typescript-eslint's strict preset either: it would wrap every DOM/payload parameter in Readonly<>.
+    "typescript/prefer-readonly-parameter-types": "off",
+    // CLI options and worker messages use ordinary truthiness checks.
+    "typescript/strict-boolean-expressions": "off",
+    // typescript-eslint stylistic preset; `x || y` on strings/counts deliberately treats ""/0/NaN as absent.
+    "typescript/prefer-nullish-coalescing": "off",
+    // JSDoc casts on querySelector results are the only way to narrow in plain JS without runtime checks.
+    "typescript/no-unsafe-type-assertion": "off",
+    // The JSDoc here carries types for tsc (allowJs+checkJs); prose for every param/return is noise.
+    "jsdoc/require-param": "off",
+    "jsdoc/require-param-description": "off",
+    "jsdoc/require-returns": "off",
+    "jsdoc/require-returns-description": "off",
+    "jsdoc/require-property-description": "off",
+    // DOM append APIs are equivalent for these typed elements.
+    "unicorn/prefer-dom-node-append": "off",
+    // Adding the `u` flag can change matching for existing patterns; a regex audit is not a lint pass.
+    "eslint/require-unicode-regexp": "off",
+    // Trailing comments and browser probe globals retain their existing spelling.
+    "eslint/no-inline-comments": "off",
+    "eslint/no-underscore-dangle": "off",
+    // Size budgets are a review matter, not a gate.
+    "eslint/max-lines-per-function": "off",
+    "eslint/max-lines": "off",
+    // Browser evaluate callbacks serialize their closure; helpers must remain inside it.
+    "unicorn/consistent-function-scoping": "off",
+    // Typed callbacks passed directly to array methods already specify their accepted parameters.
+    "unicorn/no-array-callback-reference": "off",
+    // Attribute spellings stay next to the selectors that consume them.
+    "unicorn/prefer-dom-node-dataset": "off"
+  },
+  "overrides": [{
+    "files": ["frontend/types/wasm.d.ts"],
+    // The declarations mirror one wasm-bindgen module containing both classes.
+    "rules": { "eslint/max-classes-per-file": "off" }
+  }],
+  "env": { "builtin": true, "browser": true, "node": true, "es2024": true },
+  "ignorePatterns": ["**/node_modules/**", "target/**", "frontend/dist/**", "pkg/**", ".wasm-deps/**", ".local-bench/**", "patches/**", "**/*.wgsl"]
+}

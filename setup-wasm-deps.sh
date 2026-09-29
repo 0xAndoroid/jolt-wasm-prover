@@ -29,10 +29,10 @@ END_MARK='# <<< wasm-deps overrides'
 
 splice_block() { # splice_block <blockfile> — replaces marker block content in Cargo.toml
     local blockfile=$1
-    grep -q "$BEGIN_MARK" "$MANIFEST" && grep -q "$END_MARK" "$MANIFEST" || {
+    if ! grep -q "$BEGIN_MARK" "$MANIFEST" || ! grep -q "$END_MARK" "$MANIFEST"; then
         echo "error: override markers not found in Cargo.toml" >&2
         exit 1
-    }
+    fi
     awk -v blockfile="$blockfile" -v begin="$BEGIN_MARK" -v end="$END_MARK" '
         index($0, begin) == 1 {
             print
@@ -47,7 +47,7 @@ splice_block() { # splice_block <blockfile> — replaces marker block content in
 }
 
 write_pinned_block() {
-    cat > "$1" <<EOF
+    cat > "$1" << EOF
 [patch.crates-io]
 ark-bn254 = { git = "$ARK_URL", branch = "dev/twist-shout" }
 ark-ff = { git = "$ARK_URL", branch = "dev/twist-shout" }
@@ -65,7 +65,7 @@ EOF
 }
 
 write_local_block() {
-    cat > "$1" <<EOF
+    cat > "$1" << EOF
 # LOCAL patched checkouts (written by setup-wasm-deps.sh — do not commit)
 [patch.crates-io]
 ark-bn254 = { path = "$DEPS_REL/arkworks-algebra/curves/bn254" }
@@ -157,7 +157,7 @@ write_local_block "$block"
 splice_block "$block"
 /bin/rm -f "$block"
 
-cat <<'DONE'
+cat << 'DONE'
 
 Done. Cargo.toml now builds against the patched checkouts in .wasm-deps/.
 Next:
