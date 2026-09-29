@@ -2413,8 +2413,9 @@ checksum = "3a0219bd7d979d58245a4f41f695e1ac9f8befdffadd7f61f1bae9e39abc6620"
 
 [[package]]
 name = "spongefish"
-version = "0.7.2"
-source = "git+https://github.com/0xAndoroid/spongefish?rev=4ee5f2b22a6ef628f7b6e162ab72cc285b9a850e#4ee5f2b22a6ef628f7b6e162ab72cc285b9a850e"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d56add7cf977940ca595b3a24e4b2c5038ffcc6532bcc2c63cdd1b636a54d952"
 dependencies = [
  "ark-ff 0.6.0",
  "ark-serialize 0.6.0",
