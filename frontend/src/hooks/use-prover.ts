@@ -69,8 +69,10 @@ function gpuState(gpu: GpuInfo): Pick<ProverState, 'gpu' | 'mode' | 'modeReason'
 
 const ms = (v: number) => `${Math.round(v)} ms`
 
-const OUT_OF_MEMORY_TEXT =
-  'This device ran out of browser memory for this proof. Try CPU-only mode, a smaller input, or a desktop browser.'
+// No restart: terminating worker.js also terminates its GPU proxy, which
+// crashes WebKit (see dropDeadProxy in worker.js).
+const PROVER_TRAP_TEXT =
+  'The prover crashed — browser memory or stack limits are the likely cause on phones. Reload the page to try again; CPU-only mode or a desktop browser may help.'
 
 export function useProver() {
   const [state, setState] = useState<ProverState>({
@@ -112,7 +114,7 @@ export function useProver() {
         setState((prev) => ({
           ...prev,
           status: 'error',
-          statusText: trapped ? OUT_OF_MEMORY_TEXT : 'Error: ' + msg.error,
+          statusText: trapped ? PROVER_TRAP_TEXT : 'Error: ' + msg.error,
           ...(trapped && { wasmReady: false }),
           ...(gpu ? gpuState(gpu) : {}),
         }))
@@ -123,8 +125,8 @@ export function useProver() {
         setState((prev) => ({
           ...prev,
           wasmReady: true,
-          status: prev.status === 'error' ? 'error' : 'ready',
-          statusText: prev.status === 'error' ? prev.statusText : 'Ready',
+          status: 'ready',
+          statusText: 'Ready',
           programStates: initialProgramStates(),
           ...gpuState(msg.gpu),
         }))
@@ -250,28 +252,19 @@ export function useProver() {
   useEffect(() => {
     if (!crossOriginIsolated) return () => {}
 
-    const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
-    const start = () => {
-      const client = new WorkerClient((msg) => {
-        // A trapped prover cannot be reused and its memory never shrinks.
-        if (msg.type === 'error' && msg.trapped) {
-          client.terminate()
-          start()
-        }
-        handleMessage(msg)
-      }, (e) => {
-        const msg = e.message || 'Failed to load WASM module. Run: wasm-pack build --release --target web'
-        setStatus(msg, 'error')
-        console.error(e)
-      })
-      clientRef.current = client
-      // GPU unless the user chose CPU; the worker reports why when it cannot.
-      const gpu = storedMode() !== 'cpu'
-      client.send({ type: 'init', data: { numThreads, cacheBust: CACHE_BUST, gpu } })
-    }
-    start()
+    const client = new WorkerClient(handleMessage, (e) => {
+      const msg = e.message || 'Failed to load WASM module. Run: wasm-pack build --release --target web'
+      setStatus(msg, 'error')
+      console.error(e)
+    })
+    clientRef.current = client
 
-    return () => { clientRef.current?.terminate() }
+    const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
+    // GPU unless the user chose CPU; the worker reports why when it cannot.
+    const gpu = storedMode() !== 'cpu'
+    client.send({ type: 'init', data: { numThreads, cacheBust: CACHE_BUST, gpu } })
+
+    return () => { client.terminate() }
   }, [handleMessage, setStatus])
 
   const loadProgram = useCallback(

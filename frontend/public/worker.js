@@ -270,8 +270,7 @@ self.onmessage = async (/** @type {MessageEvent<import("../types/runtime").Runti
         console.error('[worker error]', msg);
         const gpu = dropDeadProxy();
         // A trap (allocation failure aborts as `unreachable`) leaves the wasm
-        // instance unusable and its memory at the high-water mark; the page
-        // replaces this worker.
+        // instance unusable; the page marks the session dead.
         const trapped = message.type === 'prove' && (err instanceof WebAssembly.RuntimeError || TRAP_RE.test(msg))
             ? message.data.program
             : undefined;
