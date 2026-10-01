@@ -5,8 +5,8 @@ Subject: [PATCH] fix(jolt-akita): run the backend pool inline on wasm32
 with_backend_pool builds a dedicated rayon ThreadPool with 64 MiB worker
 stacks; on wasm32 ThreadPoolBuilder::build() cannot spawn OS threads
 (wasm-bindgen-rayon provides exactly one fixed global pool) and panics.
-Run the closure on the current (global) pool there and leave worker
-stack sizing to the embedder (wasm-bindgen thread_stack_size).
+Run the closure on the current (global) pool there; its workers run on
+wasm-bindgen's default 2 MiB thread stack.
 ---
 diff --git a/crates/jolt-akita/src/adapters.rs b/crates/jolt-akita/src/adapters.rs
 index b4532ef..2f6f348 100644
@@ -35,8 +35,8 @@ index b4532ef..2f6f348 100644
 -    backend_pool().install(f)
 +    // wasm32: the global rayon pool is the only pool that exists
 +    // (wasm-bindgen-rayon workers); ThreadPoolBuilder::build() cannot spawn
-+    // OS threads and panics. Worker stack size is the embedder's job there
-+    // (wasm-bindgen's `thread_stack_size`).
++    // OS threads and panics. Its workers run on wasm-bindgen's default 2 MiB
++    // thread stack (wasm-bindgen-rayon passes no `thread_stack_size`).
 +    #[cfg(target_arch = "wasm32")]
 +    {
 +        f()

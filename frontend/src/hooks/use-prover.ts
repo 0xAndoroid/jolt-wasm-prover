@@ -69,6 +69,11 @@ function gpuState(gpu: GpuInfo): Pick<ProverState, 'gpu' | 'mode' | 'modeReason'
 
 const ms = (v: number) => `${Math.round(v)} ms`
 
+// No restart: terminating worker.js also terminates its GPU proxy, which
+// crashes WebKit (see dropDeadProxy in worker.js).
+const PROVER_TRAP_TEXT =
+  'The prover crashed — browser memory or stack limits are the likely cause on phones. Reload the page to try again; CPU-only mode or a desktop browser may help.'
+
 export function useProver() {
   const [state, setState] = useState<ProverState>({
     status: crossOriginIsolated ? 'loading' : 'error',
@@ -104,11 +109,13 @@ export function useProver() {
   const handleMessage = useCallback(
     (msg: WorkerResponse) => {
       if (msg.type === 'error') {
-        const gpu = msg.gpu
+        const { gpu, trapped } = msg
+        if (trapped) log(trapped, `Error: ${msg.error}`)
         setState((prev) => ({
           ...prev,
           status: 'error',
-          statusText: 'Error: ' + msg.error,
+          statusText: trapped ? PROVER_TRAP_TEXT : 'Error: ' + msg.error,
+          ...(trapped && { wasmReady: false }),
           ...(gpu ? gpuState(gpu) : {}),
         }))
         return

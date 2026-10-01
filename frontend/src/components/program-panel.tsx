@@ -22,7 +22,6 @@ export function ProgramPanel({
   onTrace: () => void
   children: React.ReactNode
 }) {
-  const isReady = programState.loadState === 'ready' || wasmReady
   const hasProof = programState.proofBytes !== null
   const isBusy = appStatus === 'proving' || appStatus === 'loading'
 
@@ -64,7 +63,7 @@ export function ProgramPanel({
             variant="outline"
             className="verify-btn"
             onClick={onVerify}
-            disabled={!isReady || isBusy}
+            disabled={!wasmReady || isBusy}
           >
             Verify Proof
           </Button>

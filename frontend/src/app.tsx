@@ -43,7 +43,7 @@ export function App() {
             mode={mode}
             gpuAvailable={gpu !== null && (gpu.status === 'ok' || gpu.status === 'disabled')}
             reason={modeReason}
-            disabled={status === 'proving' || status === 'loading'}
+            disabled={!wasmReady || status === 'proving' || status === 'loading'}
             onChange={setMode}
             className="basis-full sm:ml-auto sm:basis-auto"
           />

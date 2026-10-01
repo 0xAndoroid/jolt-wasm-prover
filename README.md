@@ -93,8 +93,8 @@ server.mjs          Production server with COOP/COEP headers
 ### WASM API
 
 ```javascript
-// Initialize (worker stacks: Akita kernels recurse deeply)
-await init({ module_or_path: wasmUrl, thread_stack_size: 32 * 1024 * 1024 });
+// Initialize
+await init({ module_or_path: wasmUrl });
 await initThreadPool(navigator.hardwareConcurrency);
 init_tracing();  // optional: enables Perfetto-compatible tracing
 
@@ -115,7 +115,7 @@ const valid = verifier.verify(result.proof, result.program_io);
 The `.cargo/config.toml` configures the WASM build with:
 - **Atomics + shared memory** — enables `wasm-bindgen-rayon` multithreading
 - **4 GB max memory** — required for prover memory usage
-- **32 MiB main-thread stack** — the Akita backend kernels recurse deeply (natively they run on 64 MiB rayon worker stacks); `worker.js` sizes the rayon worker stacks the same way through wasm-bindgen's `thread_stack_size`
+- **32 MiB main-thread stack** — the Akita backend kernels recurse deeply (natively they run on 64 MiB rayon worker stacks); it applies to thread zero only — rayon workers run on wasm-bindgen's default 2 MiB thread stack, since wasm-bindgen-rayon's worker init passes no `thread_stack_size`
 - **`build-std`** — rebuilds `std` with atomics support (nightly cargo feature, unlocked on stable with `RUSTC_BOOTSTRAP=1`)
 
 ## Roundtrip Testing
@@ -238,7 +238,7 @@ branch resolution.
 ## WASM runtime patches (pending upstream)
 
 The repo builds everywhere from the pinned upstream revs, and native binaries
-are fully functional. Proving on `wasm32` additionally needs five small fixes
+are fully functional. Proving on `wasm32` additionally needs six small fixes
 that are not upstream yet, plus one device seam, shipped in `patches/`:
 
 1. `0001-jolt-coefflut-u64.patch` — `CoeffLut::saturated()` in
@@ -252,8 +252,8 @@ that are not upstream yet, plus one device seam, shipped in `patches/`:
    call it.
 3. `0003-jolt-akita-wasm-pool.patch` — `jolt-akita` runs every backend call
    on a dedicated rayon pool with 64 MiB worker stacks; `build()` panics on
-   `wasm32`. The fix runs the closure on the global pool there and leaves
-   worker stack sizing to the embedder (`thread_stack_size`).
+   `wasm32`. The fix runs the closure on the global pool there, whose workers
+   run on wasm-bindgen's default 2 MiB thread stack.
 4. `0004-akita-wasm-instant.patch` — `akita-prover` and `akita-pcs` read
    `std::time::Instant` for diagnostics timing; `Instant::now()` panics on
    `wasm32-unknown-unknown`. The fix routes those imports through a
@@ -276,6 +276,7 @@ that are not upstream yet, plus one device seam, shipped in `patches/`:
    (`LowBasisRangeCheckProver::from_materialized`). No behaviour change
    unless a device is installed. The root crate uses it behind the
    `digit-range-device` feature (which adds `akita-prover` as a direct dependency).
+9. `0009-jolt-tracer-wasm32-capacity.patch` — the tracer's initial reserve is 2^18 rows on wasm32 instead of 2^24 (1.5 GiB of linear memory, which cannot shrink).
 
 `./setup-wasm-deps.sh` clones the three upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in
