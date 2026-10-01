@@ -22,6 +22,7 @@ import init, {
 } from '/pkg/jolt_wasm_prover.js';
 
 const SCHEDULES_URL = '/akita_schedules.bin';
+const TRAP_RE = /unreachable|memory access out of bounds|out of memory|maximum call stack/i;
 
 /** @type {{memory: WebAssembly.Memory}} */
 let wasmExports;
@@ -268,6 +269,12 @@ self.onmessage = async (/** @type {MessageEvent<import("../types/runtime").Runti
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[worker error]', msg);
         const gpu = dropDeadProxy();
-        self.postMessage(gpu ? { type: 'error', error: msg, gpu } : { type: 'error', error: msg });
+        // A trap (allocation failure aborts as `unreachable`) leaves the wasm
+        // instance unusable and its memory at the high-water mark; the page
+        // replaces this worker.
+        const trapped = message.type === 'prove' && (err instanceof WebAssembly.RuntimeError || TRAP_RE.test(msg))
+            ? message.data.program
+            : undefined;
+        self.postMessage({ type: 'error', error: msg, ...(gpu && { gpu }), ...(trapped && { trapped }) });
     }
 };

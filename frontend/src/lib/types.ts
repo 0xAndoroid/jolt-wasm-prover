@@ -107,4 +107,4 @@ export type WorkerResponse =
     }
   | { type: 'trace'; trace: string }
   | { type: 'trace-cleared' }
-  | { type: 'error'; error: string; gpu?: GpuInfo }
+  | { type: 'error'; error: string; gpu?: GpuInfo; trapped?: ProgramName }
