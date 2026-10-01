@@ -252,8 +252,8 @@ that are not upstream yet, plus one device seam, shipped in `patches/`:
    call it.
 3. `0003-jolt-akita-wasm-pool.patch` — `jolt-akita` runs every backend call
    on a dedicated rayon pool with 64 MiB worker stacks; `build()` panics on
-   `wasm32`. The fix runs the closure on the global pool there and leaves
-   worker stack sizing to the embedder (`thread_stack_size`).
+   `wasm32`. The fix runs the closure on the global pool there, whose workers
+   run on wasm-bindgen's default 2 MiB thread stack.
 4. `0004-akita-wasm-instant.patch` — `akita-prover` and `akita-pcs` read
    `std::time::Instant` for diagnostics timing; `Instant::now()` panics on
    `wasm32-unknown-unknown`. The fix routes those imports through a
@@ -276,10 +276,7 @@ that are not upstream yet, plus one device seam, shipped in `patches/`:
    (`LowBasisRangeCheckProver::from_materialized`). No behaviour change
    unless a device is installed. The root crate uses it behind the
    `digit-range-device` feature (which adds `akita-prover` as a direct dependency).
-9. `0009-jolt-tracer-wasm32-capacity.patch` — the serial tracer reserves
-   2^24 rows (1.5 GiB) before the guest runs; wasm linear memory cannot
-   shrink, so every prove left that much permanent high-water. On wasm32 the
-   initial reserve is 2^18 rows (24 MiB) and the Vec grows past it.
+9. `0009-jolt-tracer-wasm32-capacity.patch` — the tracer's initial reserve is 2^18 rows on wasm32 instead of 2^24 (1.5 GiB of linear memory, which cannot shrink).
 
 `./setup-wasm-deps.sh` clones the three upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in

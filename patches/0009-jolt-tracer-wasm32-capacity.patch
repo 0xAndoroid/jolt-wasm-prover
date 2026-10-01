@@ -1,5 +1,5 @@
 diff --git a/tracer/src/lib.rs b/tracer/src/lib.rs
-index 700806a..c8e4c96 100644
+index 700806a..9ac17bb 100644
 --- a/tracer/src/lib.rs
 +++ b/tracer/src/lib.rs
 @@ -44,10 +44,19 @@ use crate::emulator::{
@@ -11,9 +11,9 @@ index 700806a..c8e4c96 100644
      env_rows("JOLT_TRACER_CAPACITY_ROWS", parallel::DEFAULT_CAPACITY_ROWS)
  }
  
-+/// wasm32 starts at 2^18 rows (24 MiB) and lets the Vec grow: linear memory
-+/// is committed on reservation and never shrinks, so the native 2^24-row
-+/// reserve would pin 1.5 GiB of high-water on every prove.
++/// wasm32 starts at 2^18 rows (24 MiB) and lets the Vec grow: the reserve
++/// grows linear memory, which never shrinks, so the native 2^24-row reserve
++/// would raise the wasm high-water mark to over 1.5 GiB.
 +#[cfg(target_arch = "wasm32")]
 +fn trace_capacity_reserve() -> usize {
 +    1 << 18
