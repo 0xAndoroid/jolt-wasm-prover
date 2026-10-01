@@ -130,7 +130,7 @@ Cross-target proof check (native vs browser proof bytes, native verify of the br
 
 - Stable Rust `1.95` pinned in `rust-toolchain.toml` (matches jolt's workspace). Current nightlies alias `Infallible` to `!` and break `allocative` (a hard dependency via `common/std`) with conflicting impls, so `-Z build-std` runs on stable via `RUSTC_BOOTSTRAP=1`
 - After switching toolchain versions, run `cargo clean --target wasm32-unknown-unknown` — stale `std` artifacts cause `condvar wait not supported` panics
-- `.cargo/config.toml` sets `+atomics,+bulk-memory,+mutable-globals`, 4 GB max memory, a 32 MiB main stack (Akita kernels recurse deeply), and `--export=__heap_base` (required by wasm-bindgen's threads transform); `worker.js` sizes rayon worker stacks with `thread_stack_size` at init
+- `.cargo/config.toml` sets `+atomics,+bulk-memory,+mutable-globals`, 4 GB max memory, a 32 MiB main stack (Akita kernels recurse deeply), and `--export=__heap_base` (required by wasm-bindgen's threads transform); rayon workers run on wasm-bindgen's default 2 MiB thread stack (wasm-bindgen-rayon's worker init passes no `thread_stack_size`)
 - `wasm-pack` for building the WASM package
 - `wasm-opt = false` — the wasm-opt pass was neutral-to-harmful here
 - Profile `lto = true` (don't put `-C lto=fat` in rustflags — it breaks rlib targets under build-std)

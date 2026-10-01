@@ -21,10 +21,6 @@ import init, {
     gpu_trip_probe,
 } from '/pkg/jolt_wasm_prover.js';
 
-// Akita backend kernels recurse deeply on rayon workers (64 MiB stacks
-// natively); wasm-bindgen sizes worker stacks from this value (multiple of
-// 64 KiB).
-const THREAD_STACK_SIZE = 32 * 1024 * 1024;
 const SCHEDULES_URL = '/akita_schedules.bin';
 
 /** @type {{memory: WebAssembly.Memory}} */
@@ -115,7 +111,7 @@ self.onmessage = async (/** @type {MessageEvent<import("../types/runtime").Runti
                     throw new TypeError('Your browser does not support SharedArrayBuffer (requires iOS 15.2+, Chrome 91+, Firefox 79+, Safari 15.2+).');
                 }
                 const [exports, schedules] = await Promise.all([
-                    init({ module_or_path: '/pkg/jolt_wasm_prover_bg.wasm', thread_stack_size: THREAD_STACK_SIZE }),
+                    init({ module_or_path: '/pkg/jolt_wasm_prover_bg.wasm' }),
                     fetchBytes(`${SCHEDULES_URL}${data.cacheBust ? `?${data.cacheBust}` : ''}`),
                 ]);
                 wasmExports = exports;

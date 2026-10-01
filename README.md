@@ -93,8 +93,8 @@ server.mjs          Production server with COOP/COEP headers
 ### WASM API
 
 ```javascript
-// Initialize (worker stacks: Akita kernels recurse deeply)
-await init({ module_or_path: wasmUrl, thread_stack_size: 32 * 1024 * 1024 });
+// Initialize
+await init({ module_or_path: wasmUrl });
 await initThreadPool(navigator.hardwareConcurrency);
 init_tracing();  // optional: enables Perfetto-compatible tracing
 
@@ -115,7 +115,7 @@ const valid = verifier.verify(result.proof, result.program_io);
 The `.cargo/config.toml` configures the WASM build with:
 - **Atomics + shared memory** — enables `wasm-bindgen-rayon` multithreading
 - **4 GB max memory** — required for prover memory usage
-- **32 MiB main-thread stack** — the Akita backend kernels recurse deeply (natively they run on 64 MiB rayon worker stacks); `worker.js` sizes the rayon worker stacks the same way through wasm-bindgen's `thread_stack_size`
+- **32 MiB main-thread stack** — the Akita backend kernels recurse deeply (natively they run on 64 MiB rayon worker stacks); it applies to thread zero only — rayon workers run on wasm-bindgen's default 2 MiB thread stack, since wasm-bindgen-rayon's worker init passes no `thread_stack_size`
 - **`build-std`** — rebuilds `std` with atomics support (nightly cargo feature, unlocked on stable with `RUSTC_BOOTSTRAP=1`)
 
 ## Roundtrip Testing
