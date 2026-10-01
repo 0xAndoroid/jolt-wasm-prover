@@ -28,7 +28,7 @@ export class WasmVerifier {
   constructor(preprocessing: Uint8Array)
   verify(proof: Uint8Array, io: Uint8Array): boolean
 }
-export default function init(options: {module_or_path: string; thread_stack_size: number}): Promise<{memory: WebAssembly.Memory}>
+export default function init(options: {module_or_path: string}): Promise<{memory: WebAssembly.Memory}>
 export function initThreadPool(threads: number): Promise<void>
 export function init_tracing(): void
 export function get_trace_json(): string
