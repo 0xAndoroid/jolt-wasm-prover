@@ -1,0 +1,24 @@
+diff --git a/tracer/src/lib.rs b/tracer/src/lib.rs
+index 700806a..c8e4c96 100644
+--- a/tracer/src/lib.rs
++++ b/tracer/src/lib.rs
+@@ -44,10 +44,19 @@ use crate::emulator::{
+ /// 2^23-cycle proving scale without Vec regrowth (each doubling past the
+ /// hundreds of MB memcpys the whole trace). Reserved address space is only
+ /// faulted in as rows are pushed.
++#[cfg(not(target_arch = "wasm32"))]
+ fn trace_capacity_reserve() -> usize {
+     env_rows("JOLT_TRACER_CAPACITY_ROWS", parallel::DEFAULT_CAPACITY_ROWS)
+ }
+ 
++/// wasm32 starts at 2^18 rows (24 MiB) and lets the Vec grow: linear memory
++/// is committed on reservation and never shrinks, so the native 2^24-row
++/// reserve would pin 1.5 GiB of high-water on every prove.
++#[cfg(target_arch = "wasm32")]
++fn trace_capacity_reserve() -> usize {
++    1 << 18
++}
++
+ /// Positive row-count env override; unset, unparsable, or zero falls back to
+ /// `default`.
+ fn env_rows(name: &str, default: usize) -> usize {

@@ -238,7 +238,7 @@ branch resolution.
 ## WASM runtime patches (pending upstream)
 
 The repo builds everywhere from the pinned upstream revs, and native binaries
-are fully functional. Proving on `wasm32` additionally needs five small fixes
+are fully functional. Proving on `wasm32` additionally needs six small fixes
 that are not upstream yet, plus one device seam, shipped in `patches/`:
 
 1. `0001-jolt-coefflut-u64.patch` — `CoeffLut::saturated()` in
@@ -276,6 +276,10 @@ that are not upstream yet, plus one device seam, shipped in `patches/`:
    (`LowBasisRangeCheckProver::from_materialized`). No behaviour change
    unless a device is installed. The root crate uses it behind the
    `digit-range-device` feature (which adds `akita-prover` as a direct dependency).
+9. `0009-jolt-tracer-wasm32-capacity.patch` — the serial tracer reserves
+   2^24 rows (1.5 GiB) before the guest runs; wasm linear memory cannot
+   shrink, so every prove left that much permanent high-water. On wasm32 the
+   initial reserve is 2^18 rows (24 MiB) and the Vec grows past it.
 
 `./setup-wasm-deps.sh` clones the three upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in
