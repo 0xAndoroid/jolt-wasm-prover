@@ -7,6 +7,8 @@
 # WebKit (has a WebGPU adapter): default mode GPU, CPU proof bytes == GPU
 # proof bytes for SHA-256 / Keccak Chain / ECDSA, mode persists across reload,
 # GPU re-enabled without reload.
+# WebKit without navigator.gpu (Linux): lands on CPU, all three tabs prove +
+# verify in CPU mode; the GPU, cross-mode and dead-proxy checks are skipped.
 # Chromium (no adapter): lands on CPU with the reason shown, GPU segment
 # disabled. Dead proxy: init with a 2 s op timeout, hang the proxy, the prove
 # fails with `gpu proxy unresponsive`, the next prove runs on the CPU.
@@ -20,9 +22,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-RADIO = "[role=radiogroup] [role=radio]"
 PANEL = "[role=tabpanel][data-state=active]"
-CHECKED = f'{RADIO}[aria-checked="true"]'
 SHA_RE = re.compile(r"Proof SHA-256: ([0-9a-f]{64})")
 
 DEAD_PROXY_JS = """
@@ -69,8 +69,12 @@ def wait_ready(page):
     page.wait_for_function("() => document.querySelector('#status')?.classList.contains('ready')")
 
 
+def mode_button(page, **role):
+    return page.get_by_role("group", name="Prover mode").get_by_role("button", **role)
+
+
 def checked_label(page):
-    return page.locator(CHECKED).inner_text().strip()
+    return mode_button(page, pressed=True).inner_text().strip()
 
 
 def prove(page):
@@ -139,63 +143,78 @@ def main():
             return page
 
         page = open_page()
-        check(checked_label(page).startswith("GPU"), f"default mode is GPU ({checked_label(page)})")
-        check(page.locator("text=GPU unavailable").count() == 0, "no unavailability reason shown")
-        check(
-            page.evaluate("() => localStorage.getItem('jolt-prover-mode')") is None,
-            "default mode leaves localStorage untouched",
-        )
-        sha_gpu, mode = prove(page)
-        check(mode == "gpu", f"first proof ran in GPU mode (badge {mode})")
-        verify(page, "SHA-256 GPU")
-        select_tab(page, "Keccak Chain")
-        keccak_gpu, mode = prove(page)
-        check(mode == "gpu", f"Keccak Chain proof ran in GPU mode (badge {mode})")
-        verify(page, "Keccak Chain GPU")
-        select_tab(page, "ECDSA")
-        ecdsa_gpu, mode = prove(page)
-        check(mode == "gpu", f"ECDSA proof ran in GPU mode (badge {mode})")
-        verify(page, "ECDSA GPU")
+        webgpu = page.evaluate("() => 'gpu' in navigator")
+        if not webgpu:
+            sys.stderr.write(
+                "skip: GPU, cross-mode and dead-proxy checks (this WebKit has no navigator.gpu)\n"
+            )
+            check(checked_label(page) == "CPU only", "webkit without WebGPU lands on CPU")
+            for tab in ("SHA-256", "Keccak Chain", "ECDSA"):
+                select_tab(page, tab)
+                _, mode = prove(page)
+                check(mode == "cpu", f"{tab} proof ran in CPU mode (badge {mode})")
+                verify(page, f"{tab} CPU")
+            shoot(page, args.shots, "webkit-cpu")
+        else:
+            check(checked_label(page).startswith("GPU"), f"default mode is GPU ({checked_label(page)})")
+            check(page.locator("text=GPU unavailable").count() == 0, "no unavailability reason shown")
+            check(
+                page.evaluate("() => localStorage.getItem('jolt-prover-mode')") is None,
+                "default mode leaves localStorage untouched",
+            )
+            sha_gpu, mode = prove(page)
+            check(mode == "gpu", f"first proof ran in GPU mode (badge {mode})")
+            verify(page, "SHA-256 GPU")
+            select_tab(page, "Keccak Chain")
+            keccak_gpu, mode = prove(page)
+            check(mode == "gpu", f"Keccak Chain proof ran in GPU mode (badge {mode})")
+            verify(page, "Keccak Chain GPU")
+            select_tab(page, "ECDSA")
+            ecdsa_gpu, mode = prove(page)
+            check(mode == "gpu", f"ECDSA proof ran in GPU mode (badge {mode})")
+            verify(page, "ECDSA GPU")
 
-        page.locator(RADIO, has_text="CPU only").click()
-        page.wait_for_function(f"() => document.querySelector('{CHECKED}')?.innerText.includes('CPU')")
-        ecdsa_cpu, mode = prove(page)
-        check(mode == "cpu", f"ECDSA proof ran in CPU mode (badge {mode})")
-        check(ecdsa_cpu == ecdsa_gpu, f"ECDSA CPU proof bytes == GPU proof bytes ({ecdsa_cpu[:16]})")
-        verify(page, "ECDSA CPU")
-        shoot(page, args.shots, "webkit-ecdsa")
-        select_tab(page, "Keccak Chain")
-        keccak_cpu, mode = prove(page)
-        check(mode == "cpu", f"Keccak Chain proof ran in CPU mode (badge {mode})")
-        check(
-            keccak_cpu == keccak_gpu, f"Keccak Chain CPU proof bytes == GPU proof bytes ({keccak_cpu[:16]})"
-        )
-        verify(page, "Keccak Chain CPU")
-        select_tab(page, "SHA-256")
-        sha_cpu, mode = prove(page)
-        check(mode == "cpu", f"second SHA-256 proof ran in CPU mode (badge {mode})")
-        check(sha_cpu == sha_gpu, f"SHA-256 CPU proof bytes == GPU proof bytes ({sha_cpu[:16]})")
-        verify(page, "SHA-256 CPU")
-        shoot(page, args.shots, "webkit-cpu")
-        check(
-            page.evaluate("() => localStorage.getItem('jolt-prover-mode')") == "cpu",
-            "choice persisted as 'cpu'",
-        )
+            mode_button(page, name="CPU only").click()
+            mode_button(page, name="CPU only", pressed=True).wait_for()
+            ecdsa_cpu, mode = prove(page)
+            check(mode == "cpu", f"ECDSA proof ran in CPU mode (badge {mode})")
+            check(ecdsa_cpu == ecdsa_gpu, f"ECDSA CPU proof bytes == GPU proof bytes ({ecdsa_cpu[:16]})")
+            verify(page, "ECDSA CPU")
+            shoot(page, args.shots, "webkit-ecdsa")
+            select_tab(page, "Keccak Chain")
+            keccak_cpu, mode = prove(page)
+            check(mode == "cpu", f"Keccak Chain proof ran in CPU mode (badge {mode})")
+            check(
+                keccak_cpu == keccak_gpu,
+                f"Keccak Chain CPU proof bytes == GPU proof bytes ({keccak_cpu[:16]})",
+            )
+            verify(page, "Keccak Chain CPU")
+            select_tab(page, "SHA-256")
+            sha_cpu, mode = prove(page)
+            check(mode == "cpu", f"second SHA-256 proof ran in CPU mode (badge {mode})")
+            check(sha_cpu == sha_gpu, f"SHA-256 CPU proof bytes == GPU proof bytes ({sha_cpu[:16]})")
+            verify(page, "SHA-256 CPU")
+            shoot(page, args.shots, "webkit-cpu")
+            check(
+                page.evaluate("() => localStorage.getItem('jolt-prover-mode')") == "cpu",
+                "choice persisted as 'cpu'",
+            )
 
-        # A fresh page in the same context stands in for a reload: WebKit crashes when a
-        # second 4 GB wasm memory is instantiated in a page whose first worker just died.
-        page.close()
-        page = open_page()
-        check(checked_label(page) == "CPU only", "mode restored from localStorage in a new page")
+            # A fresh page in the same context stands in for a reload: WebKit crashes when a
+            # second 4 GB wasm memory is instantiated in a page whose first worker just died.
+            page.close()
+            page = open_page()
+            check(checked_label(page) == "CPU only", "mode restored from localStorage in a new page")
 
-        page.locator(RADIO, has_text="GPU").click()
-        page.wait_for_function(f"() => document.querySelector('{CHECKED}')?.innerText.includes('GPU')")
-        wait_ready(page)
-        sha_gpu2, mode = prove(page)
-        check(
-            mode == "gpu" and sha_gpu2 == sha_gpu, f"GPU re-enabled without reload, proof identical ({mode})"
-        )
-        shoot(page, args.shots, "webkit-gpu")
+            mode_button(page, name="GPU").click()
+            mode_button(page, name="GPU", pressed=True).wait_for()
+            wait_ready(page)
+            sha_gpu2, mode = prove(page)
+            check(
+                mode == "gpu" and sha_gpu2 == sha_gpu,
+                f"GPU re-enabled without reload, proof identical ({mode})",
+            )
+            shoot(page, args.shots, "webkit-gpu")
         page.close()
         browser.close()
 
@@ -205,36 +224,42 @@ def main():
         page.goto(args.url, wait_until="domcontentloaded")
         wait_ready(page)
         check(checked_label(page) == "CPU only", "chromium without an adapter lands on CPU")
-        check(page.locator(RADIO, has_text="GPU").is_disabled(), "GPU segment disabled")
+        check(mode_button(page, name="GPU").is_disabled(), "GPU segment disabled")
         reason = page.locator("text=GPU unavailable").inner_text()
         check(bool(reason), f"reason shown: {reason}")
         shoot(page, args.shots, "chromium")
         page.close()
         browser.close()
 
-        browser = p.webkit.launch(headless=True)
-        page = browser.new_page()
-        page.set_default_timeout(600_000)
-        page.on("console", lambda m: sys.stderr.write(f"[dead] {m.text}\n") if m.type == "error" else None)
-        page.goto(args.url, wait_until="domcontentloaded")
-        t0 = time.time()
-        r = page.evaluate(DEAD_PROXY_JS, {"iters": args.iters})
-        sys.stderr.write(f"dead-proxy: {r}\n")
-        check(r["init"]["status"] == "ok", "dead-proxy session started with the GPU on")
-        check(
-            r["dead"]["type"] == "error" and "gpu proxy unresponsive" in (r["dead"]["error"] or ""),
-            f"prove failed with the timeout error in {r['dead']['ms'] / 1000:.1f}s",
-        )
-        check(r["dead"]["ms"] < 10_000, "time to error under 10 s")
-        check((r["dead"]["gpu"] or {}).get("status") == "unavailable", "error carries gpu.status unavailable")
-        check(
-            r["again"]["type"] == "prove-done"
-            and r["again"]["gpuStatus"] == "unavailable"
-            and r["again"]["valid"] is True,
-            f"next prove in the same session ran on the CPU and verified ({time.time() - t0:.0f}s total)",
-        )
-        page.close()
-        browser.close()
+        if webgpu:
+            browser = p.webkit.launch(headless=True)
+            page = browser.new_page()
+            page.set_default_timeout(600_000)
+            page.on(
+                "console", lambda m: sys.stderr.write(f"[dead] {m.text}\n") if m.type == "error" else None
+            )
+            page.goto(args.url, wait_until="domcontentloaded")
+            t0 = time.time()
+            r = page.evaluate(DEAD_PROXY_JS, {"iters": args.iters})
+            sys.stderr.write(f"dead-proxy: {r}\n")
+            check(r["init"]["status"] == "ok", "dead-proxy session started with the GPU on")
+            check(
+                r["dead"]["type"] == "error" and "gpu proxy unresponsive" in (r["dead"]["error"] or ""),
+                f"prove failed with the timeout error in {r['dead']['ms'] / 1000:.1f}s",
+            )
+            check(r["dead"]["ms"] < 10_000, "time to error under 10 s")
+            check(
+                (r["dead"]["gpu"] or {}).get("status") == "unavailable",
+                "error carries gpu.status unavailable",
+            )
+            check(
+                r["again"]["type"] == "prove-done"
+                and r["again"]["gpuStatus"] == "unavailable"
+                and r["again"]["valid"] is True,
+                f"next prove in the same session ran on the CPU and verified ({time.time() - t0:.0f}s total)",
+            )
+            page.close()
+            browser.close()
     print("test_ui_modes: all checks passed")
 
 

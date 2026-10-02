@@ -10,7 +10,7 @@ static output is uploaded.
 1. Prerequisites: the toolchain from `rust-toolchain.toml` (stable 1.95 + `rust-src` +
    `wasm32-unknown-unknown`, installed by rustup on first `cargo` run), `wasm-pack`,
    Node.js ≥ 20 with npm, `wrangler` (`npm i -g wrangler`, `wrangler login`; the
-   Playwright smoke needs `uv` and `uv run --with playwright python -m playwright install webkit`).
+   Playwright smoke needs `uv` and `uv run --with playwright python -m playwright install webkit chromium`).
 2. Sync: `git fetch origin && git merge --ff-only origin/main`; artifacts in
    `frontend/public/` (`*.bin`, `*.elf`) are committed — regenerate only when guests or
    the jolt pin changed: `cargo run --release --features native --bin generate-preprocessing`.
@@ -32,6 +32,8 @@ static output is uploaded.
    ```
    Expect `test_ui_modes: all checks passed` (all three tabs prove + verify in GPU and CPU mode,
    proof SHA-256 equal across modes) and `proofBytesIdentical` / `valid=True` from the bench.
+   Linux WebKit has no WebGPU: the smoke then proves + verifies the three tabs in CPU mode only
+   and prints `skip:` for the GPU checks; run it on macOS before a production deploy.
 7. Optional preview: `npx wrangler pages deploy frontend/dist --project-name=jolt-wasm-prover --branch preview`
    → `https://preview.jolt-wasm-prover.pages.dev`. `_headers` applies there too, so the
    GPU path works on the preview; check it in a WebGPU browser before promoting.
