@@ -9,8 +9,8 @@
 # failing allocation is on a pool worker while worker.js sits blocked in the
 # prove call. The page must show the crash message, log the pool worker's trap
 # and disable the controls. A second page without the cap proves normally.
-# The default cap is calibrated for the UI's 8 threads (hardwareConcurrency >= 8):
-# 1300-1700 pages trap on a pool worker, <= 1200 on thread zero, 2000 proves.
+# The page is pinned to 8 rayon threads; at that pool size 1300-1700 pages trap
+# on a pool worker, <= 1200 on thread zero, and 2000 proves.
 
 import argparse
 import contextlib
@@ -67,6 +67,8 @@ def main():
         context = browser.new_context(viewport={"width": 1440, "height": 900})
         context.set_default_timeout(600_000)
         context.add_init_script("localStorage.setItem('jolt-prover-mode', 'cpu')")
+        # The cap is calibrated for the UI's 8-thread pool (min(hardwareConcurrency, 8)).
+        context.add_init_script("Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 })")
 
         page = open_page(context, args.url, args.max_pages)
         page.locator(f"{PANEL} .prove-btn").click()
