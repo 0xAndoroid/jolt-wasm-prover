@@ -257,6 +257,10 @@ directly and the guest crates are never compiled natively.
 Build with the committed lockfile; `cargo update` can move the arkworks
 branch resolution.
 
+Bumping Jolt/Akita/spongefish can change the proof: regenerate
+`WASM_SHA2_PROOF_SHA256` ([preprocessing/test_roundtrip.rs:249](preprocessing/test_roundtrip.rs#L249))
+from a fresh browser dump (see [Cross-target proof check](#cross-target-proof-check)).
+
 ## WASM runtime patches (pending upstream)
 
 The repo builds everywhere from the pinned upstream revs, and native binaries
