@@ -1,0 +1,26 @@
+diff --git a/src/workerHelpers.no-bundler.js b/src/workerHelpers.no-bundler.js
+index 5284c3d..735b3d4 100644
+--- a/src/workerHelpers.no-bundler.js
++++ b/src/workerHelpers.no-bundler.js
+@@ -32,6 +32,11 @@ waitForMsgType(self, 'wasm_bindgen_worker_init').then(async data => {
+   await pkg.default(data.module, data.memory);
+   postMessage({ type: 'wasm_bindgen_worker_ready' });
+   pkg.wbg_rayon_start_worker(data.receiver);
++}).catch(err => {
++  // The spawning thread is blocked in a rayon join and never handles this
++  // worker's messages or error events, so the failure is broadcast past it.
++  new BroadcastChannel('wasm_bindgen_rayon').postMessage({ name: self.name, error: String(err) });
++  throw err;
+ });
+ 
+ // Note: this is never used, but necessary to prevent a bug in Firefox
+@@ -65,7 +70,8 @@ export async function startWorkers(module, memory, builder) {
+       let scriptBlob = await fetch(import.meta.url).then(r => r.blob());
+       let url = URL.createObjectURL(scriptBlob);
+       const worker = new Worker(url, {
+-        type: 'module'
++        type: 'module',
++        name: self.name
+       });
+       worker.postMessage(workerInit);
+       await waitForMsgType(worker, 'wasm_bindgen_worker_ready');

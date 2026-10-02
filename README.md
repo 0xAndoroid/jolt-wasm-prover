@@ -277,8 +277,9 @@ that are not upstream yet, plus one device seam, shipped in `patches/`:
    unless a device is installed. The root crate uses it behind the
    `digit-range-device` feature (which adds `akita-prover` as a direct dependency).
 9. `0009-jolt-tracer-wasm32-capacity.patch` — the tracer's initial reserve is 2^18 rows on wasm32 instead of 2^24 (1.5 GiB of linear memory, which cannot shrink).
+10. `0010-wasm-bindgen-rayon-worker-error.patch` — a pool worker that traps (an allocation failure aborts as `unreachable`) drops the error, and worker.js sits blocked in the prove call, so the page showed "Working" forever. The pool worker now posts the error on the `wasm_bindgen_rayon` BroadcastChannel tagged with its spawner's worker name; `WorkerClient` reports it as a prover trap. `bench/test_pool_worker_trap.py` covers it.
 
-`./setup-wasm-deps.sh` clones the three upstreams at the pinned revs into
+`./setup-wasm-deps.sh` clones the four upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in
 `Cargo.toml` onto the patched checkouts. `./setup-wasm-deps.sh --revert`
 restores the pinned block.
