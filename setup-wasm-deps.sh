@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Browser (wasm32) proving needs a few small fixes that are not upstream yet
 # (see patches/ and the "WASM runtime patches" section of README.md). This
-# script clones a16z/jolt, a16z/arkworks-algebra and LayerZero-Labs/akita at
-# the exact revs the manifest pins, applies the patches, and rewrites the
+# script clones a16z/jolt, a16z/arkworks-algebra, LayerZero-Labs/akita and
+# RReverser/wasm-bindgen-rayon at the exact revs the manifest pins, applies the patches, and rewrites the
 # override block in Cargo.toml so the whole dependency graph builds against
 # the patched checkouts in .wasm-deps/.
 #
@@ -15,10 +15,12 @@ set -euo pipefail
 JOLT_REV=d39bd518a65ea89401de63c3343e98fbad5f1b80
 ARK_REV=76bb3a4518928f1ff7f15875f940d614bb9845e6
 AKITA_REV=252abb895046cc1d5b9955a26a2ad2318148ac26
+WBR_REV=6a09d723ed5eed586d1db808f9cc56625b36ff77 # wasm-bindgen-rayon 1.3.0
 JOLT_URL=https://github.com/a16z/jolt
 JOLT_MIRROR_URL=https://github.com/0xAndoroid/jolt
 ARK_URL=https://github.com/a16z/arkworks-algebra
 AKITA_URL=https://github.com/LayerZero-Labs/akita.git
+WBR_URL=https://github.com/RReverser/wasm-bindgen-rayon
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 DEPS_REL=".wasm-deps"
@@ -72,6 +74,7 @@ ark-bn254 = { path = "$DEPS_REL/arkworks-algebra/curves/bn254" }
 ark-ff = { path = "$DEPS_REL/arkworks-algebra/ff" }
 ark-ec = { path = "$DEPS_REL/arkworks-algebra/ec" }
 ark-serialize = { path = "$DEPS_REL/arkworks-algebra/serialize" }
+wasm-bindgen-rayon = { path = "$DEPS_REL/wasm-bindgen-rayon" }
 
 [patch.'$ARK_URL']
 ark-bn254 = { path = "$DEPS_REL/arkworks-algebra/curves/bn254" }
@@ -147,6 +150,8 @@ echo "Fetching a16z/arkworks-algebra @ $ARK_REV ..."
 fetch_at_rev "$DEPS/arkworks-algebra" "$ARK_URL" "$ARK_REV"
 echo "Fetching LayerZero-Labs/akita @ $AKITA_REV ..."
 fetch_at_rev "$DEPS/akita" "$AKITA_URL" "$AKITA_REV"
+echo "Fetching RReverser/wasm-bindgen-rayon @ $WBR_REV ..."
+fetch_at_rev "$DEPS/wasm-bindgen-rayon" "$WBR_URL" "$WBR_REV"
 
 echo "Applying wasm32 patches ..."
 git -C "$DEPS/jolt" apply --verbose "$ROOT/patches/0001-jolt-coefflut-u64.patch"
@@ -158,9 +163,11 @@ git -C "$DEPS/jolt" apply --verbose "$ROOT/patches/0006-jolt-akita-trace-commit-
 git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0007-akita-digit-range-device.patch"
 git -C "$DEPS/akita" apply --verbose "$ROOT/patches/0008-akita-relation-range-device.patch"
 git -C "$DEPS/jolt" apply --verbose "$ROOT/patches/0009-jolt-tracer-wasm32-capacity.patch"
+git -C "$DEPS/wasm-bindgen-rayon" apply --verbose "$ROOT/patches/0010-wasm-bindgen-rayon-worker-error.patch"
 pin_mtimes "$DEPS/jolt"
 pin_mtimes "$DEPS/arkworks-algebra"
 pin_mtimes "$DEPS/akita"
+pin_mtimes "$DEPS/wasm-bindgen-rayon"
 
 block="$(mktemp)"
 write_local_block "$block"
