@@ -105,14 +105,25 @@ fn cross_verify(
     let proof = load(dir, &format!("{name}_proof.bin"))?;
     let io = load(dir, &format!("{name}_io.bin"))?;
     let prep_bytes = load(dir, &format!("{name}_verifier_preprocessing.bin"))?;
-    let same = |a: &[u8], b: &[u8]| if a == b { "identical" } else { "DIFFERENT" };
-    println!(
-        "[{name}] foreign proof {} bytes: proof {}, io {}, verifier preprocessing {}",
-        proof.len(),
-        same(&proof, &native.proof_bytes),
-        same(&io, &native.io_bytes),
-        same(&prep_bytes, &native.verifier_preprocessing_bytes),
-    );
+    for (part, foreign, local) in [
+        ("proof", &proof, &native.proof_bytes),
+        ("io", &io, &native.io_bytes),
+        (
+            "verifier preprocessing",
+            &prep_bytes,
+            &native.verifier_preprocessing_bytes,
+        ),
+    ] {
+        if foreign != local {
+            let offset = foreign
+                .iter()
+                .zip(local)
+                .position(|(a, b)| a != b)
+                .unwrap_or(foreign.len().min(local.len()));
+            return Err(format!("[{name}] foreign {part} differs at byte {offset}").into());
+        }
+    }
+    println!("[{name}] foreign proof, io and verifier preprocessing are identical");
     let prep = engine::decode_verifier_preprocessing(&prep_bytes)?;
     engine::verify(&prep, &proof, &io)?;
     println!("[{name}] foreign proof verified natively");
@@ -243,6 +254,9 @@ mod tests {
         let input: &[u8] = b"jolt wasm prover roundtrip test input";
         let out = engine::prove(&sha2_ctx()?, &postcard::to_allocvec(&input)?)?;
         assert_eq!(sha256_hex(&out.proof_bytes), WASM_SHA2_PROOF_SHA256);
+        if let Some(dir) = std::env::var_os("JOLT_ROUNDTRIP_VERIFY_DIR") {
+            cross_verify(Path::new(&dir), "sha2", &out)?;
+        }
         Ok(())
     }
 }
