@@ -128,15 +128,37 @@ cargo run --release --features native --bin test-roundtrip
 
 ### Cross-target proof check
 
-Compares the browser's sha2 proof of the roundtrip input with the native one and runs it through the native verifier:
+After building WASM and the frontend, compare SHA-256 proofs for the default
+roundtrip input (`jolt wasm prover roundtrip test input`):
 
 ```bash
 node server.mjs &   # restart after every wasm/frontend rebuild
-uv run --with playwright python bench/dump_browser_proof.py --out "$TMPDIR/browser"
-JOLT_ROUNDTRIP_VERIFY_DIR="$TMPDIR/browser" cargo run --release --features native --bin test-roundtrip
+uv run --with playwright python bench/dump_browser_proof.py --browser webkit --out "$TMPDIR/browser"
+JOLT_ROUNDTRIP_VERIFY_DIR="$TMPDIR/browser" cargo nextest run --cargo-quiet --release --features native --bin test-roundtrip -E 'test(sha2_proof_matches_browser_digest)'
 ```
 
-`JOLT_ROUNDTRIP_DUMP_DIR=DIR` writes the native `{name}_{proof,io,verifier_preprocessing}.bin` instead. Browser and native proofs are byte-identical and cross-verify since spongefish `4ee5f2b2` (`[patch]` in `Cargo.toml`; a16z/jolt #1924 — the pre-fix sponge hashed its squeeze counters at pointer width, so the Akita batched opening diverged on wasm32 and the native verifier rejected browser proofs). `cargo test --release --features native --bin test-roundtrip sha2_proof_matches_browser_digest` pins the shared proof digest.
+The check requires identical proof, public IO and verifier preprocessing bytes,
+then verifies the browser proof natively. It runs only SHA-256; without the
+environment variable, the same test checks the pinned proof digest. Native
+artifact dumps remain available through `JOLT_ROUNDTRIP_DUMP_DIR=DIR` on
+`test-roundtrip`.
+
+The September 23 mismatch was fixed in [PR #19](https://github.com/0xAndoroid/jolt-wasm-prover/pull/19).
+Spongefish's Blake2b512 sponge encoded its squeeze index and byte count with
+`usize::to_be_bytes()` (4 bytes on wasm32, 8 on native), changing Akita's
+Fiat-Shamir challenges. Only `joint_opening_proof` differed; the other proof
+fields, public IO and verifier preprocessing matched. For the roundtrip input,
+the first differing offset was 12,137 (the opening payload's length prefix);
+the first payload difference was offset 12,140, in its grinding `nonce_stream`.
+Offsets are zero-based. Both proofs verified
+**on their own targets**, but native verification rejected the browser proof.
+This was deterministic platform dependence, not random blinding.
+
+Upstream [4ee5f2b2](https://github.com/arkworks-rs/spongefish/commit/4ee5f2b22a6ef628f7b6e162ab72cc285b9a850e)
+encodes both counters as `u64`; the root `Cargo.toml` pins Spongefish 0.7.3,
+which includes that fix, in both native and patched-WASM builds. The shared
+SHA-256 proof is 81,731 bytes with digest
+`afe5b6cced775f1663e7c047ec27ccd0a1593cd9d8d717427018ec2312f5ed1d`.
 
 ## Benchmarks
 
