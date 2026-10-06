@@ -123,7 +123,8 @@ if [[ "${1:-}" == "--revert" ]]; then
     write_pinned_block "$block"
     splice_block "$block"
     /bin/rm -f "$block"
-    echo "Cargo.toml override block restored to pinned upstream revs."
+    git -C "$ROOT" checkout -q -- Cargo.lock
+    echo "Cargo.toml override block and Cargo.lock restored to pinned upstream revs."
     echo "Remove $DEPS_REL/ manually if no longer needed."
     exit 0
 fi
