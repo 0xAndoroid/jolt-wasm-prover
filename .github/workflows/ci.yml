@@ -34,7 +34,7 @@ jobs:
 
   rust-native:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 45 }}
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -53,7 +53,7 @@ jobs:
 
   rust-device:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 45 }}
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -74,7 +74,7 @@ jobs:
 
   rust-wasm:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 45 }}
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
