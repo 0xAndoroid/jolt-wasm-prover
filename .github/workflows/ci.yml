@@ -109,3 +109,14 @@ jobs:
       - run: typos
       - if: always()
         run: echo "shell-python wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
+
+  ci:
+    # always(), not !cancelled(): a skipped required check counts as passing, and
+    # a cancelled run must still reach the exit 1 below.
+    if: always()
+    needs: [frontend, rust-native, rust-device, rust-wasm, shell-python]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+        run: exit 1
