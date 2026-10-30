@@ -57,6 +57,7 @@ Install web tools with `npm ci --ignore-scripts --prefix frontend`; versions are
 
 `scripts/pre-commit.sh` dispatches each language script in `--staged` mode; irrelevant files and missing toolchains exit silently.
 The guest workspace is built only via `jolt build`. The default native pass excludes the WASM bindings, `wasm_tracing.rs`, GPU implementation modules, and reference-device modules. With patched `.wasm-deps/` checkouts, the script also checks native device features and the full browser feature set on `wasm32-unknown-unknown` using `build-std`; otherwise it prints that scope as a skip. No WASM package is emitted.
+On the shared Mac Studio (ComputerName `PikaStudio`), each Clippy call first needs swap used under 8192M and a 1-minute load average under 36; a higher or unreadable reading refuses it.
 HTML integrity checks cover external assets except Google Fonts: its CSS varies by user agent and has no fixed SRI digest. Local asset names are hashed by Vite.
 Static checks do not generate or modify `pkg/`, preprocessing artifacts, WGSL, or patch files.
 
