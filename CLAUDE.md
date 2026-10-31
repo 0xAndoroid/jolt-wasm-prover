@@ -37,7 +37,7 @@ cargo run --release --features native --bin test-roundtrip
 JOLT_TRACE_COMMIT_DEVICE=cpu-ref cargo run --release --features native,trace-commit-device --bin test-roundtrip
 RUST_LOG=jolt_akita=info cargo run --release --features native,trace-commit-device --bin test-roundtrip  # prints the stage-0 shape + extraction time
 
-# Native Clippy is local-only: compiling the pinned Jolt graph is too slow for CI.
+# Native Clippy and format check; CI's rust-native job runs both through `scripts/lint/rust.sh native`.
 cargo clippy -q --all-targets --features native --message-format=short -- -D warnings
 cargo fmt -q --message-format=short -- --check
 
@@ -53,7 +53,7 @@ Install web tools with `npm ci --ignore-scripts --prefix frontend`; versions are
 - `npm run lint --prefix frontend` — oxlint with React, hooks, accessibility, and typed rules.
 - `scripts/lint/python.sh` — Ruff ALL and formatter, via `uvx ruff@0.16.9`.
 - `scripts/lint/shell.sh` — ShellCheck and shfmt; whitespace comes from `.editorconfig`.
-- `scripts/lint/rust.sh` — root crate format and Clippy; native always, native device features and WASM when Cargo.toml holds the local overrides from `./setup-wasm-deps.sh`; local-only.
+- `scripts/lint/rust.sh` — root crate format and Clippy; native always, native device features and WASM when Cargo.toml holds the local overrides from `./setup-wasm-deps.sh`; CI runs each scope in its own job, after `./setup-wasm-deps.sh` for `device` and `wasm`.
 
 `scripts/pre-commit.sh` dispatches each language script in `--staged` mode; irrelevant files and missing toolchains exit silently.
 The guest workspace is built only via `jolt build`. The default native pass excludes the WASM bindings, `wasm_tracing.rs`, GPU implementation modules, and reference-device modules. With the local overrides from `./setup-wasm-deps.sh` in Cargo.toml, the script also checks native device features and the full browser feature set on `wasm32-unknown-unknown` using `build-std`; otherwise it prints that scope as a skip. No WASM package is emitted.
