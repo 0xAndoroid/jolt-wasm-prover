@@ -7,6 +7,19 @@ WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compile
 ## Commands
 
 ```bash
+# Root justfile: `just` lists the recipes; each wraps a command below or a CI step
+just fmt                          # cargo fmt, ruff format bench, shfmt -w; just fmt-check only checks
+just fix                          # cargo clippy --fix on the native feature set; extra args go to cargo
+just clippy [native|device|wasm]  # scripts/lint/rust.sh; no scope runs all three
+just lint                         # scripts/lint/{rust,web,python,shell}.sh, then typos
+just test [ARGS]                  # cargo nextest run --cargo-quiet --release --features native ARGS
+just setup-wasm-deps [--revert]   # ./setup-wasm-deps.sh
+just wasm                         # wasm-pack build with the full browser feature set
+just generate                     # generate-preprocessing
+just roundtrip [ARGS]             # test-roundtrip; ARGS go to cargo run, e.g. --features trace-commit-device
+just dev | just build | just serve  # Vite dev server | frontend build | node server.mjs
+just build-pages [--wasm]         # scripts/build-pages.sh
+
 # One-time: patched WASM deps (browser proving needs wasm32 fixes, see README)
 ./setup-wasm-deps.sh          # clone pinned upstreams, apply patches/, rewrite Cargo.toml block
 ./setup-wasm-deps.sh --revert # restore the pinned upstream-rev block
@@ -37,7 +50,7 @@ cargo run --release --features native --bin test-roundtrip
 JOLT_TRACE_COMMIT_DEVICE=cpu-ref cargo run --release --features native,trace-commit-device --bin test-roundtrip
 RUST_LOG=jolt_akita=info cargo run --release --features native,trace-commit-device --bin test-roundtrip  # prints the stage-0 shape + extraction time
 
-# Native Clippy is local-only: compiling the pinned Jolt graph is too slow for CI.
+# Native Clippy and rustfmt check (CI's rust-native job runs them through scripts/lint/rust.sh native)
 cargo clippy -q --all-targets --features native --message-format=short -- -D warnings
 cargo fmt -q --message-format=short -- --check
 
@@ -53,7 +66,8 @@ Install web tools with `npm ci --ignore-scripts --prefix frontend`; versions are
 - `npm run lint --prefix frontend` — oxlint with React, hooks, accessibility, and typed rules.
 - `scripts/lint/python.sh` — Ruff ALL and formatter, via `uvx ruff@0.16.9`.
 - `scripts/lint/shell.sh` — ShellCheck and shfmt; whitespace comes from `.editorconfig`.
-- `scripts/lint/rust.sh` — root crate format and Clippy; native always, native device features and WASM when `.wasm-deps/` exists; local-only.
+- `scripts/lint/rust.sh` — root crate format and Clippy; native always, native device features and WASM when `.wasm-deps/` exists; CI runs the native, device and wasm scopes as separate jobs.
+- `just lint` runs the four scripts above, then `typos`.
 
 `scripts/pre-commit.sh` dispatches each language script in `--staged` mode; irrelevant files and missing toolchains exit silently.
 The guest workspace is built only via `jolt build`. The default native pass excludes the WASM bindings, `wasm_tracing.rs`, GPU implementation modules, and reference-device modules. With patched `.wasm-deps/` checkouts, the script also checks native device features and the full browser feature set on `wasm32-unknown-unknown` using `build-std`; otherwise it prints that scope as a skip. No WASM package is emitted.
