@@ -20,6 +20,23 @@ Four guest programs are included:
 - `wasm-pack`: `curl https://drager.github.io/wasm-pack/installer/init.sh -sSf | bash`
 - Node.js (for the dev server)
 
+## Commands
+
+The root `justfile` wraps the commands in this README and in `DEPLOY.md`. Install [`just`](https://github.com/casey/just) and run `just` to list the recipes. The frontend recipes and `just lint` need `npm ci --ignore-scripts --prefix frontend` first.
+
+```bash
+just fmt              # format Rust, Python (bench/) and shell scripts; just fmt-check only checks
+just lint             # the CI lint scripts and typos; just clippy [native|device|wasm] runs only the Rust one
+just fix              # apply Clippy's suggested fixes
+just test             # native tests through cargo nextest; arguments go to nextest
+just generate         # step 1 below
+just setup-wasm-deps  # step 2 below; just setup-wasm-deps --revert undoes it
+just wasm             # step 3 below, with the full browser feature set
+just dev              # step 4 below; just build, then just serve, for the production server
+just roundtrip        # Roundtrip Testing below
+just build-pages      # DEPLOY.md step 5
+```
+
 ## Quick Start
 
 ### 1. Generate artifacts
