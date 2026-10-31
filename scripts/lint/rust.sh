@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: scripts/lint/rust.sh [--staged | native | device | wasm]
+# Usage: scripts/lint/rust.sh [--staged | native | device | wasm | fix [CARGO_ARGS...]]
 # No argument runs every scope; `device` and `wasm` need the local overrides ./setup-wasm-deps.sh writes into Cargo.toml.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -40,8 +40,13 @@ case "$scope" in
         [[ "$scope" == native ]] && exit 0
         ;;
     device | wasm) ;;
+    fix)
+        host_gate
+        cargo clippy -q --all-targets --features native --message-format=short --fix --allow-dirty "${@:2}"
+        exit 0
+        ;;
     *)
-        echo "usage: $0 [--staged | native | device | wasm]" >&2
+        echo "usage: $0 [--staged | native | device | wasm | fix [CARGO_ARGS...]]" >&2
         exit 2
         ;;
 esac
