@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: scripts/lint/rust.sh [--staged | native | device | wasm]
-# No argument runs every scope; `device` and `wasm` need the patched checkouts from ./setup-wasm-deps.sh.
+# No argument runs every scope; `device` and `wasm` need the local overrides ./setup-wasm-deps.sh writes into Cargo.toml.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -45,12 +45,13 @@ case "$scope" in
         exit 2
         ;;
 esac
-if [[ ! -d .wasm-deps ]]; then
+# ./setup-wasm-deps.sh writes this line into Cargo.toml; --revert removes it but leaves .wasm-deps/ behind.
+if ! grep -q '^# LOCAL patched checkouts' Cargo.toml; then
     if [[ "$scope" == all ]]; then
-        echo 'skip: patched checkouts absent; WASM bindings, tracing, GPU modules, and reference devices are not linted'
+        echo 'skip: Cargo.toml has no local overrides from ./setup-wasm-deps.sh; WASM bindings, tracing, GPU modules, and reference devices are not linted'
         exit 0
     fi
-    echo "error: scope '$scope' needs ./setup-wasm-deps.sh" >&2
+    echo "error: scope '$scope' needs the local overrides ./setup-wasm-deps.sh writes into Cargo.toml" >&2
     exit 1
 fi
 if [[ "$scope" != wasm ]]; then
