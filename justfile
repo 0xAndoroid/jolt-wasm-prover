@@ -19,9 +19,9 @@ fmt-check:
     uvx ruff@0.16.9 format --check bench
     shfmt -d {{ shell_files }}
 
-# Apply Clippy's suggested fixes to the native build; extra args go to cargo
+# Apply Clippy's suggested fixes to the native build (scripts/lint/rust.sh fix); extra args go to cargo
 fix *args:
-    cargo clippy -q --message-format=short --fix --allow-dirty --all-targets --features native "$@"
+    scripts/lint/rust.sh fix "$@"
 
 # Rust lint as in CI (rustfmt check + Clippy): scope native, device or wasm; default all
 clippy *args:
@@ -47,6 +47,10 @@ setup-wasm-deps *args:
 wasm:
     RUSTC_BOOTSTRAP=1 CARGO_UNSTABLE_BUILD_STD="panic_abort,std" wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device,relation-range-device
 
+# Release build with the native feature (library and both binaries); extra args go to cargo
+build-native *args:
+    cargo build -q --message-format=short --release --features native "$@"
+
 # Build the guests and write their artifacts to frontend/public/ (needs the jolt CLI)
 generate:
     cargo run -q --message-format=short --release --features native --bin generate-preprocessing
@@ -55,13 +59,13 @@ generate:
 roundtrip *args:
     cargo run -q --message-format=short --release --features native --bin test-roundtrip "$@"
 
-# Vite dev server on http://localhost:8080
-dev:
-    npm --prefix frontend run dev
+# Vite dev server on http://localhost:8080; extra args go to vite
+dev *args:
+    npm --prefix frontend run dev -- "$@"
 
-# Type-check and build the frontend into frontend/dist/
-build:
-    npm --prefix frontend run build
+# Type-check and build the frontend into frontend/dist/; extra args go to vite build
+build *args:
+    npm --prefix frontend run build -- "$@"
 
 # Serve frontend/dist/ and pkg/ on http://127.0.0.1:8080
 serve:

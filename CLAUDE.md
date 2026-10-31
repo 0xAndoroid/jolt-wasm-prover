@@ -9,15 +9,16 @@ WASM prover/verifier demo for [Jolt](https://github.com/a16z/jolt) zkVM. Compile
 ```bash
 # Root justfile: `just` lists the recipes; each wraps a command below or a CI step
 just fmt                          # cargo fmt, ruff format bench, shfmt -w; just fmt-check only checks
-just fix                          # cargo clippy --fix on the native feature set; extra args go to cargo
-just clippy [native|device|wasm]  # scripts/lint/rust.sh; no scope runs all three
+just fix [ARGS]                   # scripts/lint/rust.sh fix: Studio gate, then cargo clippy --fix on the native build; ARGS go to cargo
+just clippy [native|device|wasm]  # scripts/lint/rust.sh; no scope runs native, then device and wasm when Cargo.toml holds the local overrides from ./setup-wasm-deps.sh
 just lint                         # scripts/lint/{rust,web,python,shell}.sh, then typos
 just test [ARGS]                  # cargo nextest run --cargo-quiet --release --features native ARGS
 just setup-wasm-deps [--revert]   # ./setup-wasm-deps.sh
 just wasm                         # wasm-pack build with the full browser feature set
+just build-native [ARGS]          # cargo build --release --features native ARGS
 just generate                     # generate-preprocessing
 just roundtrip [ARGS]             # test-roundtrip; ARGS go to cargo run, e.g. --features trace-commit-device
-just dev | just build | just serve  # Vite dev server | frontend build | node server.mjs
+just dev [ARGS] | just build [ARGS] | just serve  # Vite dev server | frontend build | node server.mjs; ARGS go to Vite
 just build-pages [--wasm]         # scripts/build-pages.sh
 
 # One-time: patched WASM deps (browser proving needs wasm32 fixes, see README)
@@ -62,6 +63,7 @@ node server.mjs
 
 Install web tools with `npm ci --ignore-scripts --prefix frontend`; versions are pinned in `frontend/package-lock.json`.
 
+- `just lint` runs the four `scripts/lint/*.sh` scripts below, then `typos`.
 - `scripts/lint/web.sh` — strict TypeScript/checkJs, type-aware oxlint, knip, stylelint, html-validate.
 - `npm run lint --prefix frontend` — oxlint with React, hooks, accessibility, and typed rules.
 - `scripts/lint/python.sh` — Ruff ALL and formatter, via `uvx ruff@0.16.9`.

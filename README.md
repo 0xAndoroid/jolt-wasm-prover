@@ -28,11 +28,12 @@ The root `justfile` wraps the commands in this README and in `DEPLOY.md`. Instal
 just fmt              # format Rust, Python (bench/) and shell scripts; just fmt-check only checks
 just lint             # the CI lint scripts and typos; just clippy [native|device|wasm] runs only the Rust one
 just fix              # apply Clippy's suggested fixes
+just build-native     # release build of the native library and binaries, without running them
 just test             # native tests through cargo nextest; arguments go to nextest
 just generate         # step 1 below
 just setup-wasm-deps  # step 2 below; just setup-wasm-deps --revert undoes it
 just wasm             # step 3 below, with the full browser feature set
-just dev              # step 4 below; just build, then just serve, for the production server
+just dev              # step 4 below, arguments go to Vite; just build, then just serve, for the production server
 just roundtrip        # Roundtrip Testing below
 just build-pages      # DEPLOY.md step 5
 ```
