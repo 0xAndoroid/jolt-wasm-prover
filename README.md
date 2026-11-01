@@ -255,7 +255,7 @@ Jolt crates come from [a16z/jolt](https://github.com/a16z/jolt) at rev
 `252abb895046cc1d5b9955a26a2ad2318148ac26`, jolt's own pin.
 Arkworks comes from [a16z/arkworks-algebra](https://github.com/a16z/arkworks-algebra)
 branch `dev/twist-shout`; the committed `Cargo.lock` pins it to
-`76bb3a4518928f1ff7f15875f940d614bb9845e6`. The `[patch.crates-io]` block in
+`b8f0f5129501c42c8a934f4832746d335c8f8ca1`, jolt main's lock entry. The `[patch.crates-io]` block in
 `Cargo.toml` redirects the registry `ark-*` crates (pulled in by `dory-pcs`,
 which stays in the graph through `jolt-prover` even though the Dory path is
 compiled out) onto the same fork so the whole graph shares one set of
@@ -283,17 +283,12 @@ from a fresh browser dump (see [Cross-target proof check](#cross-target-proof-ch
 
 The repo builds everywhere from the pinned upstream revs, and native binaries
 are fully functional. Proving on `wasm32` additionally needs six small fixes
-that are not upstream yet, plus one device seam, shipped in `patches/`:
+that are not upstream yet, plus three device seams, shipped in `patches/`:
 
 1. `0001-jolt-coefflut-u64.patch` — `CoeffLut::saturated()` in
    `jolt-kernels` computes `len * len` in `usize`; at the 65536-entry table
    this is 2^32, which wraps to 0 on 32-bit targets and later panics every
    rayon worker with an index-out-of-bounds. Native 64-bit is unaffected.
-2. `0002-arkworks-wasm-nested-pool.patch` — `msm_bigint_wnaf` in `ark-ec`
-   builds a nested `rayon::ThreadPoolBuilder` per chunk; `build()` panics on
-   `wasm32`, where wasm-bindgen-rayon provides exactly one fixed global pool.
-   Kept for the arkworks code still linked in; the Akita path does not
-   call it.
 3. `0003-jolt-akita-wasm-pool.patch` — `jolt-akita` runs every backend call
    on a dedicated rayon pool with 64 MiB worker stacks; `build()` panics on
    `wasm32`. The fix runs the closure on the global pool there, whose workers
@@ -323,7 +318,7 @@ that are not upstream yet, plus one device seam, shipped in `patches/`:
 9. `0009-jolt-tracer-wasm32-capacity.patch` — the tracer's initial reserve is 2^18 rows on wasm32 instead of 2^24 (1.5 GiB of linear memory, which cannot shrink).
 10. `0010-wasm-bindgen-rayon-worker-error.patch` — a pool worker that traps (an allocation failure aborts as `unreachable`) drops the error, and worker.js sits blocked in the prove call, so the page showed "Working" forever. The pool worker now posts the error on the `wasm_bindgen_rayon` BroadcastChannel tagged with its spawner's worker name; `WorkerClient` reports it as a prover trap. `bench/test_pool_worker_trap.py` covers it.
 
-`./setup-wasm-deps.sh` clones the four upstreams at the pinned revs into
+`./setup-wasm-deps.sh` clones the three patched upstreams at the pinned revs into
 `.wasm-deps/`, applies the patches, and rewrites the marked override block in
 `Cargo.toml` onto the patched checkouts. `./setup-wasm-deps.sh --revert`
 restores the pinned block.

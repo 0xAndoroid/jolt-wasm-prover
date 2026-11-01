@@ -10,13 +10,13 @@ help:
 # Format Rust, Python (bench/) and shell scripts
 fmt:
     cargo fmt -q --message-format=short
-    uvx ruff@0.16.9 format bench
+    uvx ruff@0.17.3 format bench
     shfmt -w {{ shell_files }}
 
 # Check formatting without modifying files
 fmt-check:
     cargo fmt -q --message-format=short -- --check
-    uvx ruff@0.16.9 format --check bench
+    uvx ruff@0.17.3 format --check bench
     shfmt -d {{ shell_files }}
 
 # Apply Clippy's suggested fixes to the native build (scripts/lint/rust.sh fix); extra args go to cargo
