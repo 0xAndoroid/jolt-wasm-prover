@@ -173,7 +173,7 @@ Offsets are zero-based. Both proofs verified
 This was deterministic platform dependence, not random blinding.
 
 Upstream [4ee5f2b2](https://github.com/arkworks-rs/spongefish/commit/4ee5f2b22a6ef628f7b6e162ab72cc285b9a850e)
-encodes both counters as `u64`; the root `Cargo.toml` pins Spongefish 0.7.3,
+encodes both counters as `u64`; the root `Cargo.toml` pins Spongefish 0.7.4,
 which includes that fix, in both native and patched-WASM builds. The shared
 SHA-256 proof is 81,731 bytes with digest
 `afe5b6cced775f1663e7c047ec27ccd0a1593cd9d8d717427018ec2312f5ed1d`.
