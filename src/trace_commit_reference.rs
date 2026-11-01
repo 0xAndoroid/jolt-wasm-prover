@@ -86,8 +86,10 @@ fn commit(job: &TraceCommitJob<'_>) -> Vec<u32> {
     let rows_per_ring = D / K;
     let a_plane = job
         .a_plane
-        .chunks_exact(4)
-        .map(read_u128)
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|limbs| read_u128(limbs))
         .collect::<Vec<_>>();
     let mut out = vec![0u32; shape.num_blocks * D * 4];
     out.par_chunks_exact_mut(D * 4)
@@ -100,7 +102,13 @@ fn commit(job: &TraceCommitJob<'_>) -> Vec<u32> {
             }
             let mut pos = vec![Wide::default(); D];
             let mut neg = vec![Wide::default(); D];
-            for (position, a_ring) in a_plane.chunks_exact(D).take(positions).enumerate() {
+            for (position, a_ring) in a_plane
+                .as_chunks::<D>()
+                .0
+                .iter()
+                .take(positions)
+                .enumerate()
+            {
                 for row_in_ring in 0..rows_per_ring {
                     let row = (trace_block * positions + position) * rows_per_ring + row_in_ring;
                     let hot = job.hot[row * columns + column];
@@ -116,7 +124,7 @@ fn commit(job: &TraceCommitJob<'_>) -> Vec<u32> {
                     }
                 }
             }
-            for ((out, pos), neg) in out.chunks_exact_mut(4).zip(&pos).zip(&neg) {
+            for ((out, pos), neg) in out.as_chunks_mut::<4>().0.iter_mut().zip(&pos).zip(&neg) {
                 let value = sub_mod(pos.fold(), neg.fold());
                 out[0] = value as u32;
                 out[1] = (value >> 32) as u32;
@@ -175,7 +183,7 @@ mod tests {
             .collect::<Vec<_>>();
         let masks = (0..shape.num_rows).map(|_| next() % 32).collect::<Vec<_>>();
         let mut a_plane = vec![0u32; shape.positions_per_block * D * 4];
-        for limbs in a_plane.chunks_exact_mut(4) {
+        for limbs in a_plane.as_chunks_mut::<4>().0 {
             let value = u128::from(next()) << 64 | u128::from(next());
             write_u128(limbs, if value >= P { value - P } else { value });
         }
@@ -211,7 +219,12 @@ mod tests {
             }
         }
         let mut expected_limbs = vec![0u32; expected.len() * 4];
-        for (limbs, &value) in expected_limbs.chunks_exact_mut(4).zip(&expected) {
+        for (limbs, &value) in expected_limbs
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(&expected)
+        {
             write_u128(limbs, value);
         }
 

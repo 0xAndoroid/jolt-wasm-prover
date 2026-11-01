@@ -42,7 +42,9 @@ impl RelationRangeDevice for CpuReferenceDevice {
         }
         let segments = job
             .segments
-            .chunks_exact(SEGMENT_BYTES)
+            .as_chunks::<SEGMENT_BYTES>()
+            .0
+            .iter()
             .map(|c| Segment {
                 source_lane: u32_at(c, 0) as usize,
                 source_index: u32_at(c, 4) as usize,
@@ -104,8 +106,10 @@ pub fn fields_from_bytes(bytes: &[u8]) -> Result<Vec<F>, AkitaError> {
         });
     }
     Ok(bytes
-        .chunks_exact(FIELD_BYTES)
-        .map(field_from_bytes)
+        .as_chunks::<FIELD_BYTES>()
+        .0
+        .iter()
+        .map(|c| field_from_bytes(c))
         .collect())
 }
 
@@ -215,7 +219,7 @@ pub fn round_terms(
                 a
             },
         );
-    for pair in pairs.chunks_exact(PAIR_BYTES) {
+    for pair in pairs.as_chunks::<PAIR_BYTES>().0 {
         let m = u32_at(pair, 0) as usize;
         let (l0, l1, b0, b1) = (
             field_from_bytes(&pair[16..32]),

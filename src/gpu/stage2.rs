@@ -425,8 +425,8 @@ impl Session {
             dst_w_off,
             wflags,
         ];
-        for (i, limb) in r.chunks_exact(4).enumerate() {
-            params[8 + i] = u32::from_le_bytes([limb[0], limb[1], limb[2], limb[3]]);
+        for (i, limb) in r.as_chunks::<4>().0.iter().enumerate() {
+            params[8 + i] = u32::from_le_bytes(*limb);
         }
         // Factored rounds bind the lane weights at 6 and need any live buffer as src.
         let round_binds = vec![
