@@ -15,7 +15,7 @@ Four guest programs are included:
 
 ## Prerequisites
 
-- Rust `1.95` stable (pinned via `rust-toolchain.toml`; the listed components and targets install on first use)
+- Rust `1.99` stable (pinned via `rust-toolchain.toml`; the listed components and targets install on first use)
 - The `jolt` CLI from the pinned jolt rev, on `PATH` (`cargo install --path . --bin jolt` inside an a16z/jolt checkout at that rev) — `generate-preprocessing` compiles the guests through it
 - `wasm-pack`: `curl https://drager.github.io/wasm-pack/installer/init.sh -sSf | bash`
 - Node.js (for the dev server)

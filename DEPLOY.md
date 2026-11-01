@@ -7,7 +7,7 @@ static output is uploaded.
 
 ## Redeploy checklist
 
-1. Prerequisites: the toolchain from `rust-toolchain.toml` (stable 1.95 + `rust-src` +
+1. Prerequisites: the toolchain from `rust-toolchain.toml` (stable 1.99 + `rust-src` +
    `wasm32-unknown-unknown`, installed by rustup on first `cargo` run), `wasm-pack`,
    Node.js ≥ 20 with npm, `wrangler` (`npm i -g wrangler`, `wrangler login`; the
    Playwright smoke needs `uv` and `uv run --with playwright python -m playwright install webkit chromium`).

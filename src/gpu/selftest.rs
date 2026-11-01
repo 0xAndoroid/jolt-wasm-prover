@@ -121,12 +121,10 @@ pub fn run() -> Result<GpuReport, GpuError> {
     let selftest_ms = now_ms() - t1;
 
     let mut mismatches = 0u32;
-    for (i, chunk) in out.chunks_exact(16).enumerate() {
+    for (i, chunk) in out.as_chunks::<16>().0.iter().enumerate() {
         let expected = AkitaField::from_u128_reduced(a[i]) * AkitaField::from_u128_reduced(b[i])
             + AkitaField::from_u128_reduced(c[i]);
-        let mut le = [0u8; 16];
-        le.copy_from_slice(chunk);
-        if u128::from_le_bytes(le) != expected.to_canonical_u128() {
+        if u128::from_le_bytes(*chunk) != expected.to_canonical_u128() {
             mismatches += 1;
         }
     }
