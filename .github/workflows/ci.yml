@@ -4,9 +4,12 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    - cron: '37 8 * * *'
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -48,6 +51,13 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: scripts/lint/rust.sh native
+      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-nextest@0.9.146
+      - name: Native test suite
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: cargo nextest run --cargo-quiet --locked --release --features native --no-tests fail
       - if: always()
         run: echo "rust-native wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
@@ -69,6 +79,13 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: scripts/lint/rust.sh device
+      - if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: cargo-nextest@0.9.146
+      - name: Native test suite with device features
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: cargo nextest run --cargo-quiet --locked --release --features native,trace-commit-device,digit-range-device,relation-range-device --no-tests fail
       - if: always()
         run: echo "rust-device wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
@@ -80,6 +97,21 @@ jobs:
     steps:
       - run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+      - name: Select browser checks
+        id: browser
+        if: github.event_name != 'push'
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            changed=$(git diff --name-only --no-renames HEAD^1 HEAD)
+            non_docs=$(git diff --name-only --no-renames HEAD^1 HEAD -- . ':(exclude,glob)*.md' ':(exclude,glob)docs/**/*.md')
+            if [[ -n "$changed" && -z "$non_docs" ]]; then
+              echo 'Browser smoke not selected: Markdown-only change.' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          fi
+          echo 'selected=true' >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99
         with:
           components: clippy,rust-src
@@ -91,6 +123,44 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: scripts/lint/rust.sh wasm
+      - if: steps.browser.outputs.selected == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - if: steps.browser.outputs.selected == 'true'
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - if: steps.browser.outputs.selected == 'true'
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
+        with:
+          tool: wasm-pack@0.15.0
+      - name: Build browser package
+        if: steps.browser.outputs.selected == 'true'
+        env:
+          RUSTC_BOOTSTRAP: 1
+          CARGO_UNSTABLE_BUILD_STD: panic_abort,std
+        run: |
+          wasm-pack build --release --target web -- --features webgpu,trace-commit-device,digit-range-device,relation-range-device
+          npm ci --ignore-scripts --prefix frontend
+          npm run build --prefix frontend
+      - name: Run browser checks
+        if: steps.browser.outputs.selected == 'true'
+        timeout-minutes: ${{ github.event_name == 'pull_request' && 3 || 25 }}
+        run: |
+          node server.mjs &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          curl --fail --silent --show-error --retry 10 --retry-connrefused http://127.0.0.1:8080/ >/dev/null
+          uv run --with playwright==1.64.1 bash -e <<'BROWSER'
+          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+            playwright install --with-deps chromium
+            python bench/test_ui_modes.py --smoke
+          else
+            playwright install --with-deps chromium webkit
+            python bench/test_ui_modes.py
+          fi
+          BROWSER
       - if: always()
         run: echo "rust-wasm wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
@@ -111,12 +181,11 @@ jobs:
         run: echo "shell-python wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
   ci:
-    # always(), not !cancelled(): a skipped required check counts as passing, and
-    # a cancelled run must still reach the exit 1 below.
+    # GitHub accepts skipped required checks, so the aggregate must still run.
     if: always()
     needs: [frontend, rust-native, rust-device, rust-wasm, shell-python]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled'))
+      - if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped'))
         run: exit 1
