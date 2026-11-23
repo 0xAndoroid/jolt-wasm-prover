@@ -1,4 +1,3 @@
-// Shared declarations for the one-hot commit accumulate prototype.
 // Field p = 2^128 - C, C = 0xFFFFA7F7. Canonical fp128 = 4 x u32 little-endian limbs.
 // Accumulators are 8 x u32 holding 16-bit digits (L[k] = sum of digit k of every term),
 // exact for <= 65536 terms (65536 * 0xFFFF < 2^32).

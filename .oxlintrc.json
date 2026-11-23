@@ -30,14 +30,12 @@
     "unicorn/prefer-add-event-listener": "off",
     // The GPU opcode dispatcher follows the mailbox ABI in a single switch.
     "eslint/max-depth": "off",
-    // Restriction-category rules worth having (the category itself is opt-in noise).
     "typescript/no-explicit-any": "error",
     "typescript/no-non-null-assertion": "error",
     "eslint/no-eval": "error",
     "eslint/no-implied-eval": "error",
     "eslint/no-var": "error",
     "eslint/prefer-const": "error",
-    // Strict typed rules outside the enabled categories.
     "typescript/use-unknown-in-catch-callback-variable": "error",
     "typescript/no-invalid-void-type": "error",
     "typescript/no-dynamic-delete": "error",
@@ -48,7 +46,6 @@
     "typescript/prefer-return-this-type": "error",
     // Feature probes test browser capabilities that ambient types cannot guarantee.
     "typescript/no-unnecessary-condition": "off",
-    // `== null` / `!= null` is the idiomatic nullish check; every other comparison is strict.
     "eslint/eqeqeq": ["error", "always", { "null": "ignore" }],
     // Not in typescript-eslint's strict preset either: it would wrap every DOM/payload parameter in Readonly<>.
     "typescript/prefer-readonly-parameter-types": "off",

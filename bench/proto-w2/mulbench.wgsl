@@ -1,4 +1,3 @@
-// fp128 mul throughput: each thread runs ppt dependent muls on a pseudo-random pair, writes the result.
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) g: vec3<u32>) {
   let i = g.x;

@@ -70,7 +70,6 @@ fn main(@builtin(local_invocation_id) l: vec3<u32>, @builtin(workgroup_id) w: ve
         L = fold(w_src(4u * j), w_src(4u * j + 1u));
         R = fold(w_src(4u * j + 2u), w_src(4u * j + 3u));
       }
-      // The folded witness has ceil(live_len / 2) entries; nothing is written past it.
       let dst_len = (params.live_len + 1u) / 2u;
       if (2u * j < dst_len) { dst[params.dst_w_off + 2u * j] = L; }
       if (2u * j + 1u < dst_len) { dst[params.dst_w_off + 2u * j + 1u] = R; }

@@ -5,5 +5,4 @@ frontend/dist
 .wasm-deps
 __pycache__/
 
-# agent journals are obsolete (task-audit .audit/ replaces them)
 .journals/

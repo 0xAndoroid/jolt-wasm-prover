@@ -65,7 +65,7 @@ window.result = (async () => {
   const bgPrep = bg(prep.pipeline, [bufParams, bufA, bufA2]);
   const bgMain = bg(main.pipeline, [bufParams, bufA2, bufHot, bufPart]);
   const bgReduce = bg(reduce.pipeline, [bufParams, bufPart, bufRes]);
-  const disp = cfg.dispatch; // [x,y,z] for main
+  const disp = cfg.dispatch;
 
   const nPass = 3;
   const qs = hasTs ? device.createQuerySet({ type: 'timestamp', count: 2 * nPass }) : null;
@@ -92,7 +92,6 @@ window.result = (async () => {
   device.queue.submit([encodeRun(false)]);
   await device.queue.onSubmittedWorkDone();
 
-  // GPU timestamps: one timed run per repeat (each has its own resolve/readback).
   const gpuMs = { prep: [], main: [], reduce: [] };
   for (let rep = 0; rep < cfg.repeat && hasTs; rep++) {
     device.queue.submit([encodeRun(true)]);
@@ -103,7 +102,6 @@ window.result = (async () => {
     gpuMs.prep.push(ns(0)); gpuMs.main.push(ns(1)); gpuMs.reduce.push(ns(2));
   }
 
-  // Wall: a batch of `repeat` identical runs submitted back to back.
   const t0 = performance.now();
   for (let rep = 0; rep < cfg.repeat; rep++) device.queue.submit([encodeRun(false)]);
   await device.queue.onSubmittedWorkDone();

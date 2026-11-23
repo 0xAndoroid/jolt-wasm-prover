@@ -118,7 +118,6 @@ fn fp128_sub(a: vec4<u32>, b: vec4<u32>) -> vec4<u32> {
 }
 
 fn fp128_mul(a: vec4<u32>, b: vec4<u32>) -> vec4<u32> {
-    // Schoolbook 4x4 limbs, column by column, into t0..t7.
     var acc = vec3<u32>(0u, 0u, 0u);
     mac(&acc, a.x, b.x);
     let t0 = shift_column(&acc);

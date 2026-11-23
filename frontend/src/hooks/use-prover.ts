@@ -260,7 +260,6 @@ export function useProver() {
     clientRef.current = client
 
     const numThreads = Math.min(navigator.hardwareConcurrency || 6, 8)
-    // GPU unless the user chose CPU; the worker reports why when it cannot.
     const gpu = storedMode() !== 'cpu'
     client.send({ type: 'init', data: { numThreads, cacheBust: CACHE_BUST, gpu } })
 

@@ -119,7 +119,7 @@ if [[ "${1:-}" == "--revert" ]]; then
     exit 0
 fi
 
-fetch_at_rev() { # fetch_at_rev <dir> <url> <rev>
+fetch_at_rev() {
     local dir=$1 url=$2 rev=$3
     /bin/rm -rf "$dir"
     mkdir -p "$dir"

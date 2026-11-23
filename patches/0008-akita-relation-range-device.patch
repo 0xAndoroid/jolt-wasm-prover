@@ -46,14 +46,13 @@ index 7473241..9bcbac4 100644
          return Err(AkitaError::InvalidInput(
              "stage-2 prover final claim disagrees with its folded oracle".into(),
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/additional_terms.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/additional_terms.rs
-index e82d0a1..a9d596e 100644
+index e82d0a1..d84623b 100644
 --- a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/additional_terms.rs
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/additional_terms.rs
-@@ -175,6 +175,58 @@ impl<E: Field + Ring> AdditionalRelationTerms<E> {
+@@ -175,6 +175,57 @@ impl<E: Field + Ring> AdditionalRelationTerms<E> {
          self.input_claim
      }
  
-+    /// Add the linear weights into a flat table over the current domain.
 +    pub(crate) fn add_linear_into(&self, out: &mut [E]) {
 +        for weight in &self.weights {
 +            if let Some(slot) = out.get_mut(weight.index) {
@@ -110,10 +109,10 @@ index e82d0a1..a9d596e 100644
      /// For one folded pair, write `w(t) = w0 + t dw`, and likewise for the
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device.rs
 new file mode 100644
-index 0000000..5301f64
+index 0000000..71fa052
 --- /dev/null
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device.rs
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,192 @@
 +//! Optional device seam for the stage-2 relation-range sumcheck rounds.
 +//!
 +//! A [`RelationRangeDevice`] may take the first rounds of one instance. It
@@ -296,7 +295,6 @@ index 0000000..5301f64
 +        .collect())
 +}
 +
-+/// Device state of one prover while its rounds run on the device.
 +pub(super) struct DeviceRounds<E: Field> {
 +    pub(super) session: Option<Box<dyn RelationRangeSession>>,
 +    pub(super) rounds: usize,
@@ -309,10 +307,10 @@ index 0000000..5301f64
 +}
 diff --git a/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs
 new file mode 100644
-index 0000000..453cf61
+index 0000000..53f1746
 --- /dev/null
 +++ b/crates/akita-prover/src/protocol/sumcheck/relation_range_image/device_flow.rs
-@@ -0,0 +1,416 @@
+@@ -0,0 +1,415 @@
 +use super::device::{
 +    field_from_bytes, field_to_bytes, fields_from_bytes, fields_to_bytes, installed_device,
 +    parity_rounds, DeviceRounds, RelationRangeJob, RelationRangeShape, RoundInput, WeightsKind,
@@ -331,7 +329,6 @@ index 0000000..453cf61
 +    Cpu(Option<(Vec<E>, Vec<E>)>),
 +}
 +
-+/// One device round as the host consumes it.
 +pub(super) struct DeviceRound<E: Field> {
 +    pub(super) virt: NormRoundTerms<E>,
 +    pub(super) rel: [E; 3],

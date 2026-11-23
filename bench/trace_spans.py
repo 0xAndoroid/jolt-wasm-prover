@@ -65,7 +65,6 @@ def main():
             msg = a.pop("message")
             print(f"  {e['ts'] / 1e6:8.3f}s {msg} " + " ".join(f"{k}={v}" for k, v in a.items()))
 
-    # Per-level stage2: rounds nested inside each stage2_sumcheck span (same tid, by time).
     stage2 = sorted([(s, e, tid) for name, tid, s, e, _ in spans if name == "stage2_sumcheck"])
     rounds = [(s, e, tid, a) for name, tid, s, e, a in spans if name == "sumcheck_round"]
     [

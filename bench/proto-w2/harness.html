@@ -109,7 +109,7 @@ window.result = (async () => {
     // Per-round plan (precreated: params buffers + bind groups; only r is written per round).
     const plan = [];
     for (let k = 0; k < R; k++) {
-      const e = inst.eq_rounds[k]; // {inner_bits, off_first, off_second}
+      const e = inst.eq_rounds[k];
       const inner = 1 << e.inner_bits;
       const base = { inner_bits: e.inner_bits, off_first: e.off_first, off_second: e.off_second, packed: inst.packed ? 1 : 0 };
       let steps = [];

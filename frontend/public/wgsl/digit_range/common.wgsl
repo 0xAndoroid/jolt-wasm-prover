@@ -35,7 +35,6 @@ fn fp128_from_digits(d0: u32, d1: u32, d2: u32, d3: u32, d4: u32, d5: u32, d6: u
 @group(0) @binding(2) var<storage, read> eq: array<vec4<u32>>;
 @group(0) @binding(3) var<storage, read_write> partials: array<vec4<u32>>;
 
-// ---------- digit source: 8 classes (2 bits each) of octet o ----------
 // PackedSignedDigits codec: digit i occupies bits [i*bw, (i+1)*bw) LSB-first, two's complement.
 fn octet_classes(o: u32) -> u32 {
   let bw = params.bit_width;
@@ -56,7 +55,6 @@ fn octet_classes(o: u32) -> u32 {
 
 const RANGE_V = array<u32, 4>(0u, 2u, 6u, 12u);
 
-// ---------- round polynomial coefficients of Q(L + D X) ----------
 fn entry_coeffs(L: vec4<u32>, D: vec4<u32>) -> array<vec4<u32>, 5> {
   let twice = fp128_add(L, L);
   let four = fp128_add(twice, twice);
@@ -77,7 +75,6 @@ fn entry_coeffs(L: vec4<u32>, D: vec4<u32>) -> array<vec4<u32>, 5> {
   return out;
 }
 
-// ---------- workgroup reduce of 5 coefficients -> partials[wg*5 + c] ----------
 var<workgroup> red: array<vec4<u32>, 1280>; // 256 x 5
 
 fn wg_reduce_store(acc: array<vec4<u32>, 5>, lid: u32, wg: u32) {
