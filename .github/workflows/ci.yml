@@ -16,7 +16,59 @@ permissions:
   contents: read
 
 jobs:
+  nightly-preflight:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      actions: read
+    outputs:
+      decision: ${{ steps.history.outputs.decision }}
+    steps:
+      - name: Compare with the last completed nightly
+        id: history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          actions="repos/$GITHUB_REPOSITORY/actions"
+          prior_sha=
+          if identity=$(timeout 20s gh api "$actions/runs/$GITHUB_RUN_ID" |
+            jq -er --argjson id "$GITHUB_RUN_ID" --arg sha "$GITHUB_SHA" '
+              select(.id == $id and .path == ".github/workflows/ci.yml" and
+                     .event == "schedule" and .head_branch == "main" and .head_sha == $sha and
+                     (.workflow_id | type) == "number" and (.created_at | fromdateiso8601) > 0)
+              | [.workflow_id, .created_at] | @tsv
+            '); then
+            IFS=$'\t' read -r workflow created <<< "$identity"
+            prior_sha=$(timeout 20s gh api -X GET "$actions/workflows/$workflow/runs" \
+              -f event=schedule -f branch=main -f status=completed -f created="<$created" -F per_page=30 |
+              jq -er --argjson workflow "$workflow" --argjson id "$GITHUB_RUN_ID" \
+                --argjson number "$GITHUB_RUN_NUMBER" --arg created "$created" '
+                  select((.workflow_runs | type) == "array" and (.total_count | type) == "number" and
+                         (.workflow_runs | length) == ([.total_count, 30] | min) and
+                         all(.workflow_runs[];
+                           ([.id, .workflow_id, .run_number] | all(type == "number")) and
+                           ([.event, .head_branch, .status] | all(type == "string")) and
+                           (.status != "completed" or (.conclusion | type) == "string")))
+                  | [.workflow_runs[] | select(.workflow_id == $workflow and .id != $id and .run_number < $number and
+                    .head_branch == "main" and .event == "schedule" and .status == "completed" and
+                    (.conclusion == "success" or .conclusion == "failure") and
+                    (.created_at | fromdateiso8601) < ($created | fromdateiso8601) and
+                    (.updated_at | fromdateiso8601) < ($created | fromdateiso8601))]
+                  | max_by(.run_number) | .head_sha // empty
+                ') || prior_sha=
+          fi
+          decision=run
+          if [[ "$prior_sha" =~ ^[0-9a-f]{40}$ && "$prior_sha" == "$GITHUB_SHA" ]]; then
+            decision=skip
+            echo "Skipping suites: SHA $prior_sha matches the last completed nightly." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "decision=$decision" >> "$GITHUB_OUTPUT"
+
   frontend:
+    needs: nightly-preflight
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || needs.nightly-preflight.outputs.decision == 'run') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -36,6 +88,8 @@ jobs:
         run: echo "frontend wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
   rust-native:
+    needs: nightly-preflight
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || needs.nightly-preflight.outputs.decision == 'run') }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 45 }}
     env:
@@ -62,6 +116,8 @@ jobs:
         run: echo "rust-native wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
   rust-device:
+    needs: nightly-preflight
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || needs.nightly-preflight.outputs.decision == 'run') }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 45 }}
     env:
@@ -90,6 +146,8 @@ jobs:
         run: echo "rust-device wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
   rust-wasm:
+    needs: nightly-preflight
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || needs.nightly-preflight.outputs.decision == 'run') }}
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 45 }}
     env:
@@ -166,6 +224,8 @@ jobs:
         run: echo "rust-wasm wall $(( $(date +%s) - JOB_START ))s" >> "$GITHUB_STEP_SUMMARY"
 
   shell-python:
+    needs: nightly-preflight
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || needs.nightly-preflight.outputs.decision == 'run') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -184,9 +244,21 @@ jobs:
   ci:
     # GitHub accepts skipped required checks, so the aggregate must still run.
     if: always()
-    needs: [frontend, rust-native, rust-device, rust-wasm, shell-python]
+    needs: [nightly-preflight, frontend, rust-native, rust-device, rust-wasm, shell-python]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - if: always() && (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped'))
-        run: exit 1
+      - if: always()
+        env:
+          JOBS: ${{ toJSON(needs) }}
+        run: |
+          jq -e --arg event "$GITHUB_EVENT_NAME" '
+            .["nightly-preflight"] as $preflight
+            | del(.["nightly-preflight"])
+            | if keys != ["frontend", "rust-device", "rust-native", "rust-wasm", "shell-python"] then false
+              elif $event != "schedule" then all(.[]; .result == "success")
+              elif $preflight.result != "success" then false
+              elif $preflight.outputs.decision == "skip" then all(.[]; .result == "skipped")
+              elif $preflight.outputs.decision == "run" then all(.[]; .result == "success")
+              else false end
+          ' <<< "$JOBS"
