@@ -90,10 +90,11 @@ def prove(page):
 
 
 def verify(page, label):
-    page.locator(f"{PANEL} .verify-btn").click()
-    # "Invalid" does not contain "Valid" (lowercase v); wait for either so a bad proof fails fast
-    page.wait_for_function(f"() => /Valid|Invalid/.test(document.querySelector('{PANEL}')?.innerText || '')")
-    check("Invalid" not in page.locator(PANEL).inner_text(), f"{label}: proof verified in the UI")
+    panel = page.locator(PANEL)
+    panel.locator(".verify-btn").click()
+    result = panel.get_by_text(re.compile(r"^(Valid|Invalid)$"))
+    result.wait_for()
+    check(result.inner_text() == "Valid", f"{label}: proof verified in the UI")
 
 
 def select_tab(page, name):
@@ -121,9 +122,23 @@ def main():
     ap.add_argument("--url", default=os.environ.get("BENCH_URL", "http://localhost:8080"))
     ap.add_argument("--shots", default=None, help="directory for 375/1440 px screenshots")
     ap.add_argument("--iters", type=int, default=17, help="sha2-chain iterations for the dead-proxy prove")
+    ap.add_argument("--smoke", action="store_true", help="prove and verify SHA-256 in Chromium CPU mode only")
     args = ap.parse_args()
 
     with sync_playwright() as p:
+        if args.smoke:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(args.url, wait_until="domcontentloaded")
+            wait_ready(page)
+            mode_button(page, name="CPU only").click()
+            select_tab(page, "SHA-256")
+            _, mode = prove(page)
+            check(mode == "cpu", "SHA-256 proof ran in CPU mode")
+            verify(page, "SHA-256 CPU")
+            browser.close()
+            return
+
         browser = p.webkit.launch(headless=True)
         context = browser.new_context(viewport={"width": 1440, "height": 900})
         context.set_default_timeout(600_000)
