@@ -43,7 +43,8 @@ jobs:
               -f event=schedule -f branch=main -f status=completed -f created="<$created" -F per_page=30 |
               jq -er --argjson workflow "$workflow" --argjson id "$GITHUB_RUN_ID" \
                 --argjson number "$GITHUB_RUN_NUMBER" --arg created "$created" '
-                  select((.workflow_runs | length) == ([.total_count, 30] | min))
+                  select((.workflow_runs | length) == ([.total_count, 30] | min) and
+                         all(.workflow_runs[]; (.run_number | type) == "number"))
                   | [.workflow_runs[] | select(.workflow_id == $workflow and .id != $id and .run_number < $number and
                     .head_branch == "main" and .event == "schedule" and .status == "completed" and
                     (.conclusion == "success" or .conclusion == "failure") and
