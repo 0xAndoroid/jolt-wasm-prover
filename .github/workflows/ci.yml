@@ -31,65 +31,32 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          [[ "$GITHUB_REF" == refs/heads/main && "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
           actions="repos/$GITHUB_REPOSITORY/actions"
-          current=$(gh api "$actions/runs/$GITHUB_RUN_ID")
-          identity=$(jq -er --arg id "$GITHUB_RUN_ID" --arg number "$GITHUB_RUN_NUMBER" \
-            --arg sha "$GITHUB_SHA" --arg branch "$GITHUB_REF_NAME" '
-              select((.id | tostring) == $id and (.run_number | tostring) == $number and
-                     .head_sha == $sha and .head_branch == $branch and .event == "schedule" and
-                     .path == ".github/workflows/ci.yml" and (.workflow_id | type) == "number" and
-                     (.created_at | fromdateiso8601) > 0)
+          prior_sha=
+          if identity=$(gh api "$actions/runs/$GITHUB_RUN_ID" | jq -er --arg sha "$GITHUB_SHA" '
+              select(.event == "schedule" and .head_branch == "main" and .head_sha == $sha and
+                     (.workflow_id | type) == "number" and (.created_at | fromdateiso8601) > 0)
               | [.workflow_id, .created_at] | @tsv
-            ' <<< "$current")
-          IFS=$'\t' read -r workflow created <<< "$identity"
-          history=$(gh api -X GET "$actions/workflows/$workflow/runs" \
-            -f event=schedule -f branch="$GITHUB_REF_NAME" -f status=completed -f created="<$created" -F per_page=30)
-          candidates=$(jq -r --argjson workflow "$workflow" --argjson id "$GITHUB_RUN_ID" \
-            --argjson number "$GITHUB_RUN_NUMBER" --arg branch "$GITHUB_REF_NAME" --arg created "$created" '
-              def sha: type == "string" and test("^[0-9a-f]{40}$");
-              def number: type == "number" and . >= 1 and . == floor;
-              if (.workflow_runs | type) != "array" or (.total_count | type) != "number" or
-                 (.workflow_runs | length) != ([.total_count, 30] | min) then error("Invalid workflow run response")
-              else .workflow_runs end
-              | map(if (.id | number) and (.run_number | number) and (.run_attempt | number) and
-                       (.head_sha | sha) and (.created_at | fromdateiso8601) > 0 and
-                       (.updated_at | fromdateiso8601) > 0 and
-                       (.status != "completed" or (.conclusion | type) == "string") and
-                       (.workflow_id | number) and (.event | type) == "string" and
-                       (.head_branch | type) == "string" and (.status | type) == "string"
-                    then . else error("Invalid workflow run record") end)
-              | map(select(.workflow_id == $workflow and .id != $id and .run_number < $number and
-                           .head_branch == $branch and .event == "schedule" and .status == "completed" and
-                           .created_at < $created and .updated_at < $created and
-                           (.conclusion == "success" or .conclusion == "failure")))
-              | sort_by(.run_number) | reverse[] | [.id, .run_attempt, .head_sha, .conclusion] | @tsv
-            ' <<< "$history")
-
+            '); then
+            IFS=$'\t' read -r workflow created <<< "$identity"
+            prior_sha=$(gh api -X GET "$actions/workflows/$workflow/runs" \
+              -f event=schedule -f branch=main -f status=completed -f created="<$created" -F per_page=30 |
+              jq -er --argjson workflow "$workflow" --argjson id "$GITHUB_RUN_ID" \
+                --argjson number "$GITHUB_RUN_NUMBER" --arg created "$created" '
+                  select((.workflow_runs | length) == ([.total_count, 30] | min))
+                  | [.workflow_runs[] | select(.workflow_id == $workflow and .id != $id and .run_number < $number and
+                    .head_branch == "main" and .event == "schedule" and .status == "completed" and
+                    (.conclusion == "success" or .conclusion == "failure") and
+                    (.created_at | fromdateiso8601) < ($created | fromdateiso8601) and
+                    (.updated_at | fromdateiso8601) < ($created | fromdateiso8601))]
+                  | max_by(.run_number) | .head_sha // empty
+                ') || prior_sha=
+          fi
           decision=run
-          while IFS=$'\t' read -r id attempt sha conclusion; do
-            [[ -n "$id" ]] || break
-            if [[ "$conclusion" == failure ]]; then
-              jobs=$(gh api -X GET "$actions/runs/$id/attempts/$attempt/jobs" -F per_page=100)
-              finished=$(jq -er --argjson attempt "$attempt" '
-                if (.jobs | type) != "array" or (.jobs | length) != .total_count or
-                   any(.jobs[]; (.name | type) != "string" or (.steps | type) != "array" or
-                                (.conclusion | type) != "string" or .run_attempt != $attempt)
-                then error("Invalid workflow job response") else .jobs end
-                | map(select(.name != "nightly-preflight"))
-                | if map(.name) | sort == ["ci", "frontend", "rust-device", "rust-native", "rust-wasm", "shell-python"]
-                  then all(.[]; (.conclusion == "success" or .conclusion == "failure") and
-                                all(.steps[]; .conclusion != "cancelled" and .conclusion != "timed_out"))
-                  else false end | tostring
-              ' <<< "$jobs")
-              [[ "$finished" == true ]] || continue
-            fi
-            if [[ "$sha" == "$GITHUB_SHA" ]]; then
-              decision=skip
-              echo "Skipping suites: SHA $sha already covered by scheduled run $id." >> "$GITHUB_STEP_SUMMARY"
-            fi
-            break
-          done <<< "$candidates"
+          if [[ "$prior_sha" =~ ^[0-9a-f]{40}$ && "$prior_sha" == "$GITHUB_SHA" ]]; then
+            decision=skip
+            echo "Skipping suites: SHA $prior_sha matches the last completed nightly." >> "$GITHUB_STEP_SUMMARY"
+          fi
           echo "decision=$decision" >> "$GITHUB_OUTPUT"
 
   frontend:
