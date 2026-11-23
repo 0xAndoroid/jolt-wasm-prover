@@ -34,7 +34,6 @@ P = (1 << 128) - C
 MASK32 = (1 << 32) - 1
 
 SHAPES = {
-    # T rows, real columns, column_capacity, blocks_per_column, positions_per_block
     "small": {"T": 8192, "cols": 8, "colcap": 8, "blocks": 4, "positions": 64},
     "full": {"T": 262144, "cols": 57, "colcap": 64, "blocks": 4, "positions": 2048},
     # digit-accumulator bound: 2048 positions x 32 rows, every row committed, A = p-1 everywhere -> coefficient 511
@@ -59,7 +58,7 @@ def gen_data(shape, seed):
     rng = np.random.default_rng(seed)
     T, cols, colcap, blocks, pos = (shape[k] for k in ("T", "cols", "colcap", "blocks", "positions"))
     assert blocks * pos * 32 == T
-    pm1 = np.array([0x5808, MASK32, MASK32, MASK32], dtype=np.uint32)  # p - 1
+    pm1 = np.array([0x5808, MASK32, MASK32, MASK32], dtype=np.uint32)
     if shape is SHAPES["stress"]:
         A = np.broadcast_to(pm1, (pos, 512, 4)).copy()
         hot = rng.integers(0, 16, size=(T, cols), dtype=np.uint8)

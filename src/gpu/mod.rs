@@ -35,7 +35,6 @@ pub mod trace_commit;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 
-/// `performance.now()` (falls back to `Date.now()`), shared by the drivers.
 #[cfg(all(target_arch = "wasm32", feature = "webgpu"))]
 fn now_ms() -> f64 {
     use wasm_bindgen::JsCast;
@@ -107,7 +106,6 @@ pub fn stage2_enabled() -> bool {
     STAGE2_ENABLED.load(Ordering::SeqCst)
 }
 
-/// What a prove run learned about the GPU before doing any field work.
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct GpuReport {
     /// `disabled` | `unavailable` | `ok` | `error: …`

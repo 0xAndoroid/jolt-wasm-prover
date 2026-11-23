@@ -114,7 +114,6 @@ pub fn install_once() {
     });
 }
 
-/// Largest power of two ≤ 8 keeping ≥ `UNITS_PER_THREAD_TARGET` threads busy.
 fn units_per_thread(units: u32) -> u32 {
     let mut ppt = 8;
     while ppt > 1 && units < UNITS_PER_THREAD_TARGET * ppt {
@@ -133,7 +132,6 @@ struct Layout {
 }
 
 impl Layout {
-    /// Does round `k`'s destination table carry a flat weight region?
     fn has_p(&self, k: u32) -> bool {
         match self.kind {
             WeightsKind::Dense => k >= 1,
@@ -606,7 +604,6 @@ impl RelationRangeSession for Session {
     }
 }
 
-/// Device rounds: leave a `2^CPU_TAIL_BITS` domain to the CPU.
 fn gpu_rounds(shape: &RelationRangeShape) -> usize {
     shape.domain_len.ilog2().saturating_sub(CPU_TAIL_BITS) as usize
 }

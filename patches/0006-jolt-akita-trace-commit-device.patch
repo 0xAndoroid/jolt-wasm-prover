@@ -68,10 +68,10 @@ index 1d2255f..68be7fb 100644
              blocks_per_column * plan.num_positions_per_block,
 diff --git a/crates/jolt-akita/src/trace_onehot/device.rs b/crates/jolt-akita/src/trace_onehot/device.rs
 new file mode 100644
-index 0000000..eec2495
+index 0000000..1a15ccf
 --- /dev/null
 +++ b/crates/jolt-akita/src/trace_onehot/device.rs
-@@ -0,0 +1,214 @@
+@@ -0,0 +1,212 @@
 +//! Device seam for the stage-0 packed one-hot trace commit.
 +//!
 +//! An installed [`TraceCommitDevice`] receives the flat trace selectors and
@@ -98,7 +98,6 @@ index 0000000..eec2495
 +pub struct TraceCommitShape {
 +    pub one_hot_k: usize,
 +    pub ring_dimension: usize,
-+    /// Trace rows `T`.
 +    pub num_rows: usize,
 +    /// Semantic columns `C`; columns `C..column_capacity` are padding.
 +    pub num_columns: usize,
@@ -114,7 +113,6 @@ index 0000000..eec2495
 +    pub num_blocks: usize,
 +}
 +
-+/// Inputs of one trace commit in device-friendly flat layouts.
 +pub struct TraceCommitJob<'a> {
 +    pub shape: TraceCommitShape,
 +    /// `num_rows * num_columns` row-major selected one-hot rows. Zero means

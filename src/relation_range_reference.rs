@@ -16,7 +16,6 @@ use jolt_akita::{AkitaError, AkitaField as F};
 use jolt_field::{CanonicalEncoding, One, Ring, Zero};
 use rayon::prelude::*;
 
-/// Hand the CPU a `2^CPU_TAIL_BITS`-entry domain.
 const CPU_TAIL_BITS: u32 = 12;
 
 pub struct CpuReferenceDevice;

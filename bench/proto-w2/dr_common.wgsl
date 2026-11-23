@@ -8,7 +8,7 @@ struct Params {
   inner_bits: u32,   // log2 |E_first| for this round (pair index j: j_low = j & (inner-1), j_high = j >> inner_bits)
   off_first: u32,    // offset of this round's E_first table in eq[]
   off_second: u32,   // offset of this round's E_second table in eq[]
-  ppt: u32,          // units per thread
+  ppt: u32,
   packed: u32,       // 0: digits as i8 bytes, 1: 3-bit packed (w+4), 8 digits per 24 bits
   src_mode: u32,     // field kernel: 0 = fold prev table, 1 = materialize from octets via LUT2f, 2 = round 2 (LUT2f lookup, no table write); lut kernel: 0 = LUT1, 1 = LUT2f
   _pad: u32,
@@ -69,7 +69,6 @@ fn fp128_from_digits(d0: u32, d1: u32, d2: u32, d3: u32, d4: u32, d5: u32, d6: u
 @group(0) @binding(7) var<storage, read_write> lut_out: array<vec4<u32>>;
 @group(0) @binding(8) var<storage, read_write> out: array<vec4<u32>>;
 
-// ---------- digit source: 8 classes (2 bits each) of octet o ----------
 
 fn class_of_i8(b: u32) -> u32 {  // b = byte (two's complement i8)
   let neg = (b & 0x80u) != 0u;
@@ -103,7 +102,6 @@ fn octet_classes(o: u32) -> u32 {
 
 const RANGE_V = array<u32, 4>(0u, 2u, 6u, 12u);
 
-// ---------- round polynomial coefficients of Q(L + D X) ----------
 fn entry_coeffs(L: vec4<u32>, D: vec4<u32>) -> array<vec4<u32>, 5> {
   let twice = fp128_add(L, L);
   let four = fp128_add(twice, twice);
@@ -124,7 +122,6 @@ fn entry_coeffs(L: vec4<u32>, D: vec4<u32>) -> array<vec4<u32>, 5> {
   return out;
 }
 
-// ---------- workgroup reduce of 5 coefficients -> partials[wg*5 + c] ----------
 var<workgroup> red: array<vec4<u32>, 1280>; // 256 x 5
 
 fn wg_reduce_store(acc: array<vec4<u32>, 5>, lid: u32, wg: u32) {

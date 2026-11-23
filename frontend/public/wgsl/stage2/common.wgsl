@@ -51,14 +51,11 @@ fn fp_signed(k: i32) -> vec4<u32> {
   return select(fp_small(u32(k)), fp128_sub(ZERO4, fp_small(u32(-k))), k < 0);
 }
 
-// a + r (b - a)
 fn fold(a: vec4<u32>, b: vec4<u32>) -> vec4<u32> { return fp128_add(a, fp128_mul(params.r, fp128_sub(b, a))); }
-// w0 + r (w1 - w0) for small signed digits
 fn fold_digits(w0: i32, w1: i32) -> vec4<u32> {
   return fp128_add(fp_signed(w0), fp128_mul_signed(params.r, u32(w1 - w0)));
 }
 
-// ---------- thread -> units mapping (blocks of units sharing one E_second entry) ----------
 // The host clamps ppt <= |E_first|, so a thread's ppt units always sit in one block.
 struct Map { unit0: u32, stride: u32, count: u32 }
 fn map_units(lid: u32, wg: u32) -> Map {
@@ -74,7 +71,6 @@ fn map_units(lid: u32, wg: u32) -> Map {
 fn e_in_of(unit: u32) -> vec4<u32> { return aux[params.off_first + (unit & ((1u << params.inner_bits) - 1u))]; }
 fn e_out_of(unit: u32) -> vec4<u32> { return aux[params.off_second + (unit >> params.inner_bits)]; }
 
-// ---------- workgroup reduce of NT terms -> partials[wg*NT + t] ----------
 var<workgroup> red: array<vec4<u32>, 1536>; // 256 x 6
 
 fn wg_reduce_store(acc: array<vec4<u32>, 6>, lid: u32, wg: u32) { wg_reduce_store_at(acc, lid, wg, 0u); }

@@ -22,7 +22,7 @@ fn neg_p(x: vec4<u32>) -> vec4<u32> {
 
 @compute @workgroup_size(256)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let idx = gid.x;                 // q * 1024 + j
+  let idx = gid.x;
   let q = idx >> 10u;
   let j = idx & 1023u;
   if (q >= P.positions) { return; }

@@ -151,7 +151,6 @@ fn lut0_bytes() -> Vec<u8> {
     out
 }
 
-/// Largest power of two ≤ 8 keeping ≥ `UNITS_PER_THREAD_TARGET` threads busy.
 fn units_per_thread(units: u32) -> u32 {
     let mut ppt = 8;
     while ppt > 1 && units < UNITS_PER_THREAD_TARGET * ppt {
