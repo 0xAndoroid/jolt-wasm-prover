@@ -33,13 +33,13 @@ jobs:
         run: |
           actions="repos/$GITHUB_REPOSITORY/actions"
           prior_sha=
-          if identity=$(gh api "$actions/runs/$GITHUB_RUN_ID" | jq -er --arg sha "$GITHUB_SHA" '
+          if identity=$(timeout 20s gh api "$actions/runs/$GITHUB_RUN_ID" | jq -er --arg sha "$GITHUB_SHA" '
               select(.event == "schedule" and .head_branch == "main" and .head_sha == $sha and
                      (.workflow_id | type) == "number" and (.created_at | fromdateiso8601) > 0)
               | [.workflow_id, .created_at] | @tsv
             '); then
             IFS=$'\t' read -r workflow created <<< "$identity"
-            prior_sha=$(gh api -X GET "$actions/workflows/$workflow/runs" \
+            prior_sha=$(timeout 20s gh api -X GET "$actions/workflows/$workflow/runs" \
               -f event=schedule -f branch=main -f status=completed -f created="<$created" -F per_page=30 |
               jq -er --argjson workflow "$workflow" --argjson id "$GITHUB_RUN_ID" \
                 --argjson number "$GITHUB_RUN_NUMBER" --arg created "$created" '
