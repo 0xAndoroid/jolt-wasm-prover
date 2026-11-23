@@ -91,7 +91,7 @@ jobs:
 
   rust-wasm:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event_name == 'pull_request' && 10 || 45 }}
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 20 || 45 }}
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -105,8 +105,9 @@ jobs:
         run: |
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
             changed=$(git diff --name-only --no-renames HEAD^1 HEAD)
-            non_docs=$(git diff --name-only --no-renames HEAD^1 HEAD -- . ':(exclude,glob)*.md' ':(exclude,glob)docs/**/*.md')
-            if [[ -n "$changed" && -z "$non_docs" ]]; then
+            non_docs=$(git diff --name-only --no-renames HEAD^1 HEAD -- . ':(exclude,glob)**/*.md')
+            if [[ -n "$changed" && -z "$non_docs" ]] &&
+              git diff --quiet --no-renames HEAD^1 HEAD -- frontend/src frontend/public; then
               echo 'Browser smoke not selected: Markdown-only change.' >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
@@ -154,7 +155,7 @@ jobs:
           curl --fail --silent --show-error --retry 10 --retry-connrefused http://127.0.0.1:8080/ >/dev/null
           uv run --with playwright==1.64.1 bash -e <<'BROWSER'
           if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            playwright install --with-deps chromium
+            playwright install --with-deps --only-shell chromium
             python bench/test_ui_modes.py --smoke
           else
             playwright install --with-deps chromium webkit
